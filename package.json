@@ -6,7 +6,7 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "dev": "ts-node src/index.ts",
+    "dev": "tsc && node dist/index.js",
     "lint": "eslint src/**/*.ts",
     "format": "prettier --write src/**/*.ts",
     "test": "vitest run",
@@ -42,7 +42,8 @@
     "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-adblocker": "^2.13.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2",
-    "telegraf": "^4.16.3"
+    "telegraf": "^4.16.3",
+    "zod": "^4.1.13"
   },
   "devDependencies": {
     "@types/node": "^24.10.1",
