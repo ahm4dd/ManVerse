@@ -1,0 +1,28 @@
+# Dependencies
+node_modules
+yarn-error.log
+
+# Editor
+.idea
+.vscode
+
+# Build
+build
+coverage
+dist
+
+# Environment
+.env
+.env.local
+
+# Logs
+logs
+
+# Misc
+Thumbs.db
+.DS_Store
+
+# Private
+gu.md
+gu2.md
+EXPERIMENT_SIMULATION.md
