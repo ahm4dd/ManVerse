@@ -26,6 +26,7 @@
   },
   "homepage": "https://github.com/ahm4dd/ManVerse#readme",
   "dependencies": {
+    "@libsql/client": "^0.15.15",
     "better-sqlite3": "^12.5.0",
     "bullmq": "^5.65.1",
     "chalk": "^5.6.2",
@@ -46,6 +47,7 @@
     "eslint": "^9.39.1",
     "prettier": "^3.7.4",
     "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vitest": "^4.0.15"
   }
