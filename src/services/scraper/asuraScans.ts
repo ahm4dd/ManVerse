@@ -4,6 +4,7 @@ import { Manhwa, ManhwaChapter, Scraper, SearchResult } from './generalScraper.j
 import { asuraScansConfig, AsuraScansConfig } from '../../config/index.js';
 import path from 'path';
 import fs from 'fs';
+import { convertWebPToPdf } from '../pdf/worker.js';
 
 // ----------------------------------Scraper Class-------------------------------------
 // ------------------------------------------------------------------------------------
@@ -428,6 +429,10 @@ export class AsuraScans extends Scraper {
       await this.downloadImage(link, filePath);
     }
 
+    const filePaths = aggregatedManhwaLinks.map((_, index) => {
+      return path.join(process.cwd(), this.config.output.directory, `${(index + 1).toString().padStart(this.config.output.filenamePadding, '0')}${this.config.output.fileExtension}`);
+    });
+    await convertWebPToPdf(filePaths, path.join(process.cwd(), this.config.output.directory, 'output.pdf'));
     console.log('All downloads completed.');
   }
 
