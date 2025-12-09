@@ -24,30 +24,104 @@ export class AsuraScans extends Scraper {
     await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 60000 });
     console.log(`Navigating to ${targetUrl}...`);
 
-    const series = await page.$$eval('div a[href^="series/"]', (manhwas) => {
+    /**
+     * AsuraScans DOM Structure and Scraping Strategy
+     * ================================================
+     * 
+     * Search results selector: 'div a[href^="series/"]'
+     * Each result is an anchor tag containing nested divs with the following structure:
+     * 
+     * <a href="series/[series-slug]">
+     *   <div>                                    // First div child
+     *     <div>                                  // Inner div
+     *       <div>                                // First content div (contains status & image)
+     *         <span>Status Text</span>           // Status: "Ongoing", "Completed", "Hiatus", etc.
+     *         <img src="[image-url]" />          // Cover image
+     *       </div>
+     *       <div>                                // Second content div (contains metadata)
+     *         <span>Series Name</span>           // [0] Name of the series
+     *         <span>Chapter XX</span>            // [1] Latest chapter number
+     *         <span>                             // [2] Rating section (complex nested structure)
+     *           <div>                            // Star rating visualization
+     *             <span class="ml-1">X.X</span>  // Actual numeric rating (e.g., "7.0", "9.5")
+     *           </div>
+     *         </span>
+     *       </div>
+     *     </div>
+     *   </div>
+     * </a>
+     * 
+     * Extraction Strategy:
+     * 1. Navigate to first div child
+     * 2. Find inner div within it
+     * 3. Get two direct child divs using ':scope > div'
+     * 4. From first div: extract status (span) and imageUrl (img)
+     * 5. From second div: extract name (span[0]), chapters (span[1]), and rating (span[2] > span.ml-1)
+     * 6. Return null if any required structure is missing (filtered later)
+     * 
+     * Note: The rating section has a complex structure with star SVGs for visual display,
+     * but we only need the numeric value from the span with class "ml-1"
+     */
+    const seriesRaw = await page.$$eval('div a[href^="series/"]', (manhwas) => {
       return manhwas.map((manhwa) => {
-        const seriesName = manhwa.getAttribute('href') ?? undefined;
+        // Get the first div child
+        const firstDiv = manhwa.querySelector('div');
+        if (!firstDiv) return null;
+        
+        // Get the inner div within the first div
+        const innerDiv = firstDiv.querySelector('div');
+        if (!innerDiv) return null;
+        
+        // Get the two divs inside innerDiv
+        const divs = innerDiv.querySelectorAll(':scope > div');
+        if (divs.length < 2) return null;
+        
+        // First div contains status span and image
+        const firstContentDiv = divs[0];
+        const statusSpan = firstContentDiv.querySelector('span');
+        const img = firstContentDiv.querySelector('img');
+        
+        // Second div contains 3 spans: name, chapters, rating
+        const secondContentDiv = divs[1];
+        const spans = secondContentDiv.querySelectorAll('span');
+        
+        // Extract data
+        const status = statusSpan?.textContent?.trim() || '';
+        const imageUrl = img?.getAttribute('src') || '';
+        const name = spans[0]?.textContent?.trim() || '';
+        const chapters = spans[1]?.textContent?.trim() || '';
+        
+        // Extract rating from the third span (contains the numeric value)
+        let rating = '';
+        if (spans[2]) {
+          const ratingText = spans[2].querySelector('span.ml-1');
+          rating = ratingText?.textContent?.trim() || '';
+        }
+        
         return {
           link: manhwa.href,
-          name: seriesName,
+          name: name,
+          status: status,
+          imageUrl: imageUrl,
+          chapters: chapters,
+          rating: rating,
         };
       });
     });
 
-    series.forEach((series) => {
-      console.log(series.link);
-      console.log(cleanSeriesName(series.name));
+    // Filter out null entries
+    const series = seriesRaw.filter((s): s is NonNullable<typeof s> => s !== null);
+
+    series.forEach((item) => {
+      console.log('----------------');
+      console.log(item.name);
+      console.log(item.chapters);
+      console.log(item.imageUrl);
+      console.log(item.rating);
+      console.log(item.status);
+      console.log(item.link);
+      console.log('----------------');
     });
-
-    // const searchInput = await page.$eval('input[type="text"][placeholder="Search"]', (element) => {
-    //   return {
-    //     placeholder: element.placeholder,
-    //     val: element.value,
-    //   };
-    // });
-
-    // console.log(searchInput.placeholder);
-    // console.log(searchInput.val);
 
     return {
       currentPage: 0,
@@ -58,7 +132,7 @@ export class AsuraScans extends Scraper {
   checkManhwa(): Manhwa {
     throw new Error('Method not implemented.');
   }
-  checkManhwaChatper(): ManhwaChapter {
+  checkManhwaChapter(): ManhwaChapter {
     throw new Error('Method not implemented.');
   }
 
