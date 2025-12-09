@@ -1,8 +1,6 @@
 import * as z from 'zod';
 import puppeteer from 'puppeteer';
 
-// ----------------------------------Scraper Class-------------------------------------
-// ------------------------------------------------------------------------------------
 export abstract class Scraper {
   #baseUrl: string = '';
 
@@ -16,10 +14,7 @@ export abstract class Scraper {
   abstract checkManhwa(page: puppeteer.Page, url: string): Promise<Manhwa>;
   abstract checkManhwaChapter(page: puppeteer.Page, url: string): Promise<ManhwaChapter>;
 }
-// ------------------------------------------------------------------------------------
 
-// ------------------------------------Types-------------------------------------------
-// ------------------------------------------------------------------------------------
 /**
  * Base schema for searched manhwa results
  * 
@@ -77,4 +72,3 @@ export type SearchedManhwa = z.infer<typeof SearchedManhwa>;
 export type SearchResult = z.infer<typeof SearchResult>;
 export type Manhwa = z.infer<typeof Manhwa>;
 export type ManhwaChapter = z.infer<typeof ManhwaChapter>;
-// ------------------------------------------------------------------------------------

@@ -2,12 +2,7 @@ import { AsuraScansConfig } from './types.js';
 
 /**
  * AsuraScans Scraper Configuration
- * 
- * This configuration contains all AsuraScans-specific settings including:
- * - Base URL
- * - Request headers
- * - CSS selectors for scraping
- * - Timeout and retry settings
+ * Contains settings for URL, headers, selectors, and timeouts.
  */
 export const asuraScansConfig: AsuraScansConfig = {
   name: 'AsuraScans',

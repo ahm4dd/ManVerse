@@ -2,19 +2,6 @@ import puppeteer from 'puppeteer';
 import { AsuraScans } from './services/scraper/asuraScans.js';
 import { defaultBrowserConfig } from './config/index.js';
 
-// -------------------------------For Puppeteer Stealth--------------------------------
-// ------------------------------------------------------------------------------------
-// import { addExtra } from 'puppeteer-extra';
-// import vanillaPuppeteer from 'puppeteer';
-// import StealthPlugin from 'puppeteer-extra-plugin-stealth';
-// import AdblockerPlugin from 'puppeteer-extra-plugin-adblocker';
-
-// const puppeteer = addExtra(vanillaPuppeteer);
-
-// puppeteer.use(StealthPlugin()).use(AdblockerPlugin({ blockTrackers: true }));
-// ------------------------------------------------------------------------------------
-
-// Helper function for nice console output
 function printSection(title: string) {
   console.log('\n' + '='.repeat(80));
   console.log(`  ${title}`);
@@ -40,7 +27,7 @@ async function main() {
     const page = await browser.newPage();
     await page.setViewport(defaultBrowserConfig.viewport);
 
-    // Check for common detection points (optional, for debugging)
+    // Check for common detection points
     const detectionResults = await page.evaluate(() => {
       return {
         webdriver: navigator.webdriver,
@@ -51,9 +38,7 @@ async function main() {
 
     const asuraScans = new AsuraScans();
 
-    // ============================================================================
     // Test 1: Search Functionality
-    // ============================================================================
     printSection('Test 1: Search Functionality');
     
     const searchTerm = 'dragon';
@@ -77,9 +62,7 @@ async function main() {
       });
     }
 
-    // ============================================================================
     // Test 2: Get Manhwa Details
-    // ============================================================================
     if (searchResults.results.length > 0) {
       printSection('Test 2: Manhwa Details Scraping');
       
@@ -129,9 +112,7 @@ async function main() {
       }
     }
 
-    // ============================================================================
     // Test 3: Pagination Test
-    // ============================================================================
     printSection(' Test 3: Pagination Test');
     
     console.log(`\n Testing pagination with "${searchTerm}"...`);
@@ -142,22 +123,12 @@ async function main() {
     console.log(`    Has Next Page: ${page2Results.hasNextPage}`);
     console.log(`    Results Found: ${page2Results.results.length}`);
 
-    // ============================================================================
     // Test 4: Chapter Images Scraping
-    // ============================================================================
     if (searchResults.results.length > 0) {
       printSection('Test 4: Chapter Images Scraping');
       
-      // We need to get the details again or use the previously fetched details
-      // Let's assume we want to check the first chapter of the first manhwa
       const firstResult = searchResults.results[0];
-      // We already fetched details in Test 2, but let's re-fetch or use if available
-      // To be safe and independent, let's just use the first chapter from the details we got in Test 2
-      // Wait, we didn't save the details variable outside the scope of Test 2 block? 
-      // Ah, we did: `const manhwaDetails = await asuraScans.checkManhwa(page, firstResult.id);` 
-      // But it was inside the if block. Let's re-fetch for clarity or just fetch details if we haven't.
       
-      // For simplicity in this script, let's just re-fetch details for the first result to get a chapter URL
       console.log(`\n Getting chapter list for: "${firstResult.title}"`);
       const manhwaDetails = await asuraScans.checkManhwa(page, firstResult.id);
       
@@ -176,14 +147,11 @@ async function main() {
           console.log(`    Last Image: ${chapterImages[chapterImages.length - 1].img}`);
         }
 
-        // ============================================================================
         // Test 5: Chapter Download
-        // ============================================================================
         printSection('Test 5: Chapter Download');
         console.log(`\n Downloading images for: Chapter ${firstChapter.chapterNumber}`);
         console.log(`   Target Directory: ${process.cwd()}/man`);
         
-        // Note: This will download files to the disk. 
         await asuraScans.downloadManhwaChapter(page, firstChapter.chapterUrl);
         
         console.log(`\n Download completed!`);
@@ -192,9 +160,7 @@ async function main() {
       }
     }
 
-    // ============================================================================
     // Summary
-    // ============================================================================
     printSection('Test Summary');
     console.log('\n All tests completed successfully!');
     console.log('\n Tests Performed:');

@@ -1,9 +1,5 @@
 import { z } from 'zod';
 
-/**
- * Browser Configuration
- * Settings for Puppeteer browser instance
- */
 export const BrowserConfigSchema = z.object({
   headless: z.union([z.boolean(), z.literal('shell')]).default('shell'),
   args: z.array(z.string()).default(['--no-sandbox', '--disable-setuid-sandbox']),
@@ -15,10 +11,6 @@ export const BrowserConfigSchema = z.object({
   timeout: z.number().default(60000), // Default timeout in milliseconds
 });
 
-/**
- * Scraper Configuration Base
- * Common settings that all scrapers share
- */
 export const ScraperConfigSchema = z.object({
   name: z.string(),
   baseUrl: z.string().url(),
@@ -30,10 +22,6 @@ export const ScraperConfigSchema = z.object({
   }).default({}),
 });
 
-/**
- * AsuraScans Specific Configuration
- * Extends base scraper config with AsuraScans-specific settings
- */
 export const AsuraScansConfigSchema = ScraperConfigSchema.extend({
   selectors: z.object({
     // Search page selectors
