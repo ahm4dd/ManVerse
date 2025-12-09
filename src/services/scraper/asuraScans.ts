@@ -281,10 +281,27 @@ export class AsuraScans extends Scraper {
         const chapterMatch = chapterText.match(/Chapter\s+(\d+)/);
         const chapterNumber = chapterMatch ? chapterMatch[1] : '';
         
+        let fullUrl = chapterUrl;
+        if (!fullUrl.startsWith('http')) {
+          // AsuraScans chapter links are often relative like "slug/chapter/1"
+          // We need to ensure they are prefixed with "series/" if not present
+          if (!fullUrl.startsWith('series/') && !fullUrl.startsWith('/series/')) {
+            // Remove leading slash if present to avoid double slashes when joining
+            const cleanPath = fullUrl.startsWith('/') ? fullUrl.slice(1) : fullUrl;
+            fullUrl = `series/${cleanPath}`;
+          }
+          
+          // Ensure baseUrl ends with slash and fullUrl doesn't start with one (or handle it)
+          // baseUrl is 'https://asuracomic.net/'
+          const cleanBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
+          const cleanPath = fullUrl.startsWith('/') ? fullUrl.slice(1) : fullUrl;
+          fullUrl = `${cleanBase}${cleanPath}`;
+        }
+
         return {
           chapterNumber,
           chapterTitle: '', // AsuraScans doesn't seem to use chapter titles
-          chapterUrl: chapterUrl.startsWith('http') ? chapterUrl : `${baseUrl}${chapterUrl}`,
+          chapterUrl: fullUrl,
           releaseDate: dateText,
         };
       });

@@ -28,9 +28,9 @@ function printSubSection(title: string) {
 }
 
 async function main() {
-  printSection('🚀 ManVerse Scraper Demo - AsuraScans');
+  printSection(' ManVerse Scraper Demo - AsuraScans');
   
-  console.log('\n📱 Launching browser with configuration...');
+  console.log('\n Launching browser with configuration...');
   const browser = await puppeteer.launch({
     headless: defaultBrowserConfig.headless,
     args: defaultBrowserConfig.args,
@@ -143,6 +143,56 @@ async function main() {
     console.log(`    Results Found: ${page2Results.results.length}`);
 
     // ============================================================================
+    // Test 4: Chapter Images Scraping
+    // ============================================================================
+    if (searchResults.results.length > 0) {
+      printSection('Test 4: Chapter Images Scraping');
+      
+      // We need to get the details again or use the previously fetched details
+      // Let's assume we want to check the first chapter of the first manhwa
+      const firstResult = searchResults.results[0];
+      // We already fetched details in Test 2, but let's re-fetch or use if available
+      // To be safe and independent, let's just use the first chapter from the details we got in Test 2
+      // Wait, we didn't save the details variable outside the scope of Test 2 block? 
+      // Ah, we did: `const manhwaDetails = await asuraScans.checkManhwa(page, firstResult.id);` 
+      // But it was inside the if block. Let's re-fetch for clarity or just fetch details if we haven't.
+      
+      // For simplicity in this script, let's just re-fetch details for the first result to get a chapter URL
+      console.log(`\n Getting chapter list for: "${firstResult.title}"`);
+      const manhwaDetails = await asuraScans.checkManhwa(page, firstResult.id);
+      
+      if (manhwaDetails.chapters.length > 0) {
+        const firstChapter = manhwaDetails.chapters[0];
+        console.log(`\n Checking images for: Chapter ${firstChapter.chapterNumber}`);
+        console.log(`   URL: ${firstChapter.chapterUrl}`);
+        
+        const chapterImages = await asuraScans.checkManhwaChapter(page, firstChapter.chapterUrl);
+        
+        console.log(`\n Chapter images retrieved!`);
+        console.log(`    Total Images: ${chapterImages.length}`);
+        
+        if (chapterImages.length > 0) {
+          console.log(`    First Image: ${chapterImages[0].img}`);
+          console.log(`    Last Image: ${chapterImages[chapterImages.length - 1].img}`);
+        }
+
+        // ============================================================================
+        // Test 5: Chapter Download
+        // ============================================================================
+        printSection('Test 5: Chapter Download');
+        console.log(`\n Downloading images for: Chapter ${firstChapter.chapterNumber}`);
+        console.log(`   Target Directory: ${process.cwd()}/man`);
+        
+        // Note: This will download files to the disk. 
+        await asuraScans.downloadManhwaChapter(page, firstChapter.chapterUrl);
+        
+        console.log(`\n Download completed!`);
+      } else {
+        console.log('\n No chapters found to test image scraping/download.');
+      }
+    }
+
+    // ============================================================================
     // Summary
     // ============================================================================
     printSection('Test Summary');
@@ -151,6 +201,8 @@ async function main() {
     console.log('   ✓ Search functionality (Page 1)');
     console.log('   ✓ Manhwa details scraping');
     console.log('   ✓ Pagination (Page 2)');
+    console.log('   ✓ Chapter images scraping');
+    console.log('   ✓ Chapter download');
     console.log('\n Scraper is working correctly!\n');
 
   } catch (error) {
