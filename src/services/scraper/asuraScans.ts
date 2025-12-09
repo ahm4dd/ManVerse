@@ -27,7 +27,7 @@ export class AsuraScans extends Scraper {
 
     const targetUrl = `${this.config.baseUrl}series?page=${pageNumber}&name=${term}`;
 
-    await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+    await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: this.config.timeout });
     console.log(`Navigating to ${targetUrl}...`);
 
     /**
@@ -68,52 +68,64 @@ export class AsuraScans extends Scraper {
      * Note: The rating section has a complex structure with star SVGs for visual display,
      * but we only need the numeric value from the span with class "ml-1"
      */
-    const seriesRaw = await page.$$eval('div a[href^="series/"]', (manhwas) => {
-      return manhwas.map((manhwa) => {
-        // Get the first div child
-        const firstDiv = manhwa.querySelector('div');
-        if (!firstDiv) return null;
-        
-        // Get the inner div within the first div
-        const innerDiv = firstDiv.querySelector('div');
-        if (!innerDiv) return null;
-        
-        // Get the two divs inside innerDiv
-        const divs = innerDiv.querySelectorAll(':scope > div');
-        if (divs.length < 2) return null;
-        
-        // First div contains status span and image
-        const firstContentDiv = divs[0];
-        const statusSpan = firstContentDiv.querySelector('span');
-        const img = firstContentDiv.querySelector('img');
-        
-        // Second div contains 3 spans: name, chapters, rating
-        const secondContentDiv = divs[1];
-        const spans = secondContentDiv.querySelectorAll('span');
-        
-        // Extract data
-        const status = statusSpan?.textContent?.trim() || '';
-        const imageUrl = img?.getAttribute('src') || '';
-        const name = spans[0]?.textContent?.trim() || '';
-        const chapters = spans[1]?.textContent?.trim() || '';
-        
-        // Extract rating from the third span (contains the numeric value)
-        let rating = '';
-        if (spans[2]) {
-          const ratingText = spans[2].querySelector('span.ml-1');
-          rating = ratingText?.textContent?.trim() || '';
-        }
-        
-        return {
-          link: manhwa.href,
-          name: name,
-          status: status,
-          imageUrl: imageUrl,
-          chapters: chapters,
-          rating: rating,
-        };
-      });
-    });
+    // We need to pass the structure config to the evaluate context if we were using evaluate,
+    // but here we are using $$eval which runs in browser context but takes args.
+    // However, $$eval with a callback that takes elements is tricky to pass complex objects to 
+    // without wrapping. 
+    // Actually, $$eval takes additional arguments after the callback.
+    
+    const structureSelectors = this.config.selectors.search.structure;
+
+    const seriesRaw = await page.$$eval(
+      this.config.selectors.search.resultContainer, 
+      (manhwas, selectors) => {
+        return manhwas.map((manhwa) => {
+          // Get the first div child
+          const firstDiv = manhwa.querySelector(selectors.firstDiv);
+          if (!firstDiv) return null;
+          
+          // Get the inner div within the first div
+          const innerDiv = firstDiv.querySelector(selectors.innerDiv);
+          if (!innerDiv) return null;
+          
+          // Get the two divs inside innerDiv
+          const divs = innerDiv.querySelectorAll(selectors.scopeDiv);
+          if (divs.length < 2) return null;
+          
+          // First div contains status span and image
+          const firstContentDiv = divs[0];
+          const statusSpan = firstContentDiv.querySelector(selectors.statusSpan);
+          const img = firstContentDiv.querySelector(selectors.image);
+          
+          // Second div contains 3 spans: name, chapters, rating
+          const secondContentDiv = divs[1];
+          const spans = secondContentDiv.querySelectorAll(selectors.spans);
+          
+          // Extract data
+          const status = statusSpan?.textContent?.trim() || '';
+          const imageUrl = img?.getAttribute('src') || '';
+          const name = spans[0]?.textContent?.trim() || '';
+          const chapters = spans[1]?.textContent?.trim() || '';
+          
+          // Extract rating from the third span (contains the numeric value)
+          let rating = '';
+          if (spans[2]) {
+            const ratingText = spans[2].querySelector(selectors.ratingText);
+            rating = ratingText?.textContent?.trim() || '';
+          }
+          
+          return {
+            link: (manhwa as HTMLAnchorElement).href,
+            name: name,
+            status: status,
+            imageUrl: imageUrl,
+            chapters: chapters,
+            rating: rating,
+          };
+        });
+      },
+      structureSelectors // Pass the config object here
+    );
 
     // Filter out null entries
     const series = seriesRaw.filter((s): s is NonNullable<typeof s> => s !== null);
@@ -142,17 +154,20 @@ export class AsuraScans extends Scraper {
      * 
      * We check the Next button to determine if there's a next page available.
      */
-    const hasNextPage = await page.evaluate(() => {
+    const paginationConfig = this.config.selectors.search.pagination;
+    const nextButtonSelector = this.config.selectors.search.nextButton;
+    
+    const hasNextPage = await page.evaluate((nextBtnText, btnSelector) => {
       // Find all anchor tags that contain "Next" text and are navigation buttons
-      const buttons = Array.from(document.querySelectorAll('a'));
-      const nextButton = buttons.find((btn) => btn.textContent?.includes('Next'));
+      const buttons = Array.from(document.querySelectorAll(btnSelector));
+      const nextButton = buttons.find((btn) => btn.textContent?.includes(nextBtnText));
       
       if (!nextButton) return false;
       
       // Check if the button is enabled (pointer-events: auto)
       const style = nextButton.getAttribute('style');
       return style?.includes('pointer-events:auto') || !style?.includes('pointer-events:none');
-    });
+    }, paginationConfig.nextButtonText, nextButtonSelector);
 
     // Map AsuraScans data to SearchedManhwa format
     const results = series.map((item) => ({
@@ -175,8 +190,15 @@ export class AsuraScans extends Scraper {
   }
   
   async checkManhwa(page: puppeteer.Page, url: string): Promise<Manhwa> {
-    await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
+    await page.goto(url, { waitUntil: 'networkidle2', timeout: this.config.timeout });
     console.log(`Navigating to ${url} for manhwa details...`);
+
+    /**
+     * Note: We need to pass baseUrl as a parameter because page.evaluate()
+     * runs in browser context where `this.config` is not available
+     */
+    const baseUrl = this.config.baseUrl;
+    const detailSelectors = this.config.selectors.detail;
 
     /**
      * AsuraScans Manhwa Detail Page Structure
@@ -194,44 +216,44 @@ export class AsuraScans extends Scraper {
      * Chapters: List items with chapter links and dates
      */
     
-    const manhwaData = await page.evaluate(() => {
+    const manhwaData = await page.evaluate((baseUrl, selectors) => {
       // Title - from breadcrumb h3 element
-      const breadcrumbTitle = document.querySelector('h3.hover\\:text-themecolor.cursor-pointer.text-white.text-sm.shrink-0.w-\\[calc\\(100\\%-120px\\)\\].truncate');
+      const breadcrumbTitle = document.querySelector(selectors.title);
       const title = breadcrumbTitle?.textContent?.trim() || '';
       
       // Image - poster image
-      const imgElement = document.querySelector('img[alt="poster"]');
+      const imgElement = document.querySelector(selectors.image);
       const image = imgElement?.getAttribute('src') || '';
       
       // Status - find the div containing "Status" and get its sibling
-      const statusElements = Array.from(document.querySelectorAll('h3.text-sm.text-\\[\\#A2A2A2\\]'));
+      const statusElements = Array.from(document.querySelectorAll(selectors.status));
       const statusLabel = statusElements.find(el => el.textContent?.includes('Status'));
       const statusValue = statusLabel?.nextElementSibling as HTMLElement;
       const status = statusValue?.textContent?.trim() || '';
       
       // Rating - numeric value in the rating section
-      const ratingElement = document.querySelector('span.ml-1.text-xs');
+      const ratingElement = document.querySelector(selectors.rating);
       const rating = ratingElement?.textContent?.trim() || '';
       
       // Followers
-      const followersElement = document.querySelector('p.text-\\[\\#A2A2A2\\].text-\\[13px\\]');
+      const followersElement = document.querySelector(selectors.followers);
       const followersText = followersElement?.textContent?.trim() || '';
       const followersMatch = followersText.match(/(\d+)\s+people/);
       const followers = followersMatch ? followersMatch[1] : '';
       
       // Synopsis - after the "Synopsis [Title]" heading
-      const synopsisHeading = Array.from(document.querySelectorAll('h3')).find(
+      const synopsisHeading = Array.from(document.querySelectorAll(selectors.synopsisHeading)).find(
         h3 => h3.textContent?.includes('Synopsis')
       );
       const synopsisElement = synopsisHeading?.nextElementSibling;
       const description = synopsisElement?.textContent?.trim() || '';
       
       // Genres - buttons in the genres section
-      const genreButtons = document.querySelectorAll('.bg-\\[\\#343434\\].text-white.hover\\:text-themecolor');
+      const genreButtons = document.querySelectorAll(selectors.genres);
       const genres = Array.from(genreButtons).map(btn => btn.textContent?.trim() || '').filter(Boolean);
       
       // Author, Artist, Serialization - from the grid
-      const gridElements = document.querySelectorAll('.grid.grid-cols-1.md\\:grid-cols-2 h3');
+      const gridElements = document.querySelectorAll(selectors.gridElements);
       let author = '';
       let artist = '';
       let serialization = '';
@@ -248,12 +270,12 @@ export class AsuraScans extends Scraper {
       }
       
       // Chapters - from the chapter list
-      const chapterItems = document.querySelectorAll('div.pl-4.py-2.border.rounded-md');
+      const chapterItems = document.querySelectorAll(selectors.chapters);
       const chapters = Array.from(chapterItems).map(item => {
-        const link = item.querySelector('a');
+        const link = item.querySelector(selectors.chapterLink);
         const chapterUrl = link?.getAttribute('href') || '';
-        const chapterText = link?.querySelector('h3')?.textContent?.trim() || '';
-        const dateText = link?.querySelector('h3.text-xs.text-\\[\\#A2A2A2\\]')?.textContent?.trim() || '';
+        const chapterText = link?.querySelector(selectors.chapterTitle)?.textContent?.trim() || '';
+        const dateText = link?.querySelector(selectors.chapterDate)?.textContent?.trim() || '';
         
         // Extract chapter number from text like "Chapter 3"
         const chapterMatch = chapterText.match(/Chapter\s+(\d+)/);
@@ -262,7 +284,7 @@ export class AsuraScans extends Scraper {
         return {
           chapterNumber,
           chapterTitle: '', // AsuraScans doesn't seem to use chapter titles
-          chapterUrl: chapterUrl.startsWith('http') ? chapterUrl : `https://asuracomic.net/${chapterUrl}`,
+          chapterUrl: chapterUrl.startsWith('http') ? chapterUrl : `${baseUrl}${chapterUrl}`,
           releaseDate: dateText,
         };
       });
@@ -281,7 +303,7 @@ export class AsuraScans extends Scraper {
         updatedOn,
         chapters,
       };
-    });
+    }, baseUrl, detailSelectors);
 
     return {
       id: url,
@@ -303,7 +325,7 @@ export class AsuraScans extends Scraper {
   }
   
   async checkManhwaChapter(page: puppeteer.Page, url: string): Promise<ManhwaChapter> {
-    await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
+    await page.goto(url, { waitUntil: 'networkidle2', timeout: this.config.timeout });
     console.log(`Navigating to ${url} for chapter images...`);
 
     /**
@@ -324,7 +346,7 @@ export class AsuraScans extends Scraper {
      * - Will use the baseUrl as referer for downloading
      */
     
-    const chapterImages = await page.$$eval('img.object-cover.mx-auto', (images) => {
+    const chapterImages = await page.$$eval(this.config.selectors.chapter.images, (images) => {
       return images
         .map((img, index) => {
           const src = img.getAttribute('src');
@@ -360,13 +382,13 @@ export class AsuraScans extends Scraper {
 
   async downloadManhwaChapter(page: puppeteer.Page, url: string) {
     if (page.url() !== url) {
-      await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
+      await page.goto(url, { waitUntil: 'networkidle2', timeout: this.config.timeout });
       console.log(`Navigating to ${url}...`);
     }
 
     console.log('Extracting image links...');
-    const aggregatedManhwaLinks = await page.$$eval('img.object-cover.mx-auto', (elements) => {
-      return elements.map((element) => element.src);
+    const aggregatedManhwaLinks = await page.$$eval(this.config.selectors.chapter.images, (elements) => {
+      return elements.map((element) => (element as HTMLImageElement).src);
     });
 
     console.log(`Found ${aggregatedManhwaLinks.length} images.`);
@@ -382,8 +404,8 @@ export class AsuraScans extends Scraper {
     for (let i = 0; i < aggregatedManhwaLinks.length; i++) {
       const link = aggregatedManhwaLinks[i];
       // Pad the index with leading zeros (e.g., 001.webp)
-      const fileName = `${(i + 1).toString().padStart(3, '0')}.webp`;
-      const filePath = path.join(process.cwd(), 'man', fileName);
+      const fileName = `${(i + 1).toString().padStart(this.config.output.filenamePadding, '0')}${this.config.output.fileExtension}`;
+      const filePath = path.join(process.cwd(), this.config.output.directory, fileName);
 
       console.log(`Downloading ${i + 1}/${aggregatedManhwaLinks.length}: ${link}`);
       await this.downloadImage(link, filePath);
@@ -399,9 +421,8 @@ export class AsuraScans extends Scraper {
         url: imageUrl,
         responseType: 'stream',
         headers: {
-          'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          Referer: 'https://asuracomic.net/',
+          'User-Agent': this.config.headers.userAgent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          Referer: this.config.headers.referer || this.config.baseUrl,
         },
       };
       const response = await axios(config);
