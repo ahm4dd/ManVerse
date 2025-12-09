@@ -14,7 +14,7 @@ export abstract class Scraper {
     term?: string,
   ): Promise<SearchResult> | SearchResult;
   abstract checkManhwa(page: puppeteer.Page, url: string): Promise<Manhwa>;
-  abstract checkManhwaChapter(): ManhwaChapter;
+  abstract checkManhwaChapter(page: puppeteer.Page, url: string): Promise<ManhwaChapter>;
 }
 // ------------------------------------------------------------------------------------
 

@@ -301,8 +301,61 @@ export class AsuraScans extends Scraper {
       updatedOn: manhwaData.updatedOn,
     };
   }
-  checkManhwaChapter(): ManhwaChapter {
-    throw new Error('Method not implemented.');
+  
+  async checkManhwaChapter(page: puppeteer.Page, url: string): Promise<ManhwaChapter> {
+    await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
+    console.log(`Navigating to ${url} for chapter images...`);
+
+    /**
+     * AsuraScans Chapter Page Structure
+     * ==================================
+     * 
+     * Chapter pages are contained in divs with class "w-full mx-auto center"
+     * Each div contains an img tag with:
+     * - src: The image URL (e.g., https://gg.asuracomic.net/storage/media/.../01-optimized.webp)
+     * - alt: "chapter page X" where X is the page number
+     * - class: "object-cover mx-auto"
+     * 
+     * The images selector: img.object-cover.mx-auto (this matches chapter page images)
+     * 
+     * We extract:
+     * - Image URL (src attribute)
+     * - Page number (from alt attribute or index)
+     * - Will use the baseUrl as referer for downloading
+     */
+    
+    const chapterImages = await page.$$eval('img.object-cover.mx-auto', (images) => {
+      return images
+        .map((img, index) => {
+          const src = img.getAttribute('src');
+          const alt = img.getAttribute('alt') || '';
+          
+          // Extract page number from alt text like "chapter page 1"
+          const pageMatch = alt.match(/page\s+(\d+)/i);
+          const pageNumber = pageMatch ? parseInt(pageMatch[1], 10) : index + 1;
+          
+          return {
+            src: src || '',
+            pageNumber: pageNumber,
+          };
+        })
+        .filter(item => item.src !== ''); // Filter out any images without src
+    });
+
+    if (chapterImages.length === 0) {
+      console.warn('No chapter images found. The page may have failed to load.');
+    }
+
+    console.log(`Found ${chapterImages.length} chapter pages`);
+
+    // Convert to ManhwaChapter format
+    const result: ManhwaChapter = chapterImages.map((img) => ({
+      page: img.pageNumber,
+      img: img.src,
+      headerForImage: this.config.baseUrl, // Use baseUrl as referer
+    }));
+
+    return result;
   }
 
   async downloadManhwaChapter(page: puppeteer.Page, url: string) {
