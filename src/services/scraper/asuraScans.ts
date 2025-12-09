@@ -1,13 +1,19 @@
 import puppeteer from 'puppeteer';
 import axios, { AxiosRequestConfig } from 'axios';
 import { Manhwa, ManhwaChapter, Scraper, SearchResult } from './generalScraper.js';
+import { asuraScansConfig, AsuraScansConfig } from '../../config/index.js';
 import path from 'path';
 import fs from 'fs';
 
 // ----------------------------------Scraper Class-------------------------------------
 // ------------------------------------------------------------------------------------
 export class AsuraScans extends Scraper {
-  #baseUrl = 'https://asuracomic.net/';
+  private config: AsuraScansConfig;
+
+  constructor(config: AsuraScansConfig = asuraScansConfig) {
+    super();
+    this.config = config;
+  }
 
   async search(
     consumet = false,
@@ -16,10 +22,10 @@ export class AsuraScans extends Scraper {
     pageNumber: number = 1,
   ): Promise<SearchResult> {
     if (consumet) {
-      throw new Error(`Consumet should not be activated for ${this.#baseUrl}`);
+      throw new Error(`Consumet should not be activated for ${this.config.baseUrl}`);
     }
 
-    const targetUrl = `${this.#baseUrl}series?page=${pageNumber}&name=${term}`;
+    const targetUrl = `${this.config.baseUrl}series?page=${pageNumber}&name=${term}`;
 
     await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 60000 });
     console.log(`Navigating to ${targetUrl}...`);
@@ -153,7 +159,7 @@ export class AsuraScans extends Scraper {
       id: item.link,
       title: item.name,
       altTitles: [],
-      headerForImage: { Referer: this.#baseUrl },
+      headerForImage: { Referer: this.config.baseUrl },
       image: item.imageUrl,
       // AsuraScans-specific extra metadata (not in base type but useful)
       status: item.status,
@@ -282,7 +288,7 @@ export class AsuraScans extends Scraper {
       title: manhwaData.title,
       description: manhwaData.description,
       image: manhwaData.image,
-      headerForImage: { Referer: this.#baseUrl },
+      headerForImage: { Referer: this.config.baseUrl },
       status: manhwaData.status,
       rating: manhwaData.rating,
       genres: manhwaData.genres,
