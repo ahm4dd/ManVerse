@@ -1,7 +1,7 @@
 import puppeteer from 'puppeteer';
 import axios, { AxiosRequestConfig } from 'axios';
 import { Manhwa, ManhwaChapter, Scraper, SearchResult } from './generalScraper.js';
-import { asuraScansConfig, AsuraScansConfig } from '../../config/index.js';
+import { asuraScansConfig, AsuraScansConfig } from '../../../manverse-api/config/index.js';
 import path from 'path';
 import fs from 'fs';
 import { convertWebPToPdf } from '../pdf/worker.js';
@@ -33,36 +33,36 @@ export class AsuraScans extends Scraper {
     const structureSelectors = this.config.selectors.search.structure;
 
     const seriesRaw = await page.$$eval(
-      this.config.selectors.search.resultContainer, 
+      this.config.selectors.search.resultContainer,
       (manhwas, selectors) => {
         return manhwas.map((manhwa) => {
           const firstDiv = manhwa.querySelector(selectors.firstDiv);
           if (!firstDiv) return null;
-          
+
           const innerDiv = firstDiv.querySelector(selectors.innerDiv);
           if (!innerDiv) return null;
-          
+
           const divs = innerDiv.querySelectorAll(selectors.scopeDiv);
           if (divs.length < 2) return null;
-          
+
           const firstContentDiv = divs[0];
           const statusSpan = firstContentDiv.querySelector(selectors.statusSpan);
           const img = firstContentDiv.querySelector(selectors.image);
-          
+
           const secondContentDiv = divs[1];
           const spans = secondContentDiv.querySelectorAll(selectors.spans);
-          
+
           const status = statusSpan?.textContent?.trim() || '';
           const imageUrl = img?.getAttribute('src') || '';
           const name = spans[0]?.textContent?.trim() || '';
           const chapters = spans[1]?.textContent?.trim() || '';
-          
+
           let rating = '';
           if (spans[2]) {
             const ratingText = spans[2].querySelector(selectors.ratingText);
             rating = ratingText?.textContent?.trim() || '';
           }
-          
+
           return {
             link: (manhwa as HTMLAnchorElement).href,
             name: name,
@@ -73,7 +73,7 @@ export class AsuraScans extends Scraper {
           };
         });
       },
-      structureSelectors
+      structureSelectors,
     );
 
     // Filter out null entries
@@ -93,16 +93,20 @@ export class AsuraScans extends Scraper {
     // Check pagination (Next button state)
     const paginationConfig = this.config.selectors.search.pagination;
     const nextButtonSelector = this.config.selectors.search.nextButton;
-    
-    const hasNextPage = await page.evaluate((nextBtnText, btnSelector) => {
-      const buttons = Array.from(document.querySelectorAll(btnSelector));
-      const nextButton = buttons.find((btn) => btn.textContent?.includes(nextBtnText));
-      
-      if (!nextButton) return false;
-      
-      const style = nextButton.getAttribute('style');
-      return style?.includes('pointer-events:auto') || !style?.includes('pointer-events:none');
-    }, paginationConfig.nextButtonText, nextButtonSelector);
+
+    const hasNextPage = await page.evaluate(
+      (nextBtnText, btnSelector) => {
+        const buttons = Array.from(document.querySelectorAll(btnSelector));
+        const nextButton = buttons.find((btn) => btn.textContent?.includes(nextBtnText));
+
+        if (!nextButton) return false;
+
+        const style = nextButton.getAttribute('style');
+        return style?.includes('pointer-events:auto') || !style?.includes('pointer-events:none');
+      },
+      paginationConfig.nextButtonText,
+      nextButtonSelector,
+    );
 
     const results = series.map((item) => ({
       id: item.link,
@@ -121,7 +125,7 @@ export class AsuraScans extends Scraper {
       results: results,
     };
   }
-  
+
   async checkManhwa(page: puppeteer.Page, url: string): Promise<Manhwa> {
     await page.goto(url, { waitUntil: 'networkidle2', timeout: this.config.timeout });
     console.log(`Navigating to ${url} for manhwa details...`);
@@ -130,96 +134,103 @@ export class AsuraScans extends Scraper {
     const detailSelectors = this.config.selectors.detail;
 
     // Extract details using configured selectors
-    const manhwaData = await page.evaluate((baseUrl, selectors) => {
-      const breadcrumbTitle = document.querySelector(selectors.title);
-      const title = breadcrumbTitle?.textContent?.trim() || '';
-      
-      const imgElement = document.querySelector(selectors.image);
-      const image = imgElement?.getAttribute('src') || '';
-      
-      const statusElements = Array.from(document.querySelectorAll(selectors.status));
-      const statusLabel = statusElements.find(el => el.textContent?.includes('Status'));
-      const statusValue = statusLabel?.nextElementSibling as HTMLElement;
-      const status = statusValue?.textContent?.trim() || '';
-      
-      const ratingElement = document.querySelector(selectors.rating);
-      const rating = ratingElement?.textContent?.trim() || '';
-      
-      const followersElement = document.querySelector(selectors.followers);
-      const followersText = followersElement?.textContent?.trim() || '';
-      const followersMatch = followersText.match(/(\d+)\s+people/);
-      const followers = followersMatch ? followersMatch[1] : '';
-      
-      const synopsisHeading = Array.from(document.querySelectorAll(selectors.synopsisHeading)).find(
-        h3 => h3.textContent?.includes('Synopsis')
-      );
-      const synopsisElement = synopsisHeading?.nextElementSibling;
-      const description = synopsisElement?.textContent?.trim() || '';
-      
-      const genreButtons = document.querySelectorAll(selectors.genres);
-      const genres = Array.from(genreButtons).map(btn => btn.textContent?.trim() || '').filter(Boolean);
-      
-      const gridElements = document.querySelectorAll(selectors.gridElements);
-      let author = '';
-      let artist = '';
-      let serialization = '';
-      let updatedOn = '';
-      
-      for (let i = 0; i < gridElements.length; i += 2) {
-        const label = gridElements[i]?.textContent?.trim();
-        const value = gridElements[i + 1]?.textContent?.trim();
-        
-        if (label === 'Author') author = value || '';
-        if (label === 'Artist') artist = value || '';
-        if (label === 'Serialization') serialization = value || '';
-        if (label === 'Updated On') updatedOn = value || '';
-      }
-      
-      const chapterItems = document.querySelectorAll(selectors.chapters);
-      const chapters = Array.from(chapterItems).map(item => {
-        const link = item.querySelector(selectors.chapterLink);
-        const chapterUrl = link?.getAttribute('href') || '';
-        const chapterText = link?.querySelector(selectors.chapterTitle)?.textContent?.trim() || '';
-        const dateText = link?.querySelector(selectors.chapterDate)?.textContent?.trim() || '';
-        
-        const chapterMatch = chapterText.match(/Chapter\s+(\d+)/);
-        const chapterNumber = chapterMatch ? chapterMatch[1] : '';
-        
-        let fullUrl = chapterUrl;
-        if (!fullUrl.startsWith('http')) {
-          if (!fullUrl.startsWith('series/') && !fullUrl.startsWith('/series/')) {
-            const cleanPath = fullUrl.startsWith('/') ? fullUrl.slice(1) : fullUrl;
-            fullUrl = `series/${cleanPath}`;
-          }
-          
-          const cleanBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
-          const cleanPath = fullUrl.startsWith('/') ? fullUrl.slice(1) : fullUrl;
-          fullUrl = `${cleanBase}${cleanPath}`;
+    const manhwaData = await page.evaluate(
+      (baseUrl, selectors) => {
+        const breadcrumbTitle = document.querySelector(selectors.title);
+        const title = breadcrumbTitle?.textContent?.trim() || '';
+
+        const imgElement = document.querySelector(selectors.image);
+        const image = imgElement?.getAttribute('src') || '';
+
+        const statusElements = Array.from(document.querySelectorAll(selectors.status));
+        const statusLabel = statusElements.find((el) => el.textContent?.includes('Status'));
+        const statusValue = statusLabel?.nextElementSibling as HTMLElement;
+        const status = statusValue?.textContent?.trim() || '';
+
+        const ratingElement = document.querySelector(selectors.rating);
+        const rating = ratingElement?.textContent?.trim() || '';
+
+        const followersElement = document.querySelector(selectors.followers);
+        const followersText = followersElement?.textContent?.trim() || '';
+        const followersMatch = followersText.match(/(\d+)\s+people/);
+        const followers = followersMatch ? followersMatch[1] : '';
+
+        const synopsisHeading = Array.from(
+          document.querySelectorAll(selectors.synopsisHeading),
+        ).find((h3) => h3.textContent?.includes('Synopsis'));
+        const synopsisElement = synopsisHeading?.nextElementSibling;
+        const description = synopsisElement?.textContent?.trim() || '';
+
+        const genreButtons = document.querySelectorAll(selectors.genres);
+        const genres = Array.from(genreButtons)
+          .map((btn) => btn.textContent?.trim() || '')
+          .filter(Boolean);
+
+        const gridElements = document.querySelectorAll(selectors.gridElements);
+        let author = '';
+        let artist = '';
+        let serialization = '';
+        let updatedOn = '';
+
+        for (let i = 0; i < gridElements.length; i += 2) {
+          const label = gridElements[i]?.textContent?.trim();
+          const value = gridElements[i + 1]?.textContent?.trim();
+
+          if (label === 'Author') author = value || '';
+          if (label === 'Artist') artist = value || '';
+          if (label === 'Serialization') serialization = value || '';
+          if (label === 'Updated On') updatedOn = value || '';
         }
 
+        const chapterItems = document.querySelectorAll(selectors.chapters);
+        const chapters = Array.from(chapterItems).map((item) => {
+          const link = item.querySelector(selectors.chapterLink);
+          const chapterUrl = link?.getAttribute('href') || '';
+          const chapterText =
+            link?.querySelector(selectors.chapterTitle)?.textContent?.trim() || '';
+          const dateText = link?.querySelector(selectors.chapterDate)?.textContent?.trim() || '';
+
+          const chapterMatch = chapterText.match(/Chapter\s+(\d+)/);
+          const chapterNumber = chapterMatch ? chapterMatch[1] : '';
+
+          let fullUrl = chapterUrl;
+          if (!fullUrl.startsWith('http')) {
+            if (!fullUrl.startsWith('series/') && !fullUrl.startsWith('/series/')) {
+              const cleanPath = fullUrl.startsWith('/') ? fullUrl.slice(1) : fullUrl;
+              fullUrl = `series/${cleanPath}`;
+            }
+
+            const cleanBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
+            const cleanPath = fullUrl.startsWith('/') ? fullUrl.slice(1) : fullUrl;
+            fullUrl = `${cleanBase}${cleanPath}`;
+          }
+
+          return {
+            chapterNumber,
+            chapterTitle: '',
+            chapterUrl: fullUrl,
+            releaseDate: dateText,
+          };
+        });
+
         return {
-          chapterNumber,
-          chapterTitle: '',
-          chapterUrl: fullUrl,
-          releaseDate: dateText,
+          title,
+          image,
+          status,
+          rating,
+          followers,
+          description,
+          genres,
+          author,
+          artist,
+          serialization,
+          updatedOn,
+          chapters,
         };
-      });
-      
-      return {
-        title,
-        image,
-        status,
-        rating,
-        followers,
-        description,
-        genres,
-        author,
-        artist,
-        serialization,
-        updatedOn,
-        chapters,
-      };
-    }, baseUrl, detailSelectors);
+      },
+      baseUrl,
+      detailSelectors,
+    );
 
     return {
       id: url,
@@ -238,7 +249,7 @@ export class AsuraScans extends Scraper {
       updatedOn: manhwaData.updatedOn,
     };
   }
-  
+
   async checkManhwaChapter(page: puppeteer.Page, url: string): Promise<ManhwaChapter> {
     await page.goto(url, { waitUntil: 'networkidle2', timeout: this.config.timeout });
     console.log(`Navigating to ${url} for chapter images...`);
@@ -249,16 +260,16 @@ export class AsuraScans extends Scraper {
         .map((img, index) => {
           const src = img.getAttribute('src');
           const alt = img.getAttribute('alt') || '';
-          
+
           const pageMatch = alt.match(/page\s+(\d+)/i);
           const pageNumber = pageMatch ? parseInt(pageMatch[1], 10) : index + 1;
-          
+
           return {
             src: src || '',
             pageNumber: pageNumber,
           };
         })
-        .filter(item => item.src !== '');
+        .filter((item) => item.src !== '');
     });
 
     if (chapterImages.length === 0) {
@@ -283,9 +294,12 @@ export class AsuraScans extends Scraper {
     }
 
     console.log('Extracting image links...');
-    const aggregatedManhwaLinks = await page.$$eval(this.config.selectors.chapter.images, (elements) => {
-      return elements.map((element) => (element as HTMLImageElement).src);
-    });
+    const aggregatedManhwaLinks = await page.$$eval(
+      this.config.selectors.chapter.images,
+      (elements) => {
+        return elements.map((element) => (element as HTMLImageElement).src);
+      },
+    );
 
     console.log(`Found ${aggregatedManhwaLinks.length} images.`);
 
@@ -308,9 +322,16 @@ export class AsuraScans extends Scraper {
     }
 
     const filePaths = aggregatedManhwaLinks.map((_, index) => {
-      return path.join(process.cwd(), this.config.output.directory, `${(index + 1).toString().padStart(this.config.output.filenamePadding, '0')}${this.config.output.fileExtension}`);
+      return path.join(
+        process.cwd(),
+        this.config.output.directory,
+        `${(index + 1).toString().padStart(this.config.output.filenamePadding, '0')}${this.config.output.fileExtension}`,
+      );
     });
-    await convertWebPToPdf(filePaths, path.join(process.cwd(), this.config.output.directory, 'output.pdf'));
+    await convertWebPToPdf(
+      filePaths,
+      path.join(process.cwd(), this.config.output.directory, 'output.pdf'),
+    );
     console.log('All downloads completed.');
   }
 
@@ -321,7 +342,9 @@ export class AsuraScans extends Scraper {
         url: imageUrl,
         responseType: 'stream',
         headers: {
-          'User-Agent': this.config.headers.userAgent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'User-Agent':
+            this.config.headers.userAgent ||
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
           Referer: this.config.headers.referer || this.config.baseUrl,
         },
       };

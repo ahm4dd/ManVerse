@@ -1,0 +1,27 @@
+{
+  "name": "@manverse/scraper",
+  "version": "0.1.0",
+  "description": "Scraper worker for manga/manhwa sites",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch asuraScans.ts"
+  },
+  "dependencies": {
+    "@manverse/queue-manager": "workspace:*",
+    "axios": "^1.13.2",
+    "puppeteer": "^24.32.0",
+    "puppeteer-core": "^24.32.0",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-adblocker": "^2.13.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "zod": "^4.1.13"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "@types/puppeteer": "^5.4.7",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}

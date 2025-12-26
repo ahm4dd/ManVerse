@@ -14,6 +14,8 @@ dist
 # Environment
 .env
 .env.local
+.env.development.local
+.env.production.local
 
 # Logs
 logs
@@ -27,3 +29,6 @@ gu.md
 gu2.md
 EXPERIMENT_SIMULATION.md
 man/
+.archive/
+docs/
+potential_providers.md
