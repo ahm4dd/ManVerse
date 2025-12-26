@@ -78,7 +78,7 @@ export interface UploadFileJob extends BaseJob {
   data: {
     filePath: string;
     destination: string;
-    metadata?: Record<string, any>;
+    metadata?: Record<string, unknown>;
   };
 }
 
@@ -90,7 +90,7 @@ export type Job =
   | GeneratePdfJob
   | UploadFileJob;
 
-export interface JobResult<T = any> {
+export interface JobResult<T = unknown> {
   jobId: string;
   status: JobStatus;
   data?: T;
