@@ -7,8 +7,8 @@ import { JobType, JobStatus } from '../types/queue.js';
 
 export const BaseJobSchema = z.object({
   id: z.uuid(),
-  type: z.enum(JobType),
-  status: z.enum(JobStatus),
+  type: z.enum(Object.values(JobType) as [string, ...string[]]),
+  status: z.enum(Object.values(JobStatus) as [string, ...string[]]),
   createdAt: z.date(),
   updatedAt: z.date(),
   attempts: z.number().int().min(0),
@@ -23,17 +23,17 @@ export const ScrapeSearchJobDataSchema = z.object({
 });
 
 export const ScrapeManhwaJobDataSchema = z.object({
-  manhwaUrl: z.url(),
+  manhwaUrl: z.string().url(),
   provider: z.string(),
 });
 
 export const ScrapeChapterJobDataSchema = z.object({
-  chapterUrl: z.url(),
+  chapterUrl: z.string().url(),
   provider: z.string(),
 });
 
 export const DownloadChapterJobDataSchema = z.object({
-  chapterUrl: z.url(),
+  chapterUrl: z.string().url(),
   outputDir: z.string(),
   provider: z.string(),
 });
@@ -91,7 +91,7 @@ export const JobSchema = z.discriminatedUnion('type', [
 
 export const JobResultSchema = z.object({
   jobId: z.uuid(),
-  status: z.enum(JobStatus),
+  status: z.enum(Object.values(JobStatus) as [string, ...string[]]),
   data: z.unknown().optional(),
   error: z.string().optional(),
 });

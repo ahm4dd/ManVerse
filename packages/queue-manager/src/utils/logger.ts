@@ -3,12 +3,14 @@
  * Can be extended to use Winston, Pino, or other logging libraries
  */
 
-export enum LogLevel {
-  DEBUG = 0,
-  INFO = 1,
-  WARN = 2,
-  ERROR = 3,
-}
+export const LogLevel = {
+  DEBUG: 0,
+  INFO: 1,
+  WARN: 2,
+  ERROR: 3,
+} as const;
+
+export type LogLevel = (typeof LogLevel)[keyof typeof LogLevel];
 
 export interface LoggerOptions {
   level?: LogLevel;
@@ -24,33 +26,33 @@ export class Logger {
     this.prefix = options.prefix ?? '';
   }
 
-  private format(level: string, message: string, ...args: unknown[]): string {
+  private format(level: string, message: string): string {
     const timestamp = new Date().toISOString();
     const prefix = this.prefix ? `[${this.prefix}] ` : '';
     return `${timestamp} ${level} ${prefix}${message}`;
   }
 
-  debug(message: string, ...args: unknown[]): void {
+  debug(message: string): void {
     if (this.level <= LogLevel.DEBUG) {
-      console.debug(this.format('DEBUG', message), ...args);
+      console.debug(this.format('DEBUG', message));
     }
   }
 
-  info(message: string, ...args: unknown[]): void {
+  info(message: string): void {
     if (this.level <= LogLevel.INFO) {
-      console.info(this.format('INFO', message), ...args);
+      console.info(this.format('INFO', message));
     }
   }
 
-  warn(message: string, ...args: unknown[]): void {
+  warn(message: string): void {
     if (this.level <= LogLevel.WARN) {
-      console.warn(this.format('WARN', message), ...args);
+      console.warn(this.format('WARN', message));
     }
   }
 
-  error(message: string, ...args: unknown[]): void {
+  error(message: string): void {
     if (this.level <= LogLevel.ERROR) {
-      console.error(this.format('ERROR', message), ...args);
+      console.error(this.format('ERROR', message));
     }
   }
 }

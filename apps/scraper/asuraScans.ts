@@ -1,7 +1,7 @@
 import puppeteer from 'puppeteer';
 import axios, { AxiosRequestConfig } from 'axios';
 import { Manhwa, ManhwaChapter, Scraper, SearchResult } from './generalScraper.js';
-import { asuraScansConfig, AsuraScansConfig } from '../../../manverse-api/config/index.js';
+import { asuraScansConfig, AsuraScansConfig } from './config/index.js';
 import path from 'path';
 import fs from 'fs';
 import { convertWebPToPdf } from '../pdf/worker.js';
@@ -377,10 +377,5 @@ export class AsuraScans extends Scraper {
 
 // ----------------------------------Helper Functions----------------------------------
 // ------------------------------------------------------------------------------------
-
-function cleanSeriesName(name: string | undefined): string {
-  if (!name) return '';
-  return name.split('/')[1].split('-').slice(0, -1).join(' ');
-}
 
 // ------------------------------------------------------------------------------------
