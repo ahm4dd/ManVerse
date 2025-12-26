@@ -47,7 +47,7 @@ export const GeneratePdfJobDataSchema = z.object({
 export const UploadFileJobDataSchema = z.object({
   filePath: z.string(),
   destination: z.string(),
-  metadata: z.record(z.string(), z.any()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const ScrapeSearchJobSchema = BaseJobSchema.extend({
@@ -92,6 +92,6 @@ export const JobSchema = z.discriminatedUnion('type', [
 export const JobResultSchema = z.object({
   jobId: z.uuid(),
   status: z.enum(JobStatus),
-  data: z.any().optional(),
+  data: z.unknown().optional(),
   error: z.string().optional(),
 });
