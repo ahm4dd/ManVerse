@@ -5,11 +5,12 @@
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
-    "build": "tsc",
-    "dev": "tsx watch index.ts",
-    "start": "node dist/index.js"
+    "build": "bun build ./index.ts --outdir ./dist --target bun",
+    "dev": "bun --watch index.ts --target bun",
+    "start": "bun dist/index.js"
   },
   "dependencies": {
+    "@manverse/core": "workspace:*",
     "@manverse/queue-manager": "workspace:*",
     "dotenv": "^17.2.3",
     "telegraf": "^4.16.3"
