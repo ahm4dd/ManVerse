@@ -1,5 +1,5 @@
-import { Request, Response, NextFunction } from 'express';
 import { NotFoundError, BadRequestError, ServerError } from '../errors.ts';
+import type { Request, Response, NextFunction } from 'express';
 
 export function middlewareError(err: Error, req: Request, res: Response, next: NextFunction) {
   let statusCode = 500;

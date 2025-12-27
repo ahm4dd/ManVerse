@@ -1,4 +1,4 @@
-import { Request, Response } from 'express';
+import type { Request, Response } from 'express';
 import { QueueEvents } from 'bullmq';
 import { BadRequestError, ServerError } from '../errors.ts';
 import { publishJob, redisClient, scraperQueue } from '../queue/publisher.ts';
@@ -27,7 +27,7 @@ export async function searchManhwas(req: Request, res: Response) {
   const queueEvents = new QueueEvents(QueueNames.SCRAPER_JOBS, { connection: redisClient });
   try {
     const job = await scraperQueue.getJob(jobId);
-    if (!job) throw new Error('Job not found');
+    if (!job) throw new ServerError('Job not found');
     const result = await job.waitUntilFinished(queueEvents);
     await queueEvents.close();
     return res.json({ status: 'completed', data: result, jobId });

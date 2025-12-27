@@ -10,9 +10,11 @@
   },
   "dependencies": {
     "@manverse/queue-manager": "workspace:*",
+    "@types/morgan": "^1.9.10",
     "bullmq": "^5.66.3",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
+    "morgan": "^1.10.1",
     "uuid": "^13.0.0",
     "zod": "^4.2.1"
   },

@@ -1,5 +1,7 @@
 import { Router } from 'express';
+import { searchManhwas } from '../controllers/manhwas.controller.ts';
 
 const manhwasRouter = Router();
+manhwasRouter.get('/', searchManhwas);
 
-manhwasRouter.get('/');
+export default manhwasRouter;
