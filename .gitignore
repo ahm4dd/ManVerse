@@ -24,6 +24,10 @@ logs
 Thumbs.db
 .DS_Store
 
+# Databases
+*.db
+jobs.db
+
 # Private
 gu.md
 gu2.md
