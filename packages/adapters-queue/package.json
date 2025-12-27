@@ -1,0 +1,27 @@
+{
+  "name": "@manverse/adapters-queue",
+  "version": "0.1.0",
+  "description": "Queue adapters (Redis & InMemory) for ManVerse",
+  "main": "./src/index.ts",
+  "module": "./src/index.ts",
+  "types": "./src/index.ts",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist --target bun",
+    "dev": "bun --watch ./src/index.ts"
+  },
+  "dependencies": {
+    "@manverse/core": "workspace:*",
+    "bullmq": "^5.66.3",
+    "uuid": "^9.0.1",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.4",
+    "@types/uuid": "^9.0.7",
+    "typescript": "^5.3.3"
+  }
+}
