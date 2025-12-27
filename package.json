@@ -5,12 +5,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "pnpm -r build",
-    "dev": "pnpm -r --parallel dev",
+    "build": "bun --filter \"*\" build",
+    "dev": "bun --filter \"*\" dev --parallel",
     "lint": "eslint \"apps/**/*.ts\" \"packages/**/*.ts\"",
     "format": "prettier --write \"apps/**/*.ts\" \"packages/**/*.ts\"",
-    "test": "vitest run",
-    "backend": "pnpm --filter \"@manverse/api\" dev"
+    "test": "bun test",
+    "backend": "bun --filter \"@manverse/api\" dev",
+    "scraper": "bun --filter \"@manverse/scraper\" dev"
   },
   "repository": {
     "type": "git",
@@ -39,5 +40,9 @@
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.49.0",
     "vitest": "^4.0.15"
-  }
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ]
 }
