@@ -5,12 +5,16 @@
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
-    "build": "tsc",
-    "dev": "tsx watch asuraScans.ts"
+    "build": "bun build ./index.ts --outdir ./dist --target bun",
+    "dev": "bun --watch index.ts --target bun"
   },
   "dependencies": {
+    "@manverse/core": "workspace:*",
+    "@manverse/adapters-queue": "workspace:*",
     "@manverse/queue-manager": "workspace:*",
+    "@manverse/scrapers": "workspace:*",
     "axios": "^1.13.2",
+    "bullmq": "^5.66.3",
     "puppeteer": "^24.32.0",
     "puppeteer-core": "^24.32.0",
     "puppeteer-extra": "^3.3.6",
