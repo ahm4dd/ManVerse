@@ -1,79 +1,52 @@
-import { type Queue, type Job as BullJob } from 'bullmq';
-import { QueueNames, JobType, type Job, type JobStatusResponse } from '@manverse/queue-manager';
-import { getRedisClient, createLogger, createQueue } from '@manverse/queue-manager';
-import { v4 as uuidv4 } from 'uuid';
+import { QueueFactory, QueueAdapterType } from '@manverse/adapters-queue';
+import {
+  QueueNames,
+  type Job,
+  type JobType,
+  type JobResult,
+  type JobPayload,
+  type JobStatus,
+} from '@manverse/core';
+import { type IJobQueue } from '@manverse/core';
+import { getRedisClient, createLogger } from '@manverse/queue-manager';
 
-export const redisClient = getRedisClient();
 export const logger = createLogger({ prefix: 'Queue-API' });
 
-export const scraperQueue = createQueue(QueueNames.SCRAPER_JOBS, {
-  connection: redisClient,
-});
-export const pdfQueue = createQueue(QueueNames.PDF_JOBS, {
-  connection: redisClient,
-});
-export const uploadQueue = createQueue(QueueNames.UPLOAD_JOBS, {
-  connection: redisClient,
-});
+// Configuration: Switch between Redis and SQLite based on environment
+const ADAPTER_TYPE = (process.env.QUEUE_ADAPTER || QueueAdapterType.REDIS) as QueueAdapterType;
+const redisClient = ADAPTER_TYPE === QueueAdapterType.REDIS ? getRedisClient() : undefined;
 
-[scraperQueue, pdfQueue, uploadQueue].forEach((queue: Queue) => {
-  queue.on('error', (err: Error) => logger.error(`${queue.name} Error: ${err.message}`));
-  // Log when a job is added
-  queue.on('waiting', (job: BullJob) =>
-    logger.debug(`${queue.name} job added: ${job.id || 'unknown'}`),
-  );
-});
+// Initialize Queues using the Factory
+export const scraperQueue = QueueFactory.create(ADAPTER_TYPE, QueueNames.SCRAPER_JOBS, redisClient);
+export const pdfQueue = QueueFactory.create(ADAPTER_TYPE, QueueNames.PDF_JOBS, redisClient);
+export const uploadQueue = QueueFactory.create(ADAPTER_TYPE, QueueNames.UPLOAD_JOBS, redisClient);
 
 /**
  * Publish a job to the appropriate queue
  */
-export async function publishJob(
-  job: Omit<Job, 'id' | 'createdAt' | 'updatedAt' | 'attempts'>,
-): Promise<string> {
-  const jobId = uuidv4();
-  const now = new Date();
+export async function publishJob(job: JobPayload): Promise<string> {
+  let queue: IJobQueue;
 
-  const fullJob: Job = {
-    ...job,
-    id: jobId,
-    createdAt: now,
-    updatedAt: now,
-    attempts: 0,
-  } as Job;
-
-  let queue: Queue;
-
-  // Route to appropriate queue based on job type
-  if (fullJob.type.startsWith('scrape') || fullJob.type.includes('download')) {
+  if (job.type.startsWith('scrape') || job.type.includes('download')) {
     queue = scraperQueue;
-  } else if (fullJob.type.includes('pdf')) {
+  } else if (job.type.includes('pdf')) {
     queue = pdfQueue;
-  } else if (fullJob.type.includes('upload')) {
+  } else if (job.type.includes('upload')) {
     queue = uploadQueue;
   } else {
-    throw new Error(`Unknown job type: ${fullJob.type}`);
+    throw new Error(`Unknown job type: ${job.type}`);
   }
 
-  await queue.add(fullJob.type, fullJob, {
-    jobId,
-    attempts: job.maxAttempts,
-    backoff: {
-      type: 'exponential',
-      delay: 1000,
-    },
-  });
-
+  const jobId = await queue.add(job);
+  logger.debug(`${job.type} job added: ${jobId}`);
   return jobId;
 }
 
 /**
  * Get job status from queue
  */
-export async function getJobStatus(
-  jobId: string,
-  jobType: JobType,
-): Promise<JobStatusResponse | null> {
-  let queue: Queue;
+export async function getJobStatus(jobId: string, jobType: JobType): Promise<JobResult | null> {
+  let queue: IJobQueue;
 
   if (jobType.startsWith('scrape') || jobType.includes('download')) {
     queue = scraperQueue;
@@ -85,21 +58,5 @@ export async function getJobStatus(
     throw new Error(`Unknown job type: ${jobType}`);
   }
 
-  const job = await queue.getJob(jobId);
-
-  if (!job) {
-    return null;
-  }
-
-  return {
-    id: job.id,
-    name: job.name,
-    data: job.data,
-    progress: job.progress,
-    returnvalue: job.returnvalue,
-    finishedOn: job.finishedOn,
-    failedReason: job.failedReason,
-    stacktrace: job.stacktrace,
-    attemptsMade: job.attemptsMade,
-  };
+  return await queue.waitForAttributes(jobId);
 }
