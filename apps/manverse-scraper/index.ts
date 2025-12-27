@@ -70,7 +70,7 @@ async function main() {
             ...job,
             type: job.name as JobType,
             data: job.data,
-          } as unknown as Job<any>;
+          } as unknown as Job<unknown, unknown>;
 
           return await jobManager.handle(coreJob);
         } catch (err) {

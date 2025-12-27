@@ -31,7 +31,7 @@ const shutdown = async (signal: string) => {
     await Promise.all([scraperQueue.close(), pdfQueue.close(), uploadQueue.close()]);
     logger.info('Queues closed successfully.');
     clearTimeout(timeout);
-    // Don't call process.exit(0) here, let Bun handle it
+    process.exit(0);
   } catch (error) {
     logger.error(`Error during shutdown: ${(error as Error).message}`);
     process.exit(1);

@@ -15,9 +15,23 @@ import {
  * A professional, persistent local queue that doesn't need Redis.
  * Uses Bun's native high-speed SQLite engine.
  */
+interface JobRow {
+  id: string;
+  queue_name: string;
+  type: string;
+  status: string;
+  data: string;
+  result?: string;
+  error?: string;
+  attempts: number;
+  max_attempts: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export class SQLiteJobQueue implements IJobQueue {
   private db: Database;
-  private processor: ((job: Job) => Promise<any>) | null = null;
+  private processor: ((job: Job<unknown, unknown>) => Promise<unknown>) | null = null;
   private queueName: string;
 
   constructor(queueName: string, dbPath: string = 'jobs.db') {
@@ -62,7 +76,7 @@ export class SQLiteJobQueue implements IJobQueue {
   }
 
   async getJob(jobId: string): Promise<Job | null> {
-    const row = this.db.query('SELECT * FROM jobs WHERE id = ?').get(jobId) as any;
+    const row = this.db.query('SELECT * FROM jobs WHERE id = ?').get(jobId) as JobRow | null;
     if (!row) return null;
     return this.mapRowToJob(row);
   }
@@ -81,7 +95,7 @@ export class SQLiteJobQueue implements IJobQueue {
     });
   }
 
-  public setWorker(processor: (job: Job) => Promise<any>) {
+  public setWorker(processor: (job: Job<unknown, unknown>) => Promise<unknown>) {
     this.processor = processor;
     this.processNext();
   }
@@ -91,7 +105,7 @@ export class SQLiteJobQueue implements IJobQueue {
 
     const row = this.db
       .query('SELECT * FROM jobs WHERE queue_name = ? AND status = ? LIMIT 1')
-      .get(this.queueName, JobStatus.PENDING) as any;
+      .get(this.queueName, JobStatus.PENDING) as JobRow | null;
 
     if (!row) return;
 
@@ -127,25 +141,33 @@ export class SQLiteJobQueue implements IJobQueue {
     ]);
   }
 
-  private mapRowToJob(row: any): Job {
-    return {
+  private mapRowToJob<DataType = unknown, ResultType = unknown>(
+    row: JobRow,
+  ): Job<DataType, ResultType> {
+    const job: Job<DataType, ResultType> = {
       id: row.id,
       type: row.type as JobType,
       status: row.status as JobStatus,
-      data: JSON.parse(row.data),
+      data: JSON.parse(row.data) as DataType,
       attempts: row.attempts,
       maxAttempts: row.max_attempts,
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
       error: row.error,
-    } as any;
+    };
+
+    if (row.result) {
+      job.result = JSON.parse(row.result) as ResultType;
+    }
+
+    return job;
   }
 
-  private createJobResult(job: Job): JobResult {
+  private createJobResult(job: Job<unknown, unknown>): JobResult<unknown> {
     return {
       jobId: job.id,
       status: job.status as JobStatus,
-      data: (job as any).result ? JSON.parse((job as any).result) : job.data,
+      data: job.result || job.data,
       error: job.error,
     };
   }

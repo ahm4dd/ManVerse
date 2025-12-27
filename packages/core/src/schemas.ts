@@ -23,15 +23,13 @@ export type JobStatus = (typeof JobStatus)[keyof typeof JobStatus];
 
 export * from './queue-names.ts';
 
-export const SearchedManhwaSchema = z
-  .object({
-    id: z.string(),
-    title: z.string(),
-    altTitles: z.array(z.string()),
-    headerForImage: z.object({ Referer: z.string() }).optional(),
-    image: z.string(),
-  })
-  .passthrough();
+export const SearchedManhwaSchema = z.looseObject({
+  id: z.string(),
+  title: z.string(),
+  altTitles: z.array(z.string()),
+  headerForImage: z.object({ Referer: z.string() }).optional(),
+  image: z.string(),
+});
 
 export type SearchedManhwa = z.infer<typeof SearchedManhwaSchema>;
 
@@ -52,19 +50,17 @@ export const ManhwaChapterSchema = z.object({
 
 export type ManhwaChapter = z.infer<typeof ManhwaChapterSchema>;
 
-export const ManhwaSchema = z
-  .object({
-    id: z.string(),
-    title: z.string(),
-    description: z.string(),
-    image: z.string(),
-    headerForImage: z.object({ Referer: z.string() }).optional(),
-    status: z.string(),
-    rating: z.string().optional(),
-    genres: z.array(z.string()),
-    chapters: z.array(ManhwaChapterSchema),
-  })
-  .passthrough();
+export const ManhwaSchema = z.looseObject({
+  id: z.string(),
+  title: z.string(),
+  description: z.string(),
+  image: z.string(),
+  headerForImage: z.object({ Referer: z.string() }).optional(),
+  status: z.string(),
+  rating: z.string().optional(),
+  genres: z.array(z.string()),
+  chapters: z.array(ManhwaChapterSchema),
+});
 
 export type Manhwa = z.infer<typeof ManhwaSchema>;
 
@@ -79,7 +75,7 @@ export const ManhwaChapterImagesSchema = z.array(
 export type ManhwaChapterImage = z.infer<typeof ManhwaChapterImagesSchema>[number];
 
 export const BaseJobSchema = z.object({
-  id: z.string().uuid(),
+  id: z.uuid(),
   type: z.string(),
   status: z.enum(Object.values(JobStatus) as [string, ...string[]]),
   createdAt: z.coerce.date(),
@@ -99,17 +95,17 @@ export const ScrapeSearchJobDataSchema = z.object({
 });
 
 export const ScrapeManhwaJobDataSchema = z.object({
-  manhwaUrl: z.string().url(),
+  manhwaUrl: z.url(),
   provider: z.string(),
 });
 
 export const ScrapeChapterJobDataSchema = z.object({
-  chapterUrl: z.string().url(),
+  chapterUrl: z.url(),
   provider: z.string(),
 });
 
 export const DownloadChapterJobDataSchema = z.object({
-  chapterUrl: z.string().url(),
+  chapterUrl: z.url(),
   outputDir: z.string(),
   provider: z.string(),
 });
@@ -153,7 +149,7 @@ export const JobPayloadSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal(JobType.UPLOAD_FILE), data: UploadFileJobDataSchema }),
 ]);
 
-export type Job<T = any, R = any> = {
+export type Job<T = unknown, R = unknown> = {
   id: string;
   type: JobType;
   status: JobStatus;
@@ -167,7 +163,7 @@ export type Job<T = any, R = any> = {
   updateProgress?: (progress: number | object) => Promise<void>;
 };
 
-export type JobResult<T = any> = {
+export type JobResult<T = unknown> = {
   jobId: string;
   status: JobStatus;
   data?: T;

@@ -70,7 +70,16 @@ export class AsuraScans extends PuppeteerScraper {
       structureSelectors,
     );
 
-    const series = seriesRaw.filter((s): s is NonNullable<typeof s> => s !== null);
+    interface ScrapedSeries {
+      link: string;
+      name: string;
+      status: string;
+      imageUrl: string;
+      chapters: string;
+      rating: string;
+    }
+
+    const series = seriesRaw.filter((s): s is ScrapedSeries => s !== null);
 
     const paginationConfig = this.config.selectors.search.pagination;
     const nextButtonSelector = this.config.selectors.search.nextButton;
@@ -90,7 +99,7 @@ export class AsuraScans extends PuppeteerScraper {
     return {
       currentPage: pageNumber,
       hasNextPage: hasNextPage,
-      results: series.map((item: any) => ({
+      results: series.map((item) => ({
         id: item.link,
         title: item.name,
         altTitles: [],

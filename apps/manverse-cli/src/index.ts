@@ -2,25 +2,39 @@ import inquirer from 'inquirer';
 import ora from 'ora';
 import chalk from 'chalk';
 import { QueueFactory, QueueAdapterType } from '@manverse/adapters-queue';
-import { JobType, JobManager, QueueNames } from '@manverse/core';
+import {
+  JobType,
+  JobManager,
+  QueueNames,
+  JobStatus,
+  type IJobQueue,
+  type Job,
+  type SearchResult,
+  type SearchedManhwa,
+  type ScrapeSearchData,
+} from '@manverse/core';
 import { AsuraScans } from '@manverse/scrapers';
 
 // 1. Initialize Adapters (Switch to SQLITE for zero-config local persistence)
 const ADAPTER_TYPE = QueueAdapterType.SQLITE;
-const scraperQueue = QueueFactory.create(ADAPTER_TYPE, QueueNames.SCRAPER_JOBS);
+const scraperQueue = QueueFactory.create(ADAPTER_TYPE, QueueNames.SCRAPER_JOBS) as IJobQueue;
 
 // 2. Define Worker Logic (In-Process)
 // We use the SAME scraper logic as the distributed worker
 const asuraScans = new AsuraScans();
 const jobManager = new JobManager();
 
-jobManager.register(JobType.SCRAPE_SEARCH, async (job, data) => {
-  return await asuraScans.search((data as any).searchTerm, (data as any).page);
+jobManager.register(JobType.SCRAPE_SEARCH, async (_job, data) => {
+  return await asuraScans.search(data.searchTerm, data.page);
 });
 
-(scraperQueue as any).setWorker(async (job: any) => {
-  return await jobManager.handle(job);
-});
+// For local mode, we manually route queue jobs to the manager
+// We cast scraperQueue as any only for the worker setup if the interface doesn't expose it
+if ('setWorker' in scraperQueue) {
+  (scraperQueue as any).setWorker(async (job: Job<unknown, unknown>) => {
+    return await jobManager.handle(job);
+  });
+}
 
 async function main() {
   console.log(chalk.bold.blue('ManVerse CLI - Professional Local Mode'));
@@ -54,16 +68,16 @@ async function main() {
       try {
         const jobId = await scraperQueue.add({
           type: JobType.SCRAPE_SEARCH,
-          data: { searchTerm: term, page: 1, provider: 'asuraScans' },
+          data: { searchTerm: term, page: 1, provider: 'asuraScans' } as ScrapeSearchData,
         });
 
         const result = await scraperQueue.waitForAttributes(jobId);
         spinner.stop();
 
-        if (result.status === 'completed') {
+        if (result.status === JobStatus.COMPLETED) {
           console.log(chalk.green('Search Complete!'));
-          const data = result.data as any;
-          data.results.forEach((r: any) => {
+          const data = result.data as SearchResult;
+          data.results.forEach((r: SearchedManhwa) => {
             console.log(`${chalk.yellow(r.title)} - ${chalk.gray(r.id)}`);
           });
         } else {

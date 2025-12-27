@@ -12,9 +12,9 @@ import { IJobQueue, Job, JobResult, JobStatus, JobPayload } from '@manverse/core
  * Not for: Scalable Server Deployments (use RedisJobQueue).
  */
 export class InMemoryJobQueue implements IJobQueue {
-  private jobs: Map<string, Job>;
+  private jobs: Map<string, Job<unknown, unknown>>;
   private eventEmitter: EventEmitter;
-  private processor: ((job: Job) => Promise<any>) | null = null;
+  private processor: ((job: Job<unknown, unknown>) => Promise<unknown>) | null = null;
   private isProcessing: boolean = false;
 
   constructor() {
@@ -23,7 +23,7 @@ export class InMemoryJobQueue implements IJobQueue {
     this.eventEmitter.setMaxListeners(50);
   }
 
-  public setWorker(processor: (job: Job) => Promise<any>) {
+  public setWorker(processor: (job: Job<unknown, unknown>) => Promise<unknown>) {
     this.processor = processor;
     setTimeout(() => this.processNext(), 0);
   }
@@ -32,7 +32,7 @@ export class InMemoryJobQueue implements IJobQueue {
     const id = uuidv4();
     const now = new Date();
 
-    const job: Job = {
+    const job = {
       ...jobData,
       id,
       status: JobStatus.PENDING,
@@ -40,7 +40,7 @@ export class InMemoryJobQueue implements IJobQueue {
       updatedAt: now,
       attempts: 0,
       maxAttempts: 3,
-    } as any; // Cast as any because discriminating unions with spreads can be tricky for TS
+    } as unknown as Job<unknown, unknown>;
 
     this.jobs.set(id, job);
     this.eventEmitter.emit('added', { jobId: id });
@@ -49,7 +49,7 @@ export class InMemoryJobQueue implements IJobQueue {
     return id;
   }
 
-  async getJob(jobId: string): Promise<Job | null> {
+  async getJob(jobId: string): Promise<Job<unknown, unknown> | null> {
     return this.jobs.get(jobId) || null;
   }
 
@@ -113,7 +113,7 @@ export class InMemoryJobQueue implements IJobQueue {
     }
   }
 
-  private createJobResult(job: Job): JobResult {
+  private createJobResult(job: Job<unknown, unknown>): JobResult<unknown> {
     return {
       jobId: job.id,
       status: job.status as JobStatus,
