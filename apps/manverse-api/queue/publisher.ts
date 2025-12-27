@@ -3,7 +3,7 @@ import { QueueNames, JobType, type Job, type JobStatusResponse } from '@manverse
 import { getRedisClient, createLogger, createQueue } from '@manverse/queue-manager';
 import { v4 as uuidv4 } from 'uuid';
 
-const redisClient = getRedisClient();
+export const redisClient = getRedisClient();
 export const logger = createLogger({ prefix: 'Queue-API' });
 
 export const scraperQueue = createQueue(QueueNames.SCRAPER_JOBS, {
