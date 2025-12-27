@@ -1,5 +1,8 @@
-import process from 'process';
-process.loadEnvFile(`.env.${process.env.NODE_ENV || 'development'}.local`);
+import process from 'node:process';
+
+// Bun automatically loads .env and .env.local files.
+// If you need manual loading of specific files, use Bun.env or dotenv.
+// For now, we'll assume standard Bun environment loading.
 
 type ServerConfig = {
   NODE_ENV: string;

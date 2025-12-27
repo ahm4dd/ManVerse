@@ -5,21 +5,20 @@
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
-    "dev": "node --watch index.ts",
-    "start": "node dist/index.js"
+    "dev": "bun --watch index.ts",
+    "start": "bun index.ts"
   },
   "dependencies": {
+    "@manverse/adapters-queue": "workspace:*",
+    "@manverse/core": "workspace:*",
     "@manverse/queue-manager": "workspace:*",
-    "@types/morgan": "^1.9.10",
     "bullmq": "^5.66.3",
     "dotenv": "^17.2.3",
-    "express": "^5.2.1",
-    "morgan": "^1.10.1",
+    "hono": "^4.11.3",
     "uuid": "^13.0.0",
     "zod": "^4.2.1"
   },
   "devDependencies": {
-    "@types/express": "^5.0.6",
     "@types/node": "^24.10.1",
     "typescript": "^5.9.3"
   }

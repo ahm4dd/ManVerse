@@ -1,19 +1,50 @@
-import express from 'express';
+import { Hono } from 'hono';
+import { logger as honoLogger } from 'hono/logger';
 import { serverConfig } from './config.ts';
-import { middlewareError } from './middlewares/error.middleware.ts';
 import manhwasRouter from './routes/manhwas.route.ts';
-import morgan from 'morgan';
+import { scraperQueue, pdfQueue, uploadQueue, logger } from './queue/publisher.ts';
 
-const app = express();
+const app = new Hono();
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+// Middleware
+app.use('*', honoLogger());
 
-app.use('/manhwas', manhwasRouter);
+// Routes
+app.route('/manhwas', manhwasRouter);
 
-app.use(morgan('combined'));
-app.use(middlewareError);
-
-app.listen(serverConfig.PORT, serverConfig.HOSTNAME, () => {
-  console.log(`Server running on http://${serverConfig.HOSTNAME}:${serverConfig.PORT}`);
+// Error Handling
+app.onError((err, c) => {
+  logger.error(`API Error: ${err.message}`);
+  return c.json({ error: 'Internal Server Error' }, 500);
 });
+
+// Graceful Shutdown
+const shutdown = async (signal: string) => {
+  logger.info(`Received ${signal}. Shutting down gracefully...`);
+
+  const timeout = setTimeout(() => {
+    logger.warn('Shutdown timed out, forcing exit.');
+    process.exit(1);
+  }, 5000);
+
+  try {
+    await Promise.all([scraperQueue.close(), pdfQueue.close(), uploadQueue.close()]);
+    logger.info('Queues closed successfully.');
+    clearTimeout(timeout);
+    // Don't call process.exit(0) here, let Bun handle it
+  } catch (error) {
+    logger.error(`Error during shutdown: ${(error as Error).message}`);
+    process.exit(1);
+  }
+};
+
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+
+export default {
+  port: serverConfig.PORT,
+  hostname: serverConfig.HOSTNAME,
+  fetch: app.fetch,
+};
+
+console.log(`Server running on http://${serverConfig.HOSTNAME}:${serverConfig.PORT}`);
