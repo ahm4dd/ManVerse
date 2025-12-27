@@ -1,26 +1,24 @@
 {
   "name": "@manverse/cli",
   "version": "0.1.0",
-  "description": "CLI application using ink for terminal interface",
+  "description": "ManVerse CLI (Single Binary Mode)",
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
-    "build": "tsc",
-    "dev": "tsx watch index.ts",
+    "dev": "bun --watch src/index.ts",
+    "build": "bun build ./src/index.ts --compile --outfile dist/manverse",
     "start": "node dist/index.js"
   },
   "dependencies": {
-    "axios": "^1.13.2",
-    "chalk": "^5.6.2",
-    "commander": "^14.0.2",
-    "ink": "^5.0.1",
-    "ora": "^9.0.0",
-    "react": "^18.3.1"
+    "@manverse/core": "workspace:*",
+    "@manverse/adapters-queue": "workspace:*",
+    "@manverse/scrapers": "workspace:*",
+    "inquirer": "^9.2.14",
+    "ora": "^8.0.1",
+    "chalk": "^5.3.0"
   },
   "devDependencies": {
-    "@types/node": "^24.10.1",
-    "@types/react": "^18.3.12",
-    "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "@types/inquirer": "^9.0.7",
+    "typescript": "^5.3.3"
   }
 }
