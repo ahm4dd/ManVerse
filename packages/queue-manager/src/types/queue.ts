@@ -1,9 +1,6 @@
-import { type Queue } from 'bullmq';
 /**
  * Queue job types and statuses
  */
-
-export type QueueType = Queue;
 
 export const JobType = {
   SCRAPE_SEARCH: 'scrape.search',

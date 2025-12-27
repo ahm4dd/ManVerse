@@ -1,12 +1,4 @@
-export const QueueNames = {
-  SCRAPER_JOBS: 'scraper.jobs',
-  PDF_JOBS: 'pdf.jobs',
-  UPLOAD_JOBS: 'upload.jobs',
-  SCRAPER_RESULTS: 'scraper.results',
-  PDF_RESULTS: 'pdf.results',
-  UPLOAD_RESULTS: 'upload.results',
-  DEAD_LETTER: 'dead-letter',
-} as const;
+// QueueNames are now imported from @manverse/core
 
 export const QueuePriorities = {
   LOW: 1,
