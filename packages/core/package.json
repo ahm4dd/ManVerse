@@ -13,6 +13,8 @@
     "build": "bun build ./src/index.ts --outdir ./dist",
     "dev": "bun --watch ./src/index.ts"
   },
-  "dependencies": {},
+  "dependencies": {
+    "zod": "^4.2.1"
+  },
   "devDependencies": {}
 }

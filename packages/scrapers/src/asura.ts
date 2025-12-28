@@ -1,5 +1,5 @@
 import type { Page } from 'puppeteer';
-import type { Manhwa, ManhwaChapter, SearchResult } from './types.ts';
+import type { Manhwa, ManhwaChapter, SearchResult } from '@manverse/core';
 import Scraper from './scraper.ts';
 import { asuraScansConfig, AsuraScansConfig } from '../config/index.ts';
 

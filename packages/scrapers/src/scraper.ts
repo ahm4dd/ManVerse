@@ -1,5 +1,5 @@
 import type { Page } from 'puppeteer';
-import { SearchResult, Manhwa, ManhwaChapter } from './types.ts';
+import { SearchResult, Manhwa, ManhwaChapter } from '@manverse/core';
 
 export default abstract class Scraper {
   #baseUrl: string = '';

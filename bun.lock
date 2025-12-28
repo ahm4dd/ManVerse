@@ -39,6 +39,9 @@
     "packages/core": {
       "name": "@manverse/core",
       "version": "0.1.0",
+      "dependencies": {
+        "zod": "^4.2.1",
+      },
     },
     "packages/pdf": {
       "name": "@manverse/pdf",

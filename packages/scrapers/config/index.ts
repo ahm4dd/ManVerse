@@ -2,4 +2,4 @@
 
 export * from './types.ts';
 export * from './browser.config.ts';
-export * from './asuraScans.config.ts';
+export * from './asura.config.ts';
