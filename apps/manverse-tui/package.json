@@ -8,6 +8,10 @@
     "dev": "bun --watch src/index.ts",
     "build": "bun build ./src/index.ts --compile --outfile dist/manverse"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@manverse/core": "*",
+    "@manverse/scrapers": "*",
+    "puppeteer": "^24.34.0"
+  },
   "devDependencies": {}
 }

@@ -31,6 +31,11 @@
     "apps/manverse-tui": {
       "name": "@manverse/tui",
       "version": "0.1.0",
+      "dependencies": {
+        "@manverse/core": "*",
+        "@manverse/scrapers": "*",
+        "puppeteer": "^24.34.0",
+      },
     },
     "apps/uploader": {
       "name": "@manverse/uploader",

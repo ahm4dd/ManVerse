@@ -24,7 +24,7 @@ export default class AsuraScansScarper extends Scraper {
     const targetUrl = `${this.config.baseUrl}series?page=${pageNumber}&name=${term}`;
 
     await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: this.config.timeout });
-    console.log(`Navigating to ${targetUrl}...`);
+    // console.log(`Navigating to ${targetUrl}...`);
 
     // Extract search results using configured selectors
     const structureSelectors = this.config.selectors.search.structure;
@@ -76,16 +76,16 @@ export default class AsuraScansScarper extends Scraper {
     // Filter out null entries
     const series = seriesRaw.filter((s): s is NonNullable<typeof s> => s !== null);
 
-    series.forEach((item) => {
-      console.log('----------------');
-      console.log(item.name);
-      console.log(item.chapters);
-      console.log(item.imageUrl);
-      console.log(item.rating);
-      console.log(item.status);
-      console.log(item.link);
-      console.log('----------------');
-    });
+    // series.forEach((item) => {
+    //   console.log('----------------');
+    //   console.log(item.name);
+    //   console.log(item.chapters);
+    //   console.log(item.imageUrl);
+    //   console.log(item.rating);
+    //   console.log(item.status);
+    //   console.log(item.link);
+    //   console.log('----------------');
+    // });
 
     // Check pagination (Next button state)
     const paginationConfig = this.config.selectors.search.pagination;
@@ -282,31 +282,6 @@ export default class AsuraScansScarper extends Scraper {
     }));
 
     return result;
-  }
-
-  async getChapterImageUrls(page: Page, url: string): Promise<string[]> {
-    if (page.url() !== url) {
-      await page.goto(url, { waitUntil: 'networkidle2', timeout: this.config.timeout });
-      console.log(`Navigating to ${url}...`);
-    }
-
-    // Extract chapter images
-    const aggregatedManhwaLinks = await page.$$eval(
-      this.config.selectors.chapter.images,
-      (elements) => {
-        return elements.map((element) => (element as HTMLImageElement).src);
-      },
-    );
-
-    console.log(`Found ${aggregatedManhwaLinks.length} images.`);
-
-    if (aggregatedManhwaLinks.length === 0) {
-      console.warn(
-        'No images found. The selector might be incorrect or the page failed to load content.',
-      );
-    }
-
-    return aggregatedManhwaLinks;
   }
 
   // async downloadManhwaChapter(page: puppeteer.Page, url: string) {
