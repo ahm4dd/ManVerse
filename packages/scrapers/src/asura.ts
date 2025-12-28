@@ -1,11 +1,9 @@
 import type { Page } from 'puppeteer';
-import axios, { AxiosRequestConfig } from 'axios';
-import { Manhwa, ManhwaChapter, Scraper, SearchResult } from './generalScraper.ts';
+import type { Manhwa, ManhwaChapter, SearchResult } from './types.ts';
+import Scraper from './scraper.ts';
 import { asuraScansConfig, AsuraScansConfig } from '../config/index.ts';
-import path from 'path';
-import fs from 'fs';
 
-export class AsuraScans extends Scraper {
+export default class AsuraScansScarper extends Scraper {
   private config: AsuraScansConfig;
 
   constructor(config: AsuraScansConfig = asuraScansConfig) {

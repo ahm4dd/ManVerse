@@ -1,7 +1,7 @@
 import type { Page } from 'puppeteer';
 import { SearchResult, Manhwa, ManhwaChapter } from './types.ts';
 
-export abstract class Scraper {
+export default abstract class Scraper {
   #baseUrl: string = '';
 
   constructor() {}

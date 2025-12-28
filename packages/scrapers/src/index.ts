@@ -1,3 +1,3 @@
-export * from './generalScraper.ts';
-export * from './asuraScans.ts';
+export * from './scraper.ts';
+export * from './asura.ts';
 export * from './types.ts';
