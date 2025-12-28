@@ -334,43 +334,43 @@ export class AsuraScans extends Scraper {
   //   console.log('All downloads completed.');
   // }
 
-  private async downloadImage(imageUrl: string, localFilePath: string): Promise<void> {
-    try {
-      const config: AxiosRequestConfig = {
-        method: 'GET',
-        url: imageUrl,
-        responseType: 'stream',
-        headers: {
-          'User-Agent':
-            this.config.headers.userAgent ||
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          Referer: this.config.headers.referer || this.config.baseUrl,
-        },
-      };
-      const response = await axios(config);
+  // private async downloadImage(imageUrl: string, localFilePath: string): Promise<void> {
+  //   try {
+  //     const config: AxiosRequestConfig = {
+  //       method: 'GET',
+  //       url: imageUrl,
+  //       responseType: 'stream',
+  //       headers: {
+  //         'User-Agent':
+  //           this.config.headers.userAgent ||
+  //           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  //         Referer: this.config.headers.referer || this.config.baseUrl,
+  //       },
+  //     };
+  //     const response = await axios(config);
 
-      const dir = path.dirname(localFilePath);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
+  //     const dir = path.dirname(localFilePath);
+  //     if (!fs.existsSync(dir)) {
+  //       fs.mkdirSync(dir, { recursive: true });
+  //     }
 
-      const writer = fs.createWriteStream(localFilePath);
-      response.data.pipe(writer);
+  //     const writer = fs.createWriteStream(localFilePath);
+  //     response.data.pipe(writer);
 
-      return new Promise((resolve, reject) => {
-        writer.on('finish', () => {
-          console.log(`Image downloaded: ${localFilePath}`);
-          resolve();
-        });
-        writer.on('error', (err) => {
-          console.error(`Error writing file ${localFilePath}:`, err);
-          reject(err);
-        });
-      });
-    } catch (err: unknown) {
-      console.error(`Failed to download ${imageUrl}:`, err instanceof Error ? err.message : err);
-    }
-  }
+  //     return new Promise((resolve, reject) => {
+  //       writer.on('finish', () => {
+  //         console.log(`Image downloaded: ${localFilePath}`);
+  //         resolve();
+  //       });
+  //       writer.on('error', (err) => {
+  //         console.error(`Error writing file ${localFilePath}:`, err);
+  //         reject(err);
+  //       });
+  //     });
+  //   } catch (err: unknown) {
+  //     console.error(`Failed to download ${imageUrl}:`, err instanceof Error ? err.message : err);
+  //   }
+  // }
 }
 // ------------------------------------------------------------------------------------
 
