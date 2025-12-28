@@ -9,8 +9,8 @@
     "build": "bun build ./src/index.ts --compile --outfile dist/manverse"
   },
   "dependencies": {
-    "@manverse/core": "*",
-    "@manverse/scrapers": "*",
+    "@manverse/core": "workspace:*",
+    "@manverse/scrapers": "workspace:*",
     "puppeteer": "^24.34.0"
   },
   "devDependencies": {}
