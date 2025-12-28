@@ -10,6 +10,7 @@ export default abstract class Scraper {
     consumet?: boolean,
     page?: Page,
     term?: string,
+    pageNumber?: number,
   ): Promise<SearchResult> | SearchResult;
   abstract checkManhwa(page: Page, url: string): Promise<Manhwa>;
   abstract checkManhwaChapter(page: Page, url: string): Promise<ManhwaChapter>;
