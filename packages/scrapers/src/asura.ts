@@ -284,6 +284,31 @@ export default class AsuraScansScarper extends Scraper {
     return result;
   }
 
+  async getChapterImageUrls(page: Page, url: string): Promise<string[]> {
+    if (page.url() !== url) {
+      await page.goto(url, { waitUntil: 'networkidle2', timeout: this.config.timeout });
+      console.log(`Navigating to ${url}...`);
+    }
+
+    // Extract chapter images
+    const aggregatedManhwaLinks = await page.$$eval(
+      this.config.selectors.chapter.images,
+      (elements) => {
+        return elements.map((element) => (element as HTMLImageElement).src);
+      },
+    );
+
+    console.log(`Found ${aggregatedManhwaLinks.length} images.`);
+
+    if (aggregatedManhwaLinks.length === 0) {
+      console.warn(
+        'No images found. The selector might be incorrect or the page failed to load content.',
+      );
+    }
+
+    return aggregatedManhwaLinks;
+  }
+
   // async downloadManhwaChapter(page: puppeteer.Page, url: string) {
   //   if (page.url() !== url) {
   //     await page.goto(url, { waitUntil: 'networkidle2', timeout: this.config.timeout });
