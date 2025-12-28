@@ -1,13 +1,12 @@
 import type { Page } from 'puppeteer';
 import type { Manhwa, ManhwaChapter, SearchResult } from '@manverse/core';
-import Scraper from './scraper.ts';
 import { asuraScansConfig, AsuraScansConfig } from '../config/index.ts';
+import type IScraper from './scraper.ts';
 
-export default class AsuraScansScarper extends Scraper {
-  private config: AsuraScansConfig;
+export default class AsuraScansScarper implements IScraper {
+  config: AsuraScansConfig;
 
   constructor(config: AsuraScansConfig = asuraScansConfig) {
-    super();
     this.config = config;
   }
 

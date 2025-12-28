@@ -1,7 +1,7 @@
 import { z } from 'zod';
+import { Providers } from './constants.ts';
 
 export const ScraperConfigSchema = z.object({
-  name: z.string(),
   baseUrl: z.string(),
   timeout: z.number().default(60000),
   retries: z.number().default(3),
@@ -14,6 +14,8 @@ export const ScraperConfigSchema = z.object({
 });
 
 export const AsuraScansConfigSchema = ScraperConfigSchema.extend({
+  // the name has to be one of the provider and that is asurascans
+  name: z.literal(Providers.AsuraScans),
   selectors: z
     .object({
       // Search page selectors
@@ -172,3 +174,4 @@ export const AsuraScansConfigSchema = ScraperConfigSchema.extend({
 // Type exports
 export type ScraperConfig = z.infer<typeof ScraperConfigSchema>;
 export type AsuraScansConfig = z.infer<typeof AsuraScansConfigSchema>;
+export type AnyScraperConfig = AsuraScansConfig;

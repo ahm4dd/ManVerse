@@ -1,17 +1,16 @@
 import type { Page } from 'puppeteer';
 import type { SearchResult, Manhwa, ManhwaChapter } from '@manverse/core';
+import type { ScraperConfig } from '../config/types.ts';
 
-export default abstract class Scraper {
-  #baseUrl: string = '';
+export default interface IScraper {
+  config: ScraperConfig;
 
-  constructor() {}
-
-  abstract search(
+  search(
     consumet?: boolean,
     page?: Page,
     term?: string,
     pageNumber?: number,
   ): Promise<SearchResult> | SearchResult;
-  abstract checkManhwa(page: Page, url: string): Promise<Manhwa>;
-  abstract checkManhwaChapter(page: Page, url: string): Promise<ManhwaChapter>;
+  checkManhwa(page: Page, url: string): Promise<Manhwa>;
+  checkManhwaChapter(page: Page, url: string): Promise<ManhwaChapter>;
 }
