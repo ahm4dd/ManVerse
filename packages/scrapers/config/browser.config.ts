@@ -1,8 +1,8 @@
-import { BrowserConfig } from './types.js';
+import { type BrowserConfig } from './types.ts';
 
 /**
  * Default Browser Configuration
- * 
+ *
  * These are the recommended settings for running Puppeteer with the scrapers.
  * You can override these by creating a custom config file.
  */
@@ -20,5 +20,6 @@ export const defaultBrowserConfig: BrowserConfig = {
     height: 1080,
   },
   timeout: 60000, // 60 seconds
-  userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  userAgent:
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
 };

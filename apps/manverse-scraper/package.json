@@ -1,0 +1,13 @@
+{
+  "name": "@manverse/scraper",
+  "version": "0.1.0",
+  "description": "Scraper worker for manga/manhwa sites",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "bun build ./index.ts --outdir ./dist --target bun",
+    "dev": "bun --watch index.ts --target bun"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}

@@ -1,64 +1,48 @@
 {
-  "name": "manverse",
+  "name": "manverse-monorepo",
   "version": "0.1.0",
-  "description": "",
-  "main": "index.js",
+  "description": "ManVerse monorepo - Manga/Manhwa scraper and downloader",
+  "private": true,
+  "type": "module",
   "scripts": {
-    "build": "tsc",
-    "start": "node dist/index.js",
-    "dev": "tsc && node dist/index.js",
-    "lint": "eslint src/**/*.ts",
-    "format": "prettier --write src/**/*.ts",
-    "test": "vitest run",
-    "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate"
+    "build": "bun --filter \"*\" build",
+    "dev": "bun --filter \"*\" dev --parallel",
+    "lint": "eslint \"apps/**/*.ts\" \"packages/**/*.ts\"",
+    "format": "prettier --write \"apps/**/*.ts\" \"packages/**/*.ts\"",
+    "test": "bun test",
+    "backend": "bun --filter \"@manverse/api\" dev",
+    "scraper": "bun --filter \"@manverse/scraper\" dev"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/ahm4dd/ManVerse.git"
   },
-  "keywords": [],
+  "keywords": [
+    "manga",
+    "manhwa",
+    "scraper",
+    "pdf",
+    "telegram"
+  ],
   "author": "ahm4dd",
   "license": "Apache-2.0",
-  "type": "module",
   "bugs": {
     "url": "https://github.com/ahm4dd/ManVerse/issues"
   },
   "homepage": "https://github.com/ahm4dd/ManVerse#readme",
-  "dependencies": {
-    "@libsql/client": "^0.15.15",
-    "axios": "^1.13.2",
-    "better-sqlite3": "^12.5.0",
-    "bullmq": "^5.65.1",
-    "chalk": "^5.6.2",
-    "commander": "^14.0.2",
-    "dotenv": "^17.2.3",
-    "drizzle-orm": "^0.45.0",
-    "ioredis": "^5.8.2",
-    "ora": "^9.0.0",
-    "pdfkit": "^0.17.2",
-    "puppeteer": "^24.32.0",
-    "puppeteer-core": "^24.32.0",
-    "puppeteer-extra": "^3.3.6",
-    "puppeteer-extra-plugin-adblocker": "^2.13.6",
-    "puppeteer-extra-plugin-stealth": "^2.11.2",
-    "sharp": "^0.34.5",
-    "telegraf": "^4.16.3",
-    "zod": "^4.1.13"
-  },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
     "@types/node": "^24.10.1",
-    "@types/pdfkit": "^0.17.4",
-    "@types/puppeteer": "^5.4.7",
-    "drizzle-kit": "^0.31.8",
     "eslint": "^9.39.1",
     "globals": "^16.5.0",
     "prettier": "^3.7.4",
-    "ts-node": "^10.9.2",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.49.0",
     "vitest": "^4.0.15"
-  }
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ]
 }

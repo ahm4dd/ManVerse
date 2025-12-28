@@ -1,4 +1,4 @@
-import { AsuraScansConfig } from './types.js';
+import { type AsuraScansConfig } from './types.ts';
 
 /**
  * AsuraScans Scraper Configuration
@@ -11,7 +11,8 @@ export const asuraScansConfig: AsuraScansConfig = {
   retries: 3,
   headers: {
     referer: 'https://asuracomic.net/',
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    userAgent:
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
   },
   selectors: {
     search: {
@@ -33,7 +34,8 @@ export const asuraScansConfig: AsuraScansConfig = {
       },
     },
     detail: {
-      title: 'h3.hover\\:text-themecolor.cursor-pointer.text-white.text-sm.shrink-0.w-\\[calc\\(100\\%-120px\\)\\].truncate',
+      title:
+        'h3.hover\\:text-themecolor.cursor-pointer.text-white.text-sm.shrink-0.w-\\[calc\\(100\\%-120px\\)\\].truncate',
       image: 'img[alt="poster"]',
       status: 'h3.text-sm.text-\\[\\#A2A2A2\\]',
       rating: 'span.ml-1.text-xs',

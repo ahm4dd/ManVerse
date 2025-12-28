@@ -1,0 +1,13 @@
+{
+  "name": "@manverse/tui",
+  "version": "0.1.0",
+  "description": "ManVerse CLI (Single Binary Mode)",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "build": "bun build ./src/index.ts --compile --outfile dist/manverse"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}
