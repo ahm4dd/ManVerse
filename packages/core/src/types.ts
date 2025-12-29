@@ -73,8 +73,6 @@ export type NetworkConfig = z.infer<typeof NetworkConfigSchema>;
 
 // ------------------ Downloader Types ------------------
 
-// ------------------ Downloader Types ------------------
-
 export interface DownloadProgress {
   /** Total size in bytes (if content-length known) or total number of images */
   total: number;
@@ -103,7 +101,7 @@ export interface DownloadResult {
   /** List of errors encountered during download */
   errors: Error[];
   /** Time taken for the operation in milliseconds */
-  timeTaken: number;
+  timeTakenMs: number;
 }
 
 export interface IDownloader {
