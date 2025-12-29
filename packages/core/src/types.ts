@@ -74,10 +74,10 @@ export type NetworkConfig = z.infer<typeof NetworkConfigSchema>;
 // ------------------ Downloader Types ------------------
 
 export interface DownloadProgress {
-  /** Total number of images to download */
-  totalItems: number;
-  /** Number of images successfully processed */
-  completedItems: number;
+  /** Total size in bytes (if content-length known) or total number of images */
+  total: number;
+  /** Current downloaded bytes or number of images processed */
+  current: number;
   /** The name/URL of the file currently being processed */
   currentFile?: string;
 }
