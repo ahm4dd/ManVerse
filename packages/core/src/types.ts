@@ -73,25 +73,37 @@ export type NetworkConfig = z.infer<typeof NetworkConfigSchema>;
 
 // ------------------ Downloader Types ------------------
 
+// ------------------ Downloader Types ------------------
+
 export interface DownloadProgress {
-  total: number; // Total bytes (if known) or total images
-  current: number; // Bytes downloaded or images processed
-  currentFile?: string; // Currently processing file
+  /** Total size in bytes (if content-length known) or total number of images */
+  total: number;
+  /** Current downloaded bytes or number of images processed */
+  current: number;
+  /** The name/URL of the file currently being processed */
+  currentFile?: string;
 }
 
 export interface DownloadOptions {
+  /** Absolute path to the destination folder */
   path: string;
+  /** Number of concurrent downloads (default: 5) */
   concurrency?: number;
+  /** Custom HTTP headers to include in requests */
   headers?: Record<string, string>;
-  // For the TUI to show a progress bar
+  /** Callback for tracking download progress */
   onProgress?: (progress: DownloadProgress) => void;
 }
 
 export interface DownloadResult {
+  /** Whether the entire chapter was downloaded successfully */
   success: boolean;
-  files: string[]; // Ordered list of downloaded file paths
+  /** Ordered list of absolute paths to the downloaded files */
+  files: string[];
+  /** List of errors encountered during download */
   errors: Error[];
-  timeTaken: number; // ms
+  /** Time taken for the operation in milliseconds */
+  timeTaken: number;
 }
 
 export interface IDownloader {
