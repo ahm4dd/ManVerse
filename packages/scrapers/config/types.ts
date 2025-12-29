@@ -1,16 +1,8 @@
 import { z } from 'zod';
-import { Providers } from './constants.ts';
+import { Providers, NetworkConfigSchema } from '@manverse/core';
 
-export const ScraperConfigSchema = z.object({
+export const ScraperConfigSchema = NetworkConfigSchema.extend({
   baseUrl: z.string(),
-  timeout: z.number().default(60000),
-  retries: z.number().default(3),
-  headers: z
-    .object({
-      referer: z.string().optional(),
-      userAgent: z.string().optional(),
-    })
-    .default({}),
 });
 
 export const AsuraScansConfigSchema = ScraperConfigSchema.extend({

@@ -58,6 +58,19 @@ export const ManhwaChapter = z.array(
   }),
 );
 
+export const NetworkConfigSchema = z.object({
+  timeout: z.number().default(60000),
+  retries: z.number().default(3),
+  headers: z
+    .object({
+      referer: z.string().optional(),
+      userAgent: z.string().optional(),
+    })
+    .default({}),
+});
+
+export type NetworkConfig = z.infer<typeof NetworkConfigSchema>;
+
 export type SearchedManhwa = z.infer<typeof SearchedManhwa>;
 export type SearchResult = z.infer<typeof SearchResult>;
 export type Manhwa = z.infer<typeof Manhwa>;

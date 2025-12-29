@@ -1,6 +1,6 @@
 import { defu } from 'defu';
 import AsuraScansScarper from './asura.ts';
-import { Providers, ProviderType } from '../config/constants.ts';
+import { Providers, ProviderType } from '@manverse/core';
 import { AsuraScansConfigSchema } from '../config/types.ts';
 import Scraper from './scraper.ts';
 import { asuraScansConfig } from '../config/asura.config.ts';
