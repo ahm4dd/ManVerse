@@ -71,6 +71,35 @@ export const NetworkConfigSchema = z.object({
 
 export type NetworkConfig = z.infer<typeof NetworkConfigSchema>;
 
+// ------------------ Downloader Types ------------------
+
+export interface DownloadProgress {
+  total: number; // Total bytes (if known) or total images
+  current: number; // Bytes downloaded or images processed
+  currentFile?: string; // Currently processing file
+}
+
+export interface DownloadOptions {
+  path: string;
+  concurrency?: number;
+  headers?: Record<string, string>;
+  // For the TUI to show a progress bar
+  onProgress?: (progress: DownloadProgress) => void;
+}
+
+export interface DownloadResult {
+  success: boolean;
+  files: string[]; // Ordered list of downloaded file paths
+  errors: Error[];
+  timeTaken: number; // ms
+}
+
+export interface IDownloader {
+  downloadChapter(chapter: ManhwaChapter, options: DownloadOptions): Promise<DownloadResult>;
+}
+
+// -----------------------------------------------------
+
 export type SearchedManhwa = z.infer<typeof SearchedManhwa>;
 export type SearchResult = z.infer<typeof SearchResult>;
 export type Manhwa = z.infer<typeof Manhwa>;
