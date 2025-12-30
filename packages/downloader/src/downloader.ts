@@ -1,6 +1,5 @@
 import fs from 'fs';
 import path from 'path';
-import axios, { AxiosError } from 'axios';
 import pLimit from 'p-limit';
 import {
   type IDownloader,
@@ -10,10 +9,16 @@ import {
   ImageExtensions,
   defaultBrowserConfig,
 } from '@manverse/core';
+import { downloadUserAgent, defaultConcurrentDownloads } from './constants.ts';
 
 export class FileSystemDownloader implements IDownloader {
   async downloadChapter(chapter: ManhwaChapter, options: DownloadOptions): Promise<DownloadResult> {
-    const { path: outputDir, concurrency = 5, headers = {}, onProgress } = options;
+    const {
+      path: outputDir,
+      concurrency = defaultConcurrentDownloads,
+      headers = {},
+      onProgress,
+    } = options;
     const errors: Error[] = [];
     const downloadedFiles: string[] = [];
     const startTime = Date.now();
@@ -37,7 +42,7 @@ export class FileSystemDownloader implements IDownloader {
           const ext = path.extname(item.img).split('?')[0] || ImageExtensions.JPG;
           // Ensure valid extension
           const urlExt = ext.match(/^\.[a-zA-Z0-9]+$/) ? ext : ImageExtensions.JPG;
-          const fileName = `${(index + 1).toString().padStart(3, '0')}${urlExt}`;
+          const fileName = `${(index + 1).toString().padStart(4, '0')}${urlExt}`;
           const filePath = path.join(outputDir, fileName);
 
           // Prepare headers: Global headers + Item-specific headers (Referer)
@@ -45,9 +50,7 @@ export class FileSystemDownloader implements IDownloader {
             ...headers,
             ...(item.headerForImage ? { Referer: item.headerForImage } : {}),
             'User-Agent':
-              headers['User-Agent'] ||
-              defaultBrowserConfig.userAgent ||
-              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+              headers['User-Agent'] || defaultBrowserConfig.userAgent || downloadUserAgent,
           };
 
           await this.downloadFile(item.img, filePath, requestHeaders);
@@ -86,26 +89,19 @@ export class FileSystemDownloader implements IDownloader {
     dest: string,
     headers: Record<string, string>,
   ): Promise<void> {
-    const writer = fs.createWriteStream(dest);
-
-    const response = await axios({
-      url,
+    const response = await fetch(url, {
       method: 'GET',
-      responseType: 'stream',
       headers,
-      timeout: 30000, // 30s timeout per image
+      // Bun fetch typically doesn't support 'timeout' in options directly like axios
+      // but we can use signal if needed. For now, rely on default or keep it simple.
     });
 
-    response.data.pipe(writer);
+    if (!response.ok) {
+      throw new Error(`HTTP Error ${response.status}: ${response.statusText}`);
+    }
 
-    return new Promise((resolve, reject) => {
-      writer.on('finish', resolve);
-      writer.on('error', (err) => {
-        // Cleanup partial file on error
-        writer.close();
-        if (fs.existsSync(dest)) fs.unlinkSync(dest);
-        reject(err);
-      });
-    });
+    // Bun.write consumes the response stream automatically
+    // Using arrayBuffer() to ensure it reads fully before writing (simple & reliable for images)
+    await Bun.write(dest, await response.arrayBuffer());
   }
 }
