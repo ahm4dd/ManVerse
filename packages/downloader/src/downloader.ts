@@ -7,6 +7,8 @@ import {
   type DownloadOptions,
   type DownloadResult,
   type ManhwaChapter,
+  ImageExtensions,
+  defaultBrowserConfig,
 } from '@manverse/core';
 
 export class FileSystemDownloader implements IDownloader {
@@ -32,8 +34,9 @@ export class FileSystemDownloader implements IDownloader {
       limit(async () => {
         try {
           // Determine extension from URL or fallback to .jpg
-          // item.img usually looks like ".../image.webp" or ".../image.jpg"
-          const urlExt = path.extname(new URL(item.img).pathname) || '.jpg';
+          const ext = path.extname(item.img).split('?')[0] || ImageExtensions.JPG;
+          // Ensure valid extension
+          const urlExt = ext.match(/^\.[a-zA-Z0-9]+$/) ? ext : ImageExtensions.JPG;
           const fileName = `${(index + 1).toString().padStart(3, '0')}${urlExt}`;
           const filePath = path.join(outputDir, fileName);
 
@@ -43,6 +46,7 @@ export class FileSystemDownloader implements IDownloader {
             ...(item.headerForImage ? { Referer: item.headerForImage } : {}),
             'User-Agent':
               headers['User-Agent'] ||
+              defaultBrowserConfig.userAgent ||
               'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
           };
 

@@ -251,22 +251,31 @@ export default class AsuraScansScarper implements IScraper {
     console.log(`Navigating to ${url} for chapter images...`);
 
     // Extract chapter images
-    const chapterImages = await page.$$eval(this.config.selectors.chapter.images, (images) => {
-      return images
-        .map((img, index) => {
-          const src = img.getAttribute('src');
-          const alt = img.getAttribute('alt') || '';
+    const chapterImages = await page.$$eval(
+      this.config.selectors.chapter.images,
+      (images, baseUrl) => {
+        return images
+          .map((img, index) => {
+            const src = img.getAttribute('src');
+            const alt = img.getAttribute('alt') || '';
 
-          const pageMatch = alt.match(/page\s+(\d+)/i);
-          const pageNumber = pageMatch ? parseInt(pageMatch[1], 10) : index + 1;
+            const pageMatch = alt.match(/page\s+(\d+)/i);
+            const pageNumber = pageMatch ? parseInt(pageMatch[1], 10) : index + 1;
 
-          return {
-            src: src || '',
-            pageNumber: pageNumber,
-          };
-        })
-        .filter((item) => item.src !== '');
-    });
+            let fullSrc = src || '';
+            if (fullSrc && !fullSrc.startsWith('http')) {
+              fullSrc = baseUrl + (fullSrc.startsWith('/') ? '' : '/') + fullSrc;
+            }
+
+            return {
+              src: fullSrc,
+              pageNumber: pageNumber,
+            };
+          })
+          .filter((item) => item.src !== '');
+      },
+      this.config.baseUrl,
+    );
 
     if (chapterImages.length === 0) {
       console.warn('No chapter images found. The page may have failed to load.');
