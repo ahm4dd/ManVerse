@@ -1,6 +1,6 @@
-import fs from 'fs';
 import path from 'path';
 import pLimit from 'p-limit';
+import { $ } from 'bun';
 import {
   type IDownloader,
   type DownloadOptions,
@@ -24,9 +24,8 @@ export class FileSystemDownloader implements IDownloader {
     const startTime = Date.now();
 
     // Ensure directory exists
-    if (!fs.existsSync(outputDir)) {
-      fs.mkdirSync(outputDir, { recursive: true });
-    }
+    // Using Bun Shell for native speed
+    await $`mkdir -p "${outputDir}"`;
 
     const limit = pLimit(concurrency);
     let completed = 0;

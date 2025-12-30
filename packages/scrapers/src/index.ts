@@ -3,3 +3,4 @@ export * from './asura.ts';
 export { default as AsuraScansScarper } from './asura.ts';
 export { default as ScraperFactory } from './factory.ts';
 export * from '../config/index.ts';
+export * from './utils.ts';

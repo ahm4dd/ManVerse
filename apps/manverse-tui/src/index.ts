@@ -1,5 +1,5 @@
 import puppeteer from 'puppeteer';
-import { ScraperFactory } from '@manverse/scrapers';
+import { ScraperFactory, optimizePage } from '@manverse/scrapers';
 import { defaultBrowserConfig } from '@manverse/core';
 import { FileSystemDownloader } from '@manverse/downloader';
 import path from 'path';
@@ -8,6 +8,7 @@ async function main() {
   const browser = await puppeteer.launch(defaultBrowserConfig);
   try {
     const page = await browser.newPage();
+    await optimizePage(page);
 
     console.log('Searching for "dragon"...');
     const scraper = ScraperFactory.createScraper('AsuraScans');
