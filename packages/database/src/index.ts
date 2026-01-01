@@ -4,4 +4,5 @@ export * from './types.js';
 export * from './operations/anilist.js';
 export * from './operations/provider.js';
 export * from './operations/mapping.js';
-// Note: library, chapters, sync operations to be implemented
+export * from './operations/library.js';
+// Note: chapters, sync operations to be implemented
