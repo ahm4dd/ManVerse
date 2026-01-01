@@ -66,7 +66,8 @@ ManVerse/
 │   ├── scrapers/                  # Web scraping implementations
 │   ├── downloader/                # File download orchestration
 │   ├── pdf/                       # PDF generation from images
-│   └── anilist/                   # AniList API integration (OAuth + GraphQL)
+│   ├── anilist/                   # AniList API integration (OAuth + GraphQL)
+│   └── database/                  # SQLite persistence layer (NEW)
 ├── package.json                   # Monorepo root (workspaces config)
 ├── tsconfig.json                  # TypeScript configuration
 ├── vitest.config.ts               # Test configuration
@@ -492,6 +493,249 @@ Concrete configuration instance for AsuraScans:
 
 - **Modern** (recommended): `PDFDownloader` → `PDFKitGenerator.generate()` → PDF with automatic temp cleanup
 - **Legacy**: Apps call `convertWebPToPdf()` directly (no cleanup, manual workflow)
+
+---
+
+### 3.5 `packages/database` - Persistence Layer (NEW)
+
+**Location**: `/packages/database/src/`
+
+**Responsibility**: SQLite-based persistence for manga metadata, provider mappings, user library, downloads, and sync state. Built with Bun's native SQLite for zero external dependencies.
+
+**Key Features**:
+
+- 8-table relational schema with foreign key constraints
+- Manual provider matching workflow (user-driven, no auto-fuzzy)
+- Dead provider handling (domain changes, migration tools)
+- AniList cache integration with TTL-based invalidation
+- Custom provider support (user-defined scraping sources)
+
+#### Database Schema (8 Tables)
+
+1. **`anilist_manga`** (15 fields) - AniList API response cache
+   - Primary key: `id` (AniList manga ID)
+   - Indexes: title_romaji, status
+   - TTL: 24h (completed), 1h (ongoing)
+
+2. **`provider_manga`** (13 fields) - Scraped provider data
+   - Unique: (provider, provider_id)
+   - Tracks: domain_changed_from, last_scraped
+   - Supports dead site recovery
+
+3. **`manga_mappings`** (11 fields) - AniList ↔ Provider links
+   - Unique: (anilist_id, provider)
+   - Soft deletes: is_active flag
+   - History: replaced_by for remapping chains
+
+4. **`user_library`** (13 fields) - User reading list
+   - Unique: (provider, provider_manga_id)
+   - Status: reading, completed, plan_to_read, paused, dropped
+   - Auto-timestamps: started_at, completed_at
+
+5. **`downloaded_chapters`** (9 fields) - PDF tracking
+   - Unique: (provider_manga_id, chapter_number)
+   - Supports decimal chapters ("1.5", "100.5")
+   - Optional file deletion on record removal
+
+6. **`anilist_sync_state`** (12 fields) - Sync status
+   - Tracks: local vs AniList progress/status/score
+   - Conflict detection: push, pull, conflict
+   - Needs-sync flagging
+
+7. **`provider_domains`** (7 fields) - Domain management
+   - One row per provider
+   - History: previous_domains (JSON array)
+   - Active/inactive status
+
+8. **`custom_providers`** (7 fields) - User sources
+   - User-defined scraping sites
+   - Selector configuration storage
+   - Enables manual provider addition
+
+#### Core Files
+
+**`db.ts`** (155 lines) - Connection Management
+
+- `initDatabase(dbPath?)` - Singleton pattern, WAL mode enabled
+- `migrate()` - Executes schema.sql (idempotent)
+- `getDatabase()` - Returns active database instance
+- `resetDatabase()` - Testing utility (drops all tables)
+- Default location: `~/.config/manverse/data.db`
+
+**`types.ts`** (255 lines) - Zod Schemas
+
+- Complete type definitions for all 8 tables
+- Input/Output variants for each schema
+- Zod-first validation (consistent with project patterns)
+- Parsed interfaces for JSON fields (genres, tags, etc.)
+
+**`schema.sql`** (168 lines) - SQLite Schema
+
+- Foreign key constraints with CASCADE/SET NULL
+- Composite unique keys for data integrity
+- Indexes on frequently queried columns (title, status, provider)
+- JSON fields stored as TEXT (manual parsing in app layer)
+
+#### Operations Modules (11 files)
+
+**`operations/anilist.ts`** (195 lines, 11/11 tests ✅)
+
+Core functions:
+
+- `saveAnilistManga()` - Upsert with all fields
+- `getAnilistManga()` - Fetch by ID
+- `searchLocalAnilist()` - Case-insensitive title search
+- `bulkInsertAnilist()` - Transaction-based bulk insert
+- `isAnilistDataStale()` - TTL checking
+
+**`operations/provider.ts`** (85 lines)
+
+- `saveProviderManga()` - Upsert provider entries
+- `getProviderManga()` - Fetch by (provider, provider_id)
+- `searchProviderLocal()` - Title search within provider
+- `deactivateProvider()` - Mark all manga inactive (dead site)
+
+**`operations/mapping.ts`** (100 lines)
+
+- `createMapping()` - Link AniList ↔ Provider (manual confirmation required)
+- `getMapping()` - Fetch active mapping
+- `remapManga()` - Update mapping, preserve history
+- `deleteMapping()` - Soft delete (is_active = 0)
+
+**`operations/library.ts`** (304 lines, 22/22 tests ✅)
+
+- `addToLibrary()` - Upsert library entries
+- `updateProgress()` - Track chapters read
+- `updateStatus()` - Auto-sets started_at/completed_at
+- `getLibraryStats()` - Statistics by status
+- `searchLibrary()` - JOIN with provider_manga for title search
+- `toggleFavorite()`, `updateScore()`, `updateNotes()`
+
+**`operations/chapters.ts`** (202 lines)
+
+- `recordDownload()` - Track downloaded PDFs
+- `isChapterDownloaded()` - Check existence
+- `deleteChapter()` - Optional file deletion
+- `getDownloadStats()` - Global and per-manga statistics
+- Proper chapter sorting: `CAST(chapter_number AS REAL)`
+
+**`operations/sync.ts`** (265 lines)
+
+- `recordLocalUpdate()` - Auto-detects sync need
+- `recordAnilistUpdate()` - Conflict detection
+- `getNeedsSyncList()` - Pending syncs
+- `updateSyncState()` - After successful sync
+- Direction: push (local → AniList), pull (AniList → local), conflict (both changed)
+
+**`operations/domains.ts`** (127 lines) - NEW
+
+- `getProviderDomain()` - Current domain for provider
+- `migrateProviderDomain()` - Domain change with history
+- `deactivateProviderDomain()` - Mark provider dead
+- `getProviderHistory()` - Domain change timeline
+
+**`operations/custom-providers.ts`** (108 lines) - NEW
+
+- `addCustomProvider()` - User-defined sources
+- `getActiveCustomProviders()` - List available
+- `updateCustomProvider()` - Modify configuration
+- `deleteCustomProvider()` - Remove source
+
+#### Cache Layer
+
+**`cache/anilist-cache.ts`** (204 lines) - Cached Client Wrapper
+
+**Class**: `CachedAniListClient`
+
+**Purpose**: Transparent caching wrapper for AniList API client
+
+**Methods**:
+
+- `getManga(id)` - Checks DB cache first, hits API if stale
+- `search(query)` - Always hits API, caches individual results
+- `warmCacheFromUserList(userId)` - Bulk cache user's manga list
+
+**Features**:
+
+- TTL-aware caching (24h completed, 1h ongoing)
+- Automatic staleness detection via `isAnilistDataStale()`
+- Transform functions: API format ↔ DB format
+- Returns client-compatible objects (seamless integration)
+
+**`config/cache.config.ts`** (37 lines) - TTL Configuration
+
+```typescript
+export const cacheConfig = {
+  anilist: {
+    completedTTL: 24 * 60 * 60 * 1000, // Rarely changes
+    ongoingTTL: 60 * 60 * 1000, // Frequently updates
+    userListTTL: 30 * 60 * 1000,
+  },
+  provider: {
+    mangaDetailsTTL: 60 * 60 * 1000,
+    chapterListTTL: 30 * 60 * 1000,
+  },
+};
+```
+
+#### Provider Migration Utilities
+
+**`utils/provider-migration.ts`** (178 lines) - Dead Site Handling
+
+**Functions**:
+
+- `migrateProvider()` - Full migration workflow (old → new provider)
+  - Processes in batches
+  - Preserves history
+  - Returns migration stats
+- `bulkRemapSameDomain()` - Quick domain change (same provider, new URL)
+  - Updates all URLs in one query
+  - Preserves provider_id
+- `getMigrationStatus()` - Reports active/inactive mappings, needs remapping count
+
+**Use Cases**:
+
+- Provider domain changes (asura.com → new-asura.com)
+- Provider shutdown (migrate to alternative)
+- Dead site recovery (quick URL updates)
+
+#### Design Patterns
+
+**1. Prepared Statements (SQL Safety)**
+
+```typescript
+const query = db.prepare<ReturnType, [ParamTypes]>(`
+  SELECT * FROM table WHERE col = ?1 AND col2 = ?2
+`);
+const result = query.get(param1, param2);
+```
+
+**2. Soft Deletes (History Preservation)**
+
+```typescript
+UPDATE manga_mappings SET is_active = 0 WHERE id = ?1
+// Instead of: DELETE FROM manga_mappings WHERE id = ?1
+```
+
+**3. Upsert Pattern (Insert or Update)**
+
+```sql
+INSERT INTO table (cols...) VALUES (?1, ?2...)
+ON CONFLICT(unique_col) DO UPDATE SET
+  col1 = excluded.col1
+```
+
+**4. Foreign Key Cascades (Auto Cleanup)**
+
+```sql
+FOREIGN KEY (provider_manga_id) REFERENCES provider_manga(id) ON DELETE CASCADE
+```
+
+**Dependencies**: Bun native SQLite (zero external dependencies), Zod (validation)
+
+**Test Coverage**: 39/39 tests passing (AniList + Library operations comprehensive)
+
+**Database Location**: `~/.config/manverse/data.db` (override via `initDatabase(path)`)
 
 ---
 
