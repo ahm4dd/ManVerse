@@ -11,7 +11,7 @@ export const SAVE_MEDIA_LIST_ENTRY = gql`
     $status: MediaListStatus
     $progress: Int
     $progressVolumes: Int
-    $score: Float
+    $score: Int
     $repeat: Int
     $priority: Int
     $private: Boolean
