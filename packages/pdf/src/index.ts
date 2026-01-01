@@ -3,16 +3,15 @@ export { PDFKitGenerator } from './generator';
 
 // Legacy function for backward compatibility
 import PDFDocument from 'pdfkit';
-import fs from 'fs';
 import sharp from 'sharp';
 
 /** @deprecated Use PDFKitGenerator class instead */
 export async function convertWebPToPdf(webpFiles: string[], outputPath: string) {
-  // Initialize PDF with 'autoFirstPage: false' to set dynamic page sizes
+  const chunks: Buffer[] = [];
   const doc = new PDFDocument({ autoFirstPage: false });
-  const stream = fs.createWriteStream(outputPath);
 
-  doc.pipe(stream);
+  // Collect PDF chunks
+  doc.on('data', (chunk) => chunks.push(chunk));
 
   console.log(`Starting conversion for ${webpFiles.length} files...`);
 
@@ -42,7 +41,13 @@ export async function convertWebPToPdf(webpFiles: string[], outputPath: string) 
 
   doc.end();
 
-  stream.on('finish', () => {
-    console.log(`Success! PDF saved to: ${outputPath}`);
+  // Wait for completion and write with Bun
+  await new Promise<void>((resolve) => {
+    doc.on('end', async () => {
+      const buffer = Buffer.concat(chunks);
+      await Bun.write(outputPath, buffer);
+      console.log(`Success! PDF saved to: ${outputPath}`);
+      resolve();
+    });
   });
 }
