@@ -122,9 +122,9 @@ export const MediaListEntrySchema = z.object({
   progressVolumes: z.number().nullable(),
   repeat: z.number(), // Re-read count
   priority: z.number().nullable(), // 0-5
-  private: z.boolean(),
+  private: z.boolean().optional(),
   notes: z.string().nullable(),
-  hiddenFromStatusLists: z.boolean(),
+  hiddenFromStatusLists: z.boolean().optional(),
   startedAt: z
     .object({
       year: z.number().nullable(),
