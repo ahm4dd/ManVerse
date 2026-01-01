@@ -16,3 +16,6 @@ export * from './config/cache.config.js';
 
 // Utilities
 export * from './utils/provider-migration.js';
+
+// Sync service
+export * from './sync/progress-sync.js';
