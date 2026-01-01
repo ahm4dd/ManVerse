@@ -1,7 +1,8 @@
 import puppeteer from 'puppeteer';
 import { ScraperFactory, optimizePage } from '@manverse/scrapers';
 import { defaultBrowserConfig } from '@manverse/core';
-import { FileSystemDownloader } from '@manverse/downloader';
+import { FileSystemDownloader, PDFDownloader } from '@manverse/downloader';
+import { PDFKitGenerator } from '@manverse/pdf';
 import path from 'path';
 
 async function main() {
@@ -25,12 +26,15 @@ async function main() {
 
     console.log(`Found ${chapterImages.length} images. Starting download...`);
 
-    const downloader = new FileSystemDownloader();
+    // Use PDFDownloader to generate PDF directly
+    const imageDownloader = new FileSystemDownloader();
+    const pdfGenerator = new PDFKitGenerator();
+    const downloader = new PDFDownloader(imageDownloader, pdfGenerator);
+
     const downloadPath = path.resolve(
       process.cwd(),
       'downloads',
-      targetSeries.title,
-      `Chapter ${targetChapter.chapterNumber}`,
+      `${targetSeries.title} - Chapter ${targetChapter.chapterNumber}`,
     );
 
     const result = await downloader.downloadChapter(chapterImages, {
@@ -43,7 +47,8 @@ async function main() {
     console.log('\n\nDownload Result:');
     console.log('Success:', result.success);
     console.log('Time:', result.timeTakenMs + 'ms');
-    console.log('Files:', result.files.length);
+    console.log('PDF Path:', result.pdfPath);
+    console.log('Images:', result.files.length);
     console.log('Errors:', result.errors.length);
     if (result.errors.length > 0) {
       console.log('First Error:', result.errors[0].message);

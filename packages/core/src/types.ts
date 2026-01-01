@@ -108,6 +108,23 @@ export interface IDownloader {
   downloadChapter(chapter: ManhwaChapter, options: DownloadOptions): Promise<DownloadResult>;
 }
 
+// ------------------ PDF Generator Types ------------------
+
+export interface IPDFGenerator {
+  /** Generate a PDF from a list of image file paths */
+  generate(imagePaths: string[], outputPath: string): Promise<void>;
+}
+
+export interface PDFDownloadOptions extends DownloadOptions {
+  /** If true, keep temporary image files after PDF generation */
+  keepImages?: boolean;
+}
+
+export interface PDFDownloadResult extends DownloadResult {
+  /** Absolute path to the generated PDF file */
+  pdfPath: string;
+}
+
 // -----------------------------------------------------
 
 export type SearchedManhwa = z.infer<typeof SearchedManhwa>;

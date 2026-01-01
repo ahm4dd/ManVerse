@@ -1,7 +1,12 @@
+// New interface-based generator
+export { PDFKitGenerator } from './generator';
+
+// Legacy function for backward compatibility
 import PDFDocument from 'pdfkit';
 import fs from 'fs';
 import sharp from 'sharp';
 
+/** @deprecated Use PDFKitGenerator class instead */
 export async function convertWebPToPdf(webpFiles: string[], outputPath: string) {
   // Initialize PDF with 'autoFirstPage: false' to set dynamic page sizes
   const doc = new PDFDocument({ autoFirstPage: false });
