@@ -1,6 +1,15 @@
 # ManVerse - Complete Codebase Analysis
 
-## Executive Summary
+**ManVerse** is a TypeScript-based monorepo for scraping, downloading, and managing manga/manhwa content from multiple providers. Built with **Bun runtime** and organized as a **Modular Monolith Architecture**, it aims to aggregate content from various sources, enabling users to track progress, download chapters offline, and receive updates.
+
+The project consists of **5 reusable packages** (`core`, `scrapers`, `downloader`, `pdf`, `anilist`) and **4 applications** (`manverse-tui`, `manverse-api`, `manverse-scraper`, `uploader`). Currently in active development, the primary scraper implementation targets **AsuraScans** (asuracomic.net). The architecture emphasizes modularity, type safety with Zod validation, and performance optimization through concurrent operations.
+
+**Current Status**: Active development with core features functional. The TUI app demonstrates complete end-to-end functionality (search → scrape → download → PDF generation with automatic cleanup). Recent improvements include interface-based PDF generation architecture with parallel download support and temporary file management. **NEW**: AniList API integration completed with OAuth 2.0 authentication, enabling manga tracking and progress sync. API and other apps remain incomplete. The codebase is well-structured for future extensibility to support additional manga providers.
+
+**Latest Update (2026-01-01)**:
+
+- **Morning**: Implemented **Caching System** and **Duplicate Checker**. Scraper results cached to disk, PDF downloads skip if file exists (0ms turnaround). PDF generation fully parallelized with Node.js streams.
+- **Evening**: Built **AniList Integration** (`@manverse/anilist`) - Custom OAuth 2.0 client with GraphQL API, rate limiting (90 req/min), guest mode, and comprehensive Zod validation (~500 LOC).
 
 ---
 
