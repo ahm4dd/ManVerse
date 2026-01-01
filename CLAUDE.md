@@ -2,14 +2,6 @@
 
 ## Executive Summary
 
-**ManVerse** is a TypeScript-based monorepo for scraping, downloading, and managing manga/manhwa content from multiple providers. Built with **Bun runtime** and organized as a **Modular Monolith Architecture**, it aims to aggregate content from various sources, enabling users to track progress, download chapters offline, and receive updates.
-
-The project consists of **4 reusable packages** (`core`, `scrapers`, `downloader`, `pdf`) and **4 applications** (`manverse-tui`, `manverse-api`, `manverse-scraper`, `uploader`). Currently in active development, the primary scraper implementation targets **AsuraScans** (asuracomic.net). The architecture emphasizes modularity, type safety with Zod validation, and performance optimization through concurrent operations.
-
-**Current Status**: Active development with core features functional. The TUI app demonstrates complete end-to-end functionality (search → scrape → download → PDF generation with automatic cleanup). Recent improvements include interface-based PDF generation architecture with parallel download support and temporary file management. API and other apps remain incomplete. The codebase is well-structured for future extensibility to support additional manga providers.
-
-**Latest Update (2026-01-01)**: Implemented **Caching System** and **Duplicate Checker**. Scraper results are now cached to disk, and PDF downloads are skipped if the file already exists (verified 0ms turnaround). PDF generation is now fully parallelized, utilizing Node.js streams for maximum performance (benchmarked faster than Bun native).
-
 ---
 
 ## 1. Project Overview
@@ -64,7 +56,8 @@ ManVerse/
 │   ├── core/                      # Domain types, interfaces, constants
 │   ├── scrapers/                  # Web scraping implementations
 │   ├── downloader/                # File download orchestration
-│   └── pdf/                       # PDF generation from images
+│   ├── pdf/                       # PDF generation from images
+│   └── anilist/                   # AniList API integration (OAuth + GraphQL)
 ├── package.json                   # Monorepo root (workspaces config)
 ├── tsconfig.json                  # TypeScript configuration
 ├── vitest.config.ts               # Test configuration
