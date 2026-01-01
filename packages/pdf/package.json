@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@manverse/core": "workspace:*",
+    "p-limit": "^7.2.0",
     "pdfkit": "^0.15.0",
     "sharp": "^0.34.5"
   },

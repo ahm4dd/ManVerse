@@ -7,6 +7,7 @@ import type {
   PDFDownloadOptions,
   PDFDownloadResult,
 } from '@manverse/core';
+import { PDFDownloaderConstants } from './constants.ts';
 
 /**
  * PDFDownloader orchestrates downloading images to a temp directory,
@@ -28,8 +29,8 @@ export class PDFDownloader implements IDownloader {
 
     // 1. Setup unique temp directory for this chapter
     // Using timestamp to ensure uniqueness for parallel downloads
-    const tempId = `${Date.now()}-${Math.random().toString(36).substring(7)}`;
-    const tempDir = path.join(options.path, '.temp', tempId);
+    const tempId = `${Date.now()}-${Math.random().toString(36).substring(PDFDownloaderConstants.TEMP_ID_LENGTH)}`;
+    const tempDir = path.join(options.path, PDFDownloaderConstants.TEMP_DIR_NAME, tempId);
 
     // 2. Download images to temp directory
     const downloadResult = await this.imageDownloader.downloadChapter(chapter, {
@@ -56,7 +57,9 @@ export class PDFDownloader implements IDownloader {
     await $`mkdir -p "${options.path}"`;
 
     // 4. Generate PDF (use .pdf extension if not already present)
-    const pdfPath = options.path.endsWith('.pdf') ? options.path : `${options.path}.pdf`;
+    const pdfPath = options.path.endsWith(PDFDownloaderConstants.PDF_EXTENSION)
+      ? options.path
+      : `${options.path}${PDFDownloaderConstants.PDF_EXTENSION}`;
 
     try {
       await this.pdfGenerator.generate(downloadResult.files, pdfPath);
