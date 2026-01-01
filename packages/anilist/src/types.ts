@@ -27,8 +27,8 @@ export const AniListUserSchema = z.object({
       medium: z.string().url().optional(),
     })
     .optional(),
-  bannerImage: z.string().url().optional(),
-  about: z.string().optional(),
+  bannerImage: z.string().url().nullable().optional(),
+  about: z.string().nullable().optional(),
 });
 
 export type AniListUser = z.infer<typeof AniListUserSchema>;
@@ -47,7 +47,7 @@ export const MediaFormatSchema = z.enum(['MANGA', 'NOVEL', 'ONE_SHOT']);
 
 export const AniListMangaSchema = z.object({
   id: z.number(),
-  idMal: z.number().optional(), // MyAnimeList ID
+  idMal: z.number().nullable().optional(), // MyAnimeList ID
   title: z.object({
     romaji: z.string(),
     english: z.string().nullable(),
@@ -60,7 +60,7 @@ export const AniListMangaSchema = z.object({
     medium: z.string().url(),
     color: z.string().nullable(),
   }),
-  bannerImage: z.string().url().nullable(),
+  bannerImage: z.string().url().nullable().optional(),
   status: MediaStatusSchema,
   format: MediaFormatSchema,
   chapters: z.number().nullable(),
@@ -76,7 +76,7 @@ export const AniListMangaSchema = z.object({
     )
     .optional(),
   averageScore: z.number().nullable(), // 0-100
-  meanScore: z.number().nullable(),
+  meanScore: z.number().nullable().optional(),
   popularity: z.number(),
   favourites: z.number(),
   startDate: z
@@ -85,14 +85,16 @@ export const AniListMangaSchema = z.object({
       month: z.number().nullable(),
       day: z.number().nullable(),
     })
-    .nullable(),
+    .nullable()
+    .optional(),
   endDate: z
     .object({
       year: z.number().nullable(),
       month: z.number().nullable(),
       day: z.number().nullable(),
     })
-    .nullable(),
+    .nullable()
+    .optional(),
   siteUrl: z.string().url(),
 });
 
