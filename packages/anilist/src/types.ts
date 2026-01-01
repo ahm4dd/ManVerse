@@ -23,11 +23,11 @@ export const AniListUserSchema = z.object({
   name: z.string(),
   avatar: z
     .object({
-      large: z.string().url().optional(),
-      medium: z.string().url().optional(),
+      large: z.url().optional(),
+      medium: z.url().optional(),
     })
     .optional(),
-  bannerImage: z.string().url().nullable().optional(),
+  bannerImage: z.url().nullable().optional(),
   about: z.string().nullable().optional(),
 });
 
@@ -56,11 +56,11 @@ export const AniListMangaSchema = z.object({
   synonyms: z.array(z.string()).default([]),
   description: z.string().nullable(),
   coverImage: z.object({
-    large: z.string().url(),
-    medium: z.string().url(),
+    large: z.url(),
+    medium: z.url(),
     color: z.string().nullable(),
   }),
-  bannerImage: z.string().url().nullable().optional(),
+  bannerImage: z.url().nullable().optional(),
   status: MediaStatusSchema,
   format: MediaFormatSchema,
   chapters: z.number().nullable(),
