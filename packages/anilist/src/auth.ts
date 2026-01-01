@@ -99,6 +99,7 @@ export class AniListAuth {
         res.end('Not found');
       });
 
+      // TODO: replace the magic number with a config option
       const port = new URL(this.options.redirectUri || this.config.redirectUri).port || 8888;
       this.server.listen(Number(port), () => {
         console.log(`🔓 Listening for OAuth callback on port ${port}...`);

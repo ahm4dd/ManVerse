@@ -100,10 +100,6 @@ cd apps/manverse-tui
 bun run src/test-anilist.ts
 ```
 
-## API Reference
-
-See [implementation plan](../../.gemini/antigravity/brain/4947f98c-8e07-471c-aec8-2cbaf39a3734/implementation_plan.md) for complete API documentation.
-
 ## Architecture
 
 Follows ManVerse patterns:

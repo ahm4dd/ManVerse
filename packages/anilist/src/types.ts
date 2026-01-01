@@ -95,7 +95,7 @@ export const AniListMangaSchema = z.object({
     })
     .nullable()
     .optional(),
-  siteUrl: z.string().url(),
+  siteUrl: z.url(),
 });
 
 export type AniListManga = z.infer<typeof AniListMangaSchema>;
