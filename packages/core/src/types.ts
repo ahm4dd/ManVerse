@@ -118,6 +118,8 @@ export interface IPDFGenerator {
 export interface PDFDownloadOptions extends DownloadOptions {
   /** If true, keep temporary image files after PDF generation */
   keepImages?: boolean;
+  /** If true, overwrite existing files even if they strictly match the expected output path */
+  force?: boolean;
 }
 
 export interface PDFDownloadResult extends DownloadResult {

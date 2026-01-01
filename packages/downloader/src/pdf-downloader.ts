@@ -27,6 +27,27 @@ export class PDFDownloader implements IDownloader {
   ): Promise<PDFDownloadResult> {
     const startTime = Date.now();
 
+    // 0. Check if PDF already exists (Duplicate Checker)
+    const expectedPdfPath = options.path.endsWith(PDFDownloaderConstants.PDF_EXTENSION)
+      ? options.path
+      : `${options.path}${PDFDownloaderConstants.PDF_EXTENSION}`;
+
+    // Using Bun's synchronous check for simplicity since we want to fail fast/skip fast
+    // const exists = await Bun.file(expectedPdfPath).exists(); // async way
+    // But since we are inside an async function:
+    const file = Bun.file(expectedPdfPath);
+    if ((await file.exists()) && !options.force) {
+      // Return success immediately with existing path
+      // We return empty files/errors since we skipped download
+      return {
+        success: true,
+        files: [],
+        errors: [],
+        timeTakenMs: 0,
+        pdfPath: expectedPdfPath,
+      };
+    }
+
     // 1. Setup unique temp directory for this chapter
     // Using timestamp to ensure uniqueness for parallel downloads
     const tempId = `${Date.now()}-${Math.random().toString(36).substring(PDFDownloaderConstants.TEMP_ID_LENGTH)}`;

@@ -2,12 +2,15 @@ import type { Page } from 'puppeteer';
 import type { Manhwa, ManhwaChapter, SearchResult } from '@manverse/core';
 import { asuraScansConfig, AsuraScansConfig } from '../config/index.ts';
 import type IScraper from './scraper.ts';
+import { ScraperCache } from './cache.ts';
 
 export default class AsuraScansScarper implements IScraper {
   config: AsuraScansConfig;
+  private cache: ScraperCache;
 
   constructor(config: AsuraScansConfig = asuraScansConfig) {
     this.config = config;
+    this.cache = new ScraperCache('asura');
   }
 
   async search(
@@ -18,6 +21,14 @@ export default class AsuraScansScarper implements IScraper {
   ): Promise<SearchResult> {
     if (consumet) {
       throw new Error(`Consumet should not be activated for ${this.config.baseUrl}`);
+    }
+
+    // Cache key for search results
+    const cacheKey = `search:${term}:${pageNumber}`;
+    const cached = this.cache.get<SearchResult>(cacheKey);
+    if (cached) {
+      console.log(`[Cache] Returning cached search results for "${term}"`);
+      return cached;
     }
 
     const targetUrl = `${this.config.baseUrl}series?page=${pageNumber}&name=${term}`;
@@ -75,17 +86,6 @@ export default class AsuraScansScarper implements IScraper {
     // Filter out null entries
     const series = seriesRaw.filter((s): s is NonNullable<typeof s> => s !== null);
 
-    // series.forEach((item) => {
-    //   console.log('----------------');
-    //   console.log(item.name);
-    //   console.log(item.chapters);
-    //   console.log(item.imageUrl);
-    //   console.log(item.rating);
-    //   console.log(item.status);
-    //   console.log(item.link);
-    //   console.log('----------------');
-    // });
-
     // Check pagination (Next button state)
     const paginationConfig = this.config.selectors.search.pagination;
     const nextButtonSelector = this.config.selectors.search.nextButton;
@@ -115,14 +115,26 @@ export default class AsuraScansScarper implements IScraper {
       rating: item.rating,
     }));
 
-    return {
+    const result = {
       currentPage: pageNumber,
       hasNextPage: hasNextPage,
       results: results,
     };
+
+    // Cache results for 1 hour
+    this.cache.set(cacheKey, result);
+    return result;
   }
 
   async checkManhwa(page: Page, url: string): Promise<Manhwa> {
+    // Cache key for manhwa details
+    const cacheKey = `manhwa:${url}`;
+    const cached = this.cache.get<Manhwa>(cacheKey);
+    if (cached) {
+      console.log(`[Cache] Returning cached details for ${url}`);
+      return cached;
+    }
+
     await page.goto(url, { waitUntil: 'networkidle2', timeout: this.config.timeout });
     console.log(`Navigating to ${url} for manhwa details...`);
 
@@ -228,7 +240,7 @@ export default class AsuraScansScarper implements IScraper {
       detailSelectors,
     );
 
-    return {
+    const result = {
       id: url,
       title: manhwaData.title,
       description: manhwaData.description,
@@ -244,6 +256,9 @@ export default class AsuraScansScarper implements IScraper {
       serialization: manhwaData.serialization,
       updatedOn: manhwaData.updatedOn,
     };
+
+    this.cache.set(cacheKey, result);
+    return result;
   }
 
   async checkManhwaChapter(page: Page, url: string): Promise<ManhwaChapter> {
