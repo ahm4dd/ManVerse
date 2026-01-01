@@ -1,17 +1,18 @@
 // New interface-based generator
-export { PDFKitGenerator } from './generator';
+export { PDFKitGenerator } from './generator.ts';
 
 // Legacy function for backward compatibility
 import PDFDocument from 'pdfkit';
+import fs from 'fs';
 import sharp from 'sharp';
 
 /** @deprecated Use PDFKitGenerator class instead */
 export async function convertWebPToPdf(webpFiles: string[], outputPath: string) {
-  const chunks: Buffer[] = [];
+  // Initialize PDF with 'autoFirstPage: false' to set dynamic page sizes
   const doc = new PDFDocument({ autoFirstPage: false });
+  const stream = fs.createWriteStream(outputPath);
 
-  // Collect PDF chunks
-  doc.on('data', (chunk) => chunks.push(chunk));
+  doc.pipe(stream);
 
   console.log(`Starting conversion for ${webpFiles.length} files...`);
 
@@ -41,13 +42,7 @@ export async function convertWebPToPdf(webpFiles: string[], outputPath: string) 
 
   doc.end();
 
-  // Wait for completion and write with Bun
-  await new Promise<void>((resolve) => {
-    doc.on('end', async () => {
-      const buffer = Buffer.concat(chunks);
-      await Bun.write(outputPath, buffer);
-      console.log(`Success! PDF saved to: ${outputPath}`);
-      resolve();
-    });
+  stream.on('finish', () => {
+    console.log(`Success! PDF saved to: ${outputPath}`);
   });
 }

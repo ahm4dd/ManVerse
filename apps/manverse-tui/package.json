@@ -10,10 +10,13 @@
   },
   "dependencies": {
     "@manverse/core": "workspace:*",
-    "@manverse/scrapers": "workspace:*",
     "@manverse/downloader": "workspace:*",
     "@manverse/pdf": "workspace:*",
-    "puppeteer": "^24.34.0"
+    "@manverse/scrapers": "workspace:*",
+    "@types/pdfkit": "^0.17.4",
+    "pdfkit": "^0.17.2",
+    "puppeteer": "^24.34.0",
+    "sharp": "^0.34.5"
   },
   "devDependencies": {}
 }

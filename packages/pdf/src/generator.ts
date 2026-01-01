@@ -1,30 +1,32 @@
 import PDFDocument from 'pdfkit';
+import fs from 'fs';
 import sharp from 'sharp';
 import type { IPDFGenerator } from '@manverse/core';
 
 export class PDFKitGenerator implements IPDFGenerator {
   async generate(imagePaths: string[], outputPath: string): Promise<void> {
-    const chunks: Buffer[] = [];
-    const doc = new PDFDocument({ autoFirstPage: false });
+    return new Promise((resolve, reject) => {
+      // Initialize PDF with 'autoFirstPage: false' to set dynamic page sizes
+      const doc = new PDFDocument({ autoFirstPage: false });
+      const stream = fs.createWriteStream(outputPath);
 
-    // Collect PDF chunks in memory
-    doc.on('data', (chunk) => chunks.push(chunk));
+      doc.pipe(stream);
 
-    // Process images sequentially
-    await this.processImages(doc, imagePaths);
+      // Process images sequentially
+      this.processImages(doc, imagePaths)
+        .then(() => {
+          doc.end();
+        })
+        .catch(reject);
 
-    // Finalize document
-    doc.end();
+      stream.on('finish', () => {
+        resolve();
+      });
 
-    // Wait for PDF generation to complete
-    await new Promise<void>((resolve, reject) => {
-      doc.on('end', () => resolve());
-      doc.on('error', (err: Error) => reject(err));
+      stream.on('error', (err) => {
+        reject(err);
+      });
     });
-
-    // Write to file using Bun's native API
-    const buffer = Buffer.concat(chunks);
-    await Bun.write(outputPath, buffer);
   }
 
   private async processImages(doc: PDFKit.PDFDocument, imagePaths: string[]): Promise<void> {

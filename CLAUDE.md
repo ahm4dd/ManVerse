@@ -6,7 +6,9 @@
 
 The project consists of **4 reusable packages** (`core`, `scrapers`, `downloader`, `pdf`) and **4 applications** (`manverse-tui`, `manverse-api`, `manverse-scraper`, `uploader`). Currently in active development, the primary scraper implementation targets **AsuraScans** (asuracomic.net). The architecture emphasizes modularity, type safety with Zod validation, and performance optimization through concurrent operations.
 
-**Current Status**: Early development phase. The TUI app demonstrates end-to-end functionality (search → scrape → download), but the API and other apps are incomplete. The codebase is well-structured for future extensibility to support additional manga providers.
+**Current Status**: Active development with core features functional. The TUI app demonstrates complete end-to-end functionality (search → scrape → download → PDF generation with automatic cleanup). Recent improvements include interface-based PDF generation architecture with parallel download support and temporary file management. API and other apps remain incomplete. The codebase is well-structured for future extensibility to support additional manga providers.
+
+**Latest Update (2026-01-01)**: Implemented IPDFGenerator interface, PDFKitGenerator class, and PDFDownloader wrapper with automatic temp file cleanup, enabling parallel chapter downloads without conflicts.
 
 ---
 
@@ -178,6 +180,19 @@ Defines all core domain models using Zod schemas:
 
 - **`IDownloader`**: Interface for downloader implementations
   - `downloadChapter(chapter, options): Promise<DownloadResult>`
+
+**PDF Generator Interfaces** (NEW - Latest Commit):
+
+- **`IPDFGenerator`**: Interface for PDF generation implementations
+  - `generate(imagePaths: string[], outputPath: string): Promise<void>`
+
+- **`PDFDownloadOptions`**: Extends `DownloadOptions` with PDF-specific options
+  - All fields from `DownloadOptions` plus:
+  - `keepImages?: boolean` - If true, preserves temporary images after PDF generation
+
+- **`PDFDownloadResult`**: Extends `DownloadResult` with PDF output
+  - All fields from `DownloadResult` plus:
+  - `pdfPath: string` - Absolute path to the generated PDF file
 
 **Network Configuration**:
 
@@ -377,36 +392,87 @@ Concrete configuration instance for AsuraScans:
 3. Each task downloads image via `fetch()`, writes to disk, reports progress
 4. Returns aggregated result with all file paths and errors
 
+#### `pdf-downloader.ts` (99 lines) - **NEW: Orchestrated PDF Workflow**
+
+**Class**: `PDFDownloader implements IDownloader`
+
+**Constructor**: Accepts `IDownloader` (image downloader) and `IPDFGenerator` (PDF generator)
+
+**Purpose**: High-level orchestrator that combines image downloading, PDF generation, and automatic cleanup.
+
+**Method**: `downloadChapter(chapter: ManhwaChapter, options: PDFDownloadOptions): Promise<PDFDownloadResult>`
+
+**Workflow**:
+
+1. **Creates unique temp directory** (timestamp + random ID for parallel safety)
+   ```typescript
+   const tempId = `${Date.now()}-${Math.random().toString(36).substring(7)}`;
+   const tempDir = path.join(options.path, '.temp', tempId);
+   ```
+2. **Downloads images to temp** via injected `imageDownloader`
+3. **Generates PDF** via injected `pdfGenerator`
+4. **Cleans up temp files** (unless `keepImages: true`)
+5. **Returns** `PDFDownloadResult` with `pdfPath` and all download stats
+
+**Key Features**:
+
+- ✅ **Parallel downloads supported**: Unique temp dirs prevent conflicts when downloading multiple chapters simultaneously
+- ✅ **Automatic cleanup**: Removes temp files even on errors (uses Bun shell `rm -rf`)
+- ✅ **Flexible path handling**: Auto-appends `.pdf` extension if missing
+- ✅ **Error resilience**: Attempts cleanup on failures, doesn't crash if cleanup fails
+
+**Dependencies**: `@manverse/core`, Bun shell (`$`)
+
 ---
 
 ### 3.4 `packages/pdf` - PDF Generation
 
 **Location**: `/packages/pdf/src/`
 
-**Responsibility**: Converts downloaded manga images to PDF format for convenient reading.
+**Responsibility**: Converts downloaded manga images to PDF format for convenient reading. **Refactored to interface-based architecture** in latest commit.
 
 **Key Files**:
 
-#### `index.ts` (44 lines)
+#### `generator.ts` (57 lines) - **NEW: Interface-Based Implementation**
 
-**Function**: `convertWebPToPdf(webpFiles: string[], outputPath: string): Promise<void>`
+**Class**: `PDFKitGenerator implements IPDFGenerator`
+
+**Method**: `generate(imagePaths: string[], outputPath: string): Promise<void>`
 
 **Implementation**:
 
-1. Creates PDF document with `autoFirstPage: false` (dynamic page sizes)
-2. Pipes output to file stream
-3. For each input image:
+1. Creates PDF document with `autoFirst Page: false` (dynamic page sizes)
+2. Returns Promise that resolves/rejects based on stream events
+3. Calls `processImages()` to sequentially add pages:
    - Reads metadata with `sharp(filePath).metadata()`
    - Converts to PNG buffer (PDFKit handles PNG better than WebP)
    - Adds PDF page with exact image dimensions (no margin)
    - Embeds image at (0, 0) with full size
-4. Finalizes PDF document
+4. Finalizes document via `doc.end()`
+5. Resolves on `stream.on('finish')`, rejects on errors
 
-**Performance Optimization**: Converts WebP → PNG in-memory before embedding (more reliable than direct WebP support)
+**Key Improvements**:
 
-**Dependencies**: `pdfkit`, `sharp`, `fs`
+- ✅ **Promise-based API**: Proper async/await support (not callback-based)
+- ✅ **Error propagation**: Throws on image processing failures
+- ✅ **Interface compliance**: Implements `IPDFGenerator` for dependency injection
 
-**Data Flow**: Apps pass ordered array of image paths → PDF generated with one page per image
+**Dependencies**: `pdfkit`, `sharp`, `fs`, `@manverse/core`
+
+#### `index.ts` (49 lines)
+
+**Exports**: `PDFKitGenerator` class (primary), `convertWebPToPdf` function (deprecated)
+
+**Legacy Function**: `convertWebPToPdf(webpFiles: string[], outputPath: string)`
+
+- Marked `@deprecated` - kept for backward compatibility only
+- Same implementation as before, but wrapped generators are now preferred
+- Does not support automatic cleanup
+
+**Data Flow**:
+
+- **Modern** (recommended): `PDFDownloader` → `PDFKitGenerator.generate()` → PDF with automatic temp cleanup
+- **Legacy**: Apps call `convertWebPToPdf()` directly (no cleanup, manual workflow)
 
 ---
 
@@ -476,16 +542,28 @@ Concrete configuration instance for AsuraScans:
 6. Sort results alphabetically
 7. Return success status + file paths
 
-### Feature 5: Convert to PDF
+### Feature 5: Download Chapter as PDF - **NEW: Latest Commit**
 
-**Implementation**: `pdf/index.ts` → `convertWebPToPdf()`
+**Implementation**: `downloader/pdf-downloader.ts` → `PDFDownloader.downloadChapter()`
+
+**Files Involved**:
+
+- `packages/downloader/src/pdf-downloader.ts` (orchestrator)
+- `packages/pdf/src/generator.ts` (PDF generation)
+- `packages/downloader/src/downloader.ts` (image downloads)
+- `apps/manverse-tui/src/index.ts` (consumer)
 
 **Workflow**:
 
-1. Initialize PDFDocument with dynamic pages
-2. For each image: read metadata, convert to PNG, add page
-3. Write to output stream
-4. Return promise that resolves on completion
+1. Create unique temp directory (`.temp/{timestamp}-{random}`)
+2. Download images to temp via `FileSystemDownloader`
+3. Generate PDF via `PDFKitGenerator.generate()`
+4. Clean up temp directory (unless `keepImages: true`)
+5. Return `PDFDownloadResult` with PDF path and all download stats
+
+**Parallel Safety**: Each download gets unique temp dir → no conflicts when downloading multiple chapters simultaneously
+
+**Error Handling**: Cleanup attempted even on failures; operation doesn't crash if cleanup fails (warns instead)
 
 ---
 
@@ -1073,6 +1151,54 @@ _None found in analyzed files_
 
 ---
 
+## Latest Commit Changes (2026-01-01)
+
+### Summary: PDF Download Architecture Refactoring
+
+Commit `bb71fab` introduced a major improvement to the PDF generation workflow with an interface-based architecture that supports parallel downloads and automatic cleanup.
+
+### New Interfaces (`packages/core/src/types.ts`)
+
+1. **`IPDFGenerator`**: Interface for PDF generation implementations
+   - Enables dependency injection and testing
+   - Single method: `generate(imagePaths, outputPath): Promise<void>`
+
+2. **`PDFDownloadOptions`**: Extends `DownloadOptions` with `keepImages?: boolean`
+   - Controls whether temporary files are preserved after PDF generation
+
+3. **`PDFDownloadResult`**: Extends `DownloadResult` with `pdfPath: string`
+   - Returns path to generated PDF along with all download stats
+
+### New Components
+
+1. **`PDFKitGenerator`** (`packages/pdf/src/generator.ts`)
+   - Implements `IPDFGenerator` interface
+   - Promise-based API (proper async/await support)
+   - Sequential image processing with error propagation
+   - Replaces callback-based legacy function
+
+2. **`PDFDownloader`** (`packages/downloader/src/pdf-downloader.ts`)
+   - Orchestrates: download → PDF generation → cleanup
+   - Parallel-safe: unique temp directories per chapter
+   - Automatic cleanup using Bun shell (`rm -rf`)
+   - Error-resilient: attempts cleanup even on failures
+
+### Benefits
+
+✅ **Parallel Downloads**: Multiple chapters can be downloaded simultaneously without conflicts  
+✅ **Cleaner Workflow**: Single method call replaces multi-step manual process  
+✅ **Testability**: Interface-based design enables mocking for tests  
+✅ **Resource Management**: Automatic temp file cleanup prevents disk bloat  
+✅ **Flexibility**: `keepImages` option for debugging or manual inspection
+
+### Migration Path
+
+- **Old workflow**: `FileSystemDownloader` → manual PDF → manual cleanup
+- **New workflow**: `PDFDownloader` → automatic everything
+- **Legacy support**: `convertWebPToPdf()` marked `@deprecated` but still functional
+
+---
+
 **This report was generated on**: 2026-01-01  
-**Codebase Version**: Commit unknown (main branch)  
-**Completeness**: ~80% (manverse-api, uploader, manverse-scraper are stubs)
+**Codebase Version**: Commit bb71fab (learning/open branch)  
+**Completeness**: ~85% (manverse-api, uploader, manverse-scraper are stubs + new PDF architecture functional)
