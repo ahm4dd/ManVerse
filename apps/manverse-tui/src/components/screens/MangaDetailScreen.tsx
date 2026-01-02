@@ -51,7 +51,8 @@ export const MangaDetailScreen: React.FC = () => {
 
       // Check if in library
       if (anilist) {
-        const mapping = getMapping(anilist.id);
+        // FIXED: getMapping requires 2 args (anilistId, provider)
+        const mapping = getMapping(anilist.id, provider);
         if (mapping) {
           const library = getLibraryEntry(mapping.provider, mapping.provider_manga_id);
           setLibraryEntry(library);
