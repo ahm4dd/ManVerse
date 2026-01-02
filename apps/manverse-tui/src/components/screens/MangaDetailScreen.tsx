@@ -18,7 +18,8 @@ interface MangaDetailProps {
 }
 
 export const MangaDetailScreen: React.FC = () => {
-  const { setScreen, browser, addToast } = useAppStore();
+
+  const { setScreen, browser, addToast, selectedManga } = useAppStore();
   const [loading, setLoading] = useState(true);
   const [anilistData, setAnilistData] = useState<any>(null);
   const [providerData, setProviderData] = useState<Manhwa | null>(null);
@@ -28,45 +29,62 @@ export const MangaDetailScreen: React.FC = () => {
   const [selectedChapterIndex, setSelectedChapterIndex] = useState(0);
   const [viewMode, setViewMode] = useState<'info' | 'chapters' | 'providers'>('info');
 
-  // TODO: Get manga ID from navigation state
-  const mangaId = 1; // Placeholder
-
   useEffect(() => {
-    loadMangaDetails();
-  }, []);
+    if (selectedManga) {
+      loadMangaDetails();
+    }
+  }, [selectedManga]);
 
   const loadMangaDetails = async () => {
     setLoading(true);
     try {
-      // Load from database
-      const anilist = getAnilistManga(mangaId);
-      setAnilistData(anilist);
-
-      // Check if in library
-      if (anilist) {
-        const mapping = getMapping(anilist.id);
-        if (mapping) {
-          const library = getLibraryEntry(mapping.provider, mapping.provider_manga_id);
-          setLibraryEntry(library);
-
-          // Load provider data
-          if (browser) {
-            const page = await browser.newPage();
-            try {
-              const scraper = new AsuraScansScarper();
-              // TODO: Get provider URL from mapping
-              const providerUrl = `https://asuracomic.net/series/${mapping.provider_manga_id}`;
-              const manhwa = await scraper.checkManhwa(page, providerUrl);
-              setProviderData(manhwa);
-              setChapters(manhwa.chapters || []);
-            } catch (error) {
-              console.error('Failed to load provider data:', error);
-            } finally {
-              await page.close();
-            }
-          }
+      let mapping = null;
+      
+      // 1. Load AniList data if ID is present
+      if (selectedManga?.id) {
+        const anilist = getAnilistManga(selectedManga.id);
+        setAnilistData(anilist);
+        
+        if (anilist) {
+           mapping = getMapping(anilist.id);
+           if (mapping) {
+             const library = getLibraryEntry(mapping.provider, mapping.provider_manga_id);
+             setLibraryEntry(library);
+           }
         }
       }
+
+      // 2. Determine provider URL (from mapping or direct selection)
+      let providerUrl = selectedManga?.providerUrl;
+      if (mapping) {
+          // TODO: Use provider specific URL builder
+          providerUrl = `https://asuracomic.net/series/${mapping.provider_manga_id}`;
+      }
+
+      // 3. Scrape provider data if URL is available
+      if (providerUrl && browser) {
+        const page = await browser.newPage();
+        try {
+          const scraper = new AsuraScansScarper();
+          const manhwa = await scraper.checkManhwa(page, providerUrl);
+          setProviderData(manhwa);
+          setChapters(manhwa.chapters || []);
+        } catch (error) {
+          console.error('Failed to load provider data:', error);
+          if (!anilistData) { // If this was our only source, show error
+             addToast({ type: 'error', message: 'Failed to load provider details' });
+          }
+        } finally {
+          await page.close();
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load manga details:', error);
+      addToast({ type: 'error', message: 'Failed to load manga details' });
+    } finally {
+      setLoading(false);
+    }
+  };
     } catch (error) {
       console.error('Failed to load manga details:', error);
       addToast({ type: 'error', message: 'Failed to load manga details' });
