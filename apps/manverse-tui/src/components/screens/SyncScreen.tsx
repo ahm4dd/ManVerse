@@ -4,12 +4,12 @@ import { Layout } from '../common/Layout.js';
 import { LoadingSpinner } from '../common/LoadingSpinner.js';
 import { useAppStore } from '../../state/store.js';
 import { getNeedsSyncList } from '@manverse/database';
-import type { AnilistSyncStateDb } from '@manverse/database';
+import type { AniListSyncStateDb } from '@manverse/database';
 
 export const SyncScreen: React.FC = () => {
   const { setScreen, isAuthenticated, addToast } = useAppStore();
   const [loading, setLoading] = useState(true);
-  const [needsSync, setNeedsSync] = useState<AnilistSyncStateDb[]>([]);
+  const [needsSync, setNeedsSync] = useState<AniListSyncStateDb[]>([]);
   const [syncing, setSyncing] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
 
