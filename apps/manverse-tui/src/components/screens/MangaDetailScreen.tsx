@@ -34,8 +34,9 @@ export const MangaDetailScreen: React.FC = () => {
   const [selectedChapterIndex, setSelectedChapterIndex] = useState(0);
   const [viewMode, setViewMode] = useState<'info' | 'chapters' | 'providers'>('info');
 
-  // TODO: Get manga ID from navigation state
+  // TODO: Get manga ID from props/navigation
   const mangaId = 1; // Placeholder
+  const provider = 'asura'; // TODO: Get from navigation/context
 
   useEffect(() => {
     loadMangaDetails();
@@ -105,7 +106,7 @@ export const MangaDetailScreen: React.FC = () => {
             mangaTitle: providerData.title,
             chapterNumber: selected.chapterNumber,
             chapterUrl: selected.chapterUrl,
-            provider: 'asura',
+            provider: provider, // Use dynamic provider
             providerMangaId: parseInt(providerData.id, 10),
             libraryId: libraryEntry?.id,
             totalFiles: 0,

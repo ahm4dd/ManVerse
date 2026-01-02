@@ -110,9 +110,7 @@ export const WelcomeScreen: React.FC = () => {
             ✗ Error
           </Text>
           <Text>{error}</Text>
-          <Text dimColor marginTop={1}>
-            Press Esc to try again
-          </Text>
+          <Text dimColor>Press Esc to try again</Text>
         </Box>
       )}
 
