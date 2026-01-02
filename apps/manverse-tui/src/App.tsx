@@ -12,6 +12,8 @@ import { MangaDetailScreen } from './components/screens/MangaDetailScreen.js';
 
 import { DownloadsScreen } from './components/screens/DownloadsScreen.js';
 
+import { SyncScreen } from './components/screens/SyncScreen.js';
+
 export const App: React.FC = () => {
   const { currentScreen } = useAppStore();
 
@@ -33,8 +35,7 @@ export const App: React.FC = () => {
     case 'downloads':
       return <DownloadsScreen />;
     case 'sync':
-      // TODO: Implement SyncScreen
-      return <DashboardScreen />;
+      return <SyncScreen />;
     case 'providers':
       // TODO: Implement ProvidersScreen
       return <DashboardScreen />;
