@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Box, Text } from 'ink';
 import TextInput from 'ink-text-input';
 
@@ -6,12 +6,10 @@ interface SelectInputProps {
   label: string;
   options: string[];
   value: string;
-  onChange: (value: string) => void;
 }
 
-export const SelectInput: React.FC<SelectInputProps> = ({ label, options, value, onChange }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const [selectedIndex, setSelectedIndex] = useState(options.indexOf(value));
+export const SelectInput: React.FC<SelectInputProps> = ({ label, options, value }) => {
+  const selectedIndex = options.indexOf(value);
 
   return (
     <Box flexDirection="column">
@@ -19,9 +17,9 @@ export const SelectInput: React.FC<SelectInputProps> = ({ label, options, value,
       <Box borderStyle="single" borderColor="cyan" padding={1}>
         <Text>{value}</Text>
       </Box>
-      {isOpen && (
-        <Box flexDirection="column" marginTop={1}>
-          {options.map((option, idx) => (
+      {/* Dropdown not currently interactive - placeholder */}
+      <Box flexDirection="column" marginTop={1}>
+        {options.slice(0, 3).map((option, idx) => (
             <Text
               key={option}
               bold={idx === selectedIndex}

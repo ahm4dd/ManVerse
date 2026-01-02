@@ -38,16 +38,10 @@ export const Modal: React.FC<ModalProps> = ({ title, children, width = 60, heigh
 interface ConfirmDialogProps {
   title: string;
   message: string;
-  onConfirm: () => void;
   onCancel: () => void;
 }
 
-export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
-  title,
-  message,
-  onConfirm,
-  onCancel,
-}) => {
+export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({ title, message, onCancel }) => {
   return (
     <Modal title={title} width={50} onClose={onCancel}>
       <Box flexDirection="column" padding={1}>

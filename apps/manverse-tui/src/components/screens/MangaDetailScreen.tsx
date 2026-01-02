@@ -5,6 +5,7 @@ import { LoadingSpinner } from '../common/LoadingSpinner.js';
 import { ProgressBar } from '../common/ProgressBar.js';
 import { useAppStore } from '../../state/store.js';
 import { getAnilistManga, getLibraryEntry, getMapping } from '@manverse/database';
+import type { AniListMangaDb, UserLibraryDb } from '@manverse/database';
 import { AsuraScansScarper } from '@manverse/scrapers';
 import type { Manhwa, ManhwaChapter } from '@manverse/core';
 
@@ -17,10 +18,10 @@ interface MangaDetailProps {
 export const MangaDetailScreen: React.FC = () => {
   const { setScreen, browser, addToast } = useAppStore();
   const [loading, setLoading] = useState(true);
-  const [anilistData, setAnilistData] = useState<any>(null);
+  const [anilistData, setAnilistData] = useState<AniListMangaDb | null>(null);
   const [providerData, setProviderData] = useState<Manhwa | null>(null);
   const [chapters, setChapters] = useState<ManhwaChapter[]>([]);
-  const [libraryEntry, setLibraryEntry] = useState<any>(null);
+  const [libraryEntry, setLibraryEntry] = useState<UserLibraryDb | null>(null);
   const [selectedChapterIndex, setSelectedChapterIndex] = useState(0);
   const [viewMode, setViewMode] = useState<'info' | 'chapters' | 'providers'>('info');
 
