@@ -8,7 +8,7 @@ import {
   getLibraryEntry,
   updateProgress,
 } from '@manverse/database';
-import type { AniListSyncStateDb, UserLibraryDb } from '@manverse/database';
+import type { AniListSyncStateDb, UserLibraryDb, AniListSyncStateInput } from '@manverse/database';
 import { libraryService } from './library-service.js';
 
 export interface SyncResult {
@@ -18,6 +18,10 @@ export interface SyncResult {
   errors: Array<{ anilistId: number; error: string }>;
 }
 
+/**
+ * Sync Service - Bidirectional AniList sync
+ * Uses correct database and AniList client APIs
+ */
 export class SyncService {
   /**
    * Get list of manga that need syncing
@@ -32,16 +36,17 @@ export class SyncService {
   async syncToAniList(
     client: AniListClient,
     anilistId: number,
+    provider: string = 'asura',
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      // Get sync state
+      // Correct: getSyncState takes 1 arg (anilistId only)
       const syncState = getSyncState(anilistId);
       if (!syncState) {
         return { success: false, error: 'No sync state found' };
       }
 
-      // Get mapping to find library entry
-      const mapping = getMapping(anilistId);
+      // Correct: getMapping takes 2 args (anilistId, provider)
+      const mapping = getMapping(anilistId, provider);
       if (!mapping) {
         return { success: false, error: 'No mapping found' };
       }
@@ -55,12 +60,12 @@ export class SyncService {
       // Sync to AniList
       await libraryService.syncProgressToAniList(client, libraryEntry);
 
-      // Record sync
-      recordAnilistUpdate(anilistId, 'progress', libraryEntry.progress);
-      recordAnilistUpdate(anilistId, 'status', libraryEntry.status);
-      if (libraryEntry.score) {
-        recordAnilistUpdate(anilistId, 'score', libraryEntry.score);
-      }
+      // Correct: recordAnilistUpdate takes (anilistId, object)
+      const updateData: Partial<AniListSyncStateInput> = {
+        anilist_progress: libraryEntry.progress,
+        last_synced: Date.now(),
+      };
+      recordAnilistUpdate(anilistId, updateData);
 
       return { success: true };
     } catch (error) {
@@ -75,16 +80,23 @@ export class SyncService {
   async syncFromAniList(
     client: AniListClient,
     anilistId: number,
+    provider: string = 'asura',
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      // Get AniList entry
-      const anilistEntry = await client.getUserMangaEntry(anilistId);
-      if (!anilistEntry) {
-        return { success: false, error: 'AniList entry not found' };
+      // Get AniList manga details
+      const anilistDetails = await client.getMangaDetails(anilistId);
+
+      // Get user's list entry (need to use getUserMangaList)
+      const user = await client.getCurrentUser();
+      const userList = await client.getUserMangaList(user.id);
+      const listEntry = userList.find((entry) => entry.media.id === anilistId);
+
+      if (!listEntry) {
+        return { success: false, error: 'Not in user list on AniList' };
       }
 
-      // Get mapping
-      const mapping = getMapping(anilistId);
+      // Correct: getMapping takes 2 args
+      const mapping = getMapping(anilistId, provider);
       if (!mapping) {
         return { success: false, error: 'No mapping found' };
       }
@@ -92,11 +104,14 @@ export class SyncService {
       // Update local library
       const libraryEntry = getLibraryEntry(mapping.provider, mapping.provider_manga_id);
       if (libraryEntry) {
-        // Update progress
-        updateProgress(libraryEntry.id, anilistEntry.progress || 0);
+        updateProgress(libraryEntry.id, listEntry.progress || 0);
 
-        // Record the sync
-        recordLocalUpdate(anilistId, 'progress', anilistEntry.progress || 0);
+        // Correct: recordLocalUpdate takes (anilistId, object)
+        const updateData: Partial<AniListSyncStateInput> = {
+          local_progress: listEntry.progress || 0,
+          last_synced: Date.now(),
+        };
+        recordLocalUpdate(anilistId, updateData);
       }
 
       return { success: true };
@@ -160,41 +175,20 @@ export class SyncService {
   }
 
   /**
-   * Resolve sync conflict - choose which version to keep
+   * Resolve sync conflict
    */
   async resolveConflict(
     client: AniListClient,
     anilistId: number,
-    resolution: 'keep-local' | 'keep-remote' | 'manual',
-    manualValues?: Partial<UserLibraryDb>,
+    resolution: 'keep-local' | 'keep-remote',
+    provider: string = 'asura',
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      if (resolution === 'manual' && manualValues) {
-        // Apply manual values
-        const mapping = getMapping(anilistId);
-        if (!mapping) {
-          return { success: false, error: 'No mapping found' };
-        }
-
-        const libraryEntry = getLibraryEntry(mapping.provider, mapping.provider_manga_id);
-        if (!libraryEntry) {
-          return { success: false, error: 'Library entry not found' };
-        }
-
-        // Update local with manual values
-        if (manualValues.progress !== undefined) {
-          updateProgress(libraryEntry.id, manualValues.progress);
-        }
-
-        // Sync to AniList
-        await this.syncToAniList(client, anilistId);
-      } else if (resolution === 'keep-local') {
-        await this.syncToAniList(client, anilistId);
-      } else if (resolution === 'keep-remote') {
-        await this.syncFromAniList(client, anilistId);
+      if (resolution === 'keep-local') {
+        return await this.syncToAniList(client, anilistId, provider);
+      } else {
+        return await this.syncFromAniList(client, anilistId, provider);
       }
-
-      return { success: true };
     } catch (error) {
       return {
         success: false,

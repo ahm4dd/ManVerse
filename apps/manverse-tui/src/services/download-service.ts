@@ -1,69 +1,68 @@
 import type { Browser, Page } from 'puppeteer';
 import { AsuraScansScarper } from '@manverse/scrapers';
 import { PDFDownloader } from '@manverse/downloader';
-import { PDFGenerator } from '@manverse/pdf';
+import { PDFKitGenerator } from '@manverse/pdf';
 import { recordDownload, updateProgress } from '@manverse/database';
-import type { Manhwa } from '@manverse/core';
+import type { Manhwa, ManhwaChapter, PDFDownloadOptions } from '@manverse/core';
 import { useDownloadStore } from '../state/download-store.js';
 
-interface DownloadOptions {
-  outputDir: string;
-  onProgress?: (progress: number, currentFile?: string) => void;
-}
-
+/**
+ * Download Service - Orchestrates chapter downloads with PDF generation
+ * Uses correct backend APIs from @manverse/downloader and @manverse/pdf
+ */
 export class DownloadService {
   private scraper: AsuraScansScarper;
   private pdfDownloader: PDFDownloader;
 
   constructor() {
     this.scraper = new AsuraScansScarper();
-    this.pdfDownloader = new PDFDownloader(this.scraper, new PDFGenerator());
+    // Correct: PDFKitGenerator (not PDFGenerator)
+    this.pdfDownloader = new PDFDownloader(this.scraper, new PDFKitGenerator());
   }
 
   /**
    * Download a single chapter and generate PDF
    */
   async downloadChapter(
-    browser: Browser,
-    manga: Manhwa,
-    chapterNumber: string,
+    page: Page,
     chapterUrl: string,
-    options: DownloadOptions,
+    outputPath: string,
     jobId: string,
     libraryId?: number,
-  ): Promise<{ success: boolean; filePath?: string; error?: string }> {
+  ): Promise<{ success: boolean; pdfPath?: string; error?: string }> {
     const { updateJob } = useDownloadStore.getState();
-    let page: Page | null = null;
 
     try {
       // Update job status
-      updateJob(jobId, { status: 'downloading', progress: 0 });
+      updateJob(jobId, { status: 'downloading', progress: 0, startTime: Date.now() });
 
-      // Create new page
-      page = await browser.newPage();
+      // Get chapter images from scraper
+      const chapter: ManhwaChapter = await this.scraper.checkManhwaChapter(page, chapterUrl);
 
       // Download chapter as PDF
-      const result = await this.pdfDownloader.downloadChapter(page, manga, chapterNumber, {
-        outputDir: options.outputDir,
-        onProgress: (progress) => {
-          updateJob(jobId, { progress });
-          options.onProgress?.(progress);
-        },
-      });
+      // Correct API: options is { path, force?, keepImages? }
+      const options: PDFDownloadOptions = {
+        path: outputPath,
+        force: false,
+        keepImages: false,
+      };
+
+      const result = await this.pdfDownloader.downloadChapter(chapter, options);
 
       if (!result.success) {
-        throw new Error(result.error || 'Download failed');
+        throw new Error(result.errors.map((e) => e.message).join(', ') || 'Download failed');
       }
 
-      // Record download in database
+      // Correct: recordDownload takes DownloadedChapterInput object
       if (libraryId) {
+        const chapterNumber = chapterUrl.split('/').pop() || 'unknown';
         recordDownload({
           provider_manga_id: libraryId,
           chapter_number: chapterNumber,
           chapter_url: chapterUrl,
-          file_path: result.filePath,
-          file_size: result.fileSize || null,
-          page_count: result.pageCount || null,
+          file_path: result.pdfPath, // Correct field: pdfPath (not filePath)
+          file_size: null, // We could get file size if needed
+          page_count: chapter.images.length,
           downloaded_at: Date.now(),
         });
 
@@ -78,13 +77,12 @@ export class DownloadService {
       updateJob(jobId, {
         status: 'completed',
         progress: 100,
-        downloadPath: result.filePath,
         endTime: Date.now(),
       });
 
       return {
         success: true,
-        filePath: result.filePath,
+        pdfPath: result.pdfPath,
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -96,40 +94,31 @@ export class DownloadService {
         endTime: Date.now(),
       });
 
-      console.error('Download failed:', errorMessage);
       return {
         success: false,
         error: errorMessage,
       };
-    } finally {
-      // Clean up page
-      if (page) {
-        await page.close().catch(console.error);
-      }
     }
   }
 
   /**
-   * Process download queue - picks up queued jobs and downloads them
+   * Process download queue - picks up queued jobs
    */
   async processQueue(browser: Browser, outputDir: string, maxConcurrent: number = 3) {
-    const { queue, updateJob } = useDownloadStore.getState();
+    const { queue } = useDownloadStore.getState();
 
-    // Get active and queued jobs
     const activeJobs = queue.filter((j) => j.status === 'downloading');
     const queuedJobs = queue.filter((j) => j.status === 'queued');
 
-    // Check if we can start new downloads
     const slotsAvailable = maxConcurrent - activeJobs.length;
     if (slotsAvailable <= 0 || queuedJobs.length === 0) {
       return;
     }
 
-    // Start downloads for available slots
     const jobsToStart = queuedJobs.slice(0, slotsAvailable);
 
     for (const job of jobsToStart) {
-      // Mark as downloading immediately
+      const { updateJob } = useDownloadStore.getState();
       updateJob(job.id, { status: 'downloading', startTime: Date.now() });
 
       // Start download (don't await - run in background)
@@ -143,34 +132,11 @@ export class DownloadService {
    * Download a job asynchronously
    */
   private async downloadJobAsync(browser: Browser, job: any, outputDir: string) {
+    const page = await browser.newPage();
     try {
-      // Get manga details from scraper
-      const page = await browser.newPage();
-      try {
-        const manga = await this.scraper.checkManhwa(page, job.chapterUrl);
+      const outputPath = `${outputDir}/${job.mangaTitle}-ch${job.chapterNumber}`;
 
-        await this.downloadChapter(
-          browser,
-          manga,
-          job.chapterNumber,
-          job.chapterUrl,
-          {
-            outputDir,
-            onProgress: (progress, currentFile) => {
-              const { updateJob } = useDownloadStore.getState();
-              updateJob(job.id, {
-                progress,
-                currentFile,
-                downloadedFiles: Math.floor((progress / 100) * job.totalFiles),
-              });
-            },
-          },
-          job.id,
-          job.libraryId,
-        );
-      } finally {
-        await page.close().catch(console.error);
-      }
+      await this.downloadChapter(page, job.chapterUrl, outputPath, job.id, job.libraryId);
     } catch (error) {
       console.error(`Job ${job.id} failed:`, error);
       const { updateJob } = useDownloadStore.getState();
@@ -179,6 +145,8 @@ export class DownloadService {
         error: error instanceof Error ? error.message : 'Unknown error',
         endTime: Date.now(),
       });
+    } finally {
+      await page.close().catch(console.error);
     }
   }
 }
