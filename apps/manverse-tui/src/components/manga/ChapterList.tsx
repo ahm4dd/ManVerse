@@ -28,9 +28,9 @@ export const ChapterList: React.FC<ChapterListProps> = ({ chapters, selectedInde
               {chapter.chapterTitle && `: ${chapter.chapterTitle}`}
             </Text>
             {chapter.releaseDate && (
-              <Text dimColor marginTop={1}>
-                Released: {chapter.releaseDate}
-              </Text>
+              <Box marginTop={1}>
+                <Text dimColor>Released: {chapter.releaseDate}</Text>
+              </Box>
             )}
           </Box>
         </Box>
