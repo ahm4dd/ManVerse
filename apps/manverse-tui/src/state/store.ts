@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
 import type { Browser } from 'puppeteer';
 
 // Type definitions
@@ -54,63 +53,50 @@ interface AppState {
   setBrowser: (browser: Browser | null) => void;
 }
 
-export const useAppStore = create<AppState>()(
-  persist(
-    (set) => ({
-      // Initial state
+export const useAppStore = create<AppState>((set) => ({
+  // Initial state
+  isAuthenticated: false,
+  user: null,
+  accessToken: null,
+  currentScreen: 'welcome',
+  sidebarCollapsed: false,
+  theme: 'dark',
+  toasts: [],
+  browser: null,
+
+  // Actions
+  login: (user, token) =>
+    set({
+      isAuthenticated: true,
+      user,
+      accessToken: token,
+      currentScreen: 'dashboard',
+    }),
+
+  logout: () =>
+    set({
       isAuthenticated: false,
       user: null,
       accessToken: null,
       currentScreen: 'welcome',
-      sidebarCollapsed: false,
-      theme: 'dark',
-      toasts: [],
-      browser: null,
-
-      // Actions
-      login: (user, token) =>
-        set({
-          isAuthenticated: true,
-          user,
-          accessToken: token,
-          currentScreen: 'dashboard',
-        }),
-
-      logout: () =>
-        set({
-          isAuthenticated: false,
-          user: null,
-          accessToken: null,
-          currentScreen: 'welcome',
-        }),
-
-      setScreen: (screen) => set({ currentScreen: screen }),
-
-      toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
-
-      addToast: (toast) =>
-        set((state) => ({
-          toasts: [
-            ...state.toasts,
-            {
-              ...toast,
-              id: `toast-${Date.now()}-${Math.random()}`,
-            },
-          ],
-        })),
-
-      removeToast: (id) => set((state) => ({ toasts: state.toasts.filter((t) => t.id !== id) })),
-
-      setBrowser: (browser) => set({ browser }),
     }),
-    {
-      name: 'manverse-app-storage',
-      partialize: (state) => ({
-        isAuthenticated: state.isAuthenticated,
-        user: state.user,
-        accessToken: state.accessToken,
-        theme: state.theme,
-      }),
-    },
-  ),
-);
+
+  setScreen: (screen) => set({ currentScreen: screen }),
+
+  toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
+
+  addToast: (toast) =>
+    set((state) => ({
+      toasts: [
+        ...state.toasts,
+        {
+          ...toast,
+          id: `toast-${Date.now()}-${Math.random()}`,
+        },
+      ],
+    })),
+
+  removeToast: (id) => set((state) => ({ toasts: state.toasts.filter((t) => t.id !== id) })),
+
+  setBrowser: (browser) => set({ browser }),
+}));
