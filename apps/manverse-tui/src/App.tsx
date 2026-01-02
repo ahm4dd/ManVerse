@@ -14,6 +14,9 @@ import { DownloadsScreen } from './components/screens/DownloadsScreen.js';
 
 import { SyncScreen } from './components/screens/SyncScreen.js';
 
+import { ProvidersScreen } from './components/screens/ProvidersScreen.js';
+import { SettingsScreen } from './components/screens/SettingsScreen.js';
+
 export const App: React.FC = () => {
   const { currentScreen } = useAppStore();
 
@@ -37,11 +40,9 @@ export const App: React.FC = () => {
     case 'sync':
       return <SyncScreen />;
     case 'providers':
-      // TODO: Implement ProvidersScreen
-      return <DashboardScreen />;
+      return <ProvidersScreen />;
     case 'settings':
-      // TODO: Implement SettingsScreen
-      return <DashboardScreen />;
+      return <SettingsScreen />;
     default:
       return <WelcomeScreen />;
   }
