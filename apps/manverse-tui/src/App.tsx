@@ -10,6 +10,8 @@ import { LibraryScreen } from './components/screens/LibraryScreen.js';
 
 import { MangaDetailScreen } from './components/screens/MangaDetailScreen.js';
 
+import { DownloadsScreen } from './components/screens/DownloadsScreen.js';
+
 export const App: React.FC = () => {
   const { currentScreen } = useAppStore();
 
@@ -29,8 +31,7 @@ export const App: React.FC = () => {
     case 'manga-detail':
       return <MangaDetailScreen />;
     case 'downloads':
-      // TODO: Implement DownloadsScreen
-      return <DashboardScreen />;
+      return <DownloadsScreen />;
     case 'sync':
       // TODO: Implement SyncScreen
       return <DashboardScreen />;
@@ -39,9 +40,6 @@ export const App: React.FC = () => {
       return <DashboardScreen />;
     case 'settings':
       // TODO: Implement SettingsScreen
-      return <DashboardScreen />;
-    case 'manga-detail':
-      // TODO: Implement MangaDetailScreen
       return <DashboardScreen />;
     default:
       return <WelcomeScreen />;
