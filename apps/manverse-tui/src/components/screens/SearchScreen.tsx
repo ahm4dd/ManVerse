@@ -8,7 +8,7 @@ import { useMangaSearch } from '../../hooks/useMangaSearch.js';
 import type { SearchedManhwa } from '@manverse/core';
 
 export const SearchScreen: React.FC = () => {
-  const { setScreen, addToast } = useAppStore();
+  const { setScreen, addToast, setSelectedManga } = useAppStore();
   const [query, setQuery] = useState('');
   const { results, loading, error, search, clear } = useMangaSearch();
   const [selectedPane, setSelectedPane] = useState<'anilist' | 'provider'>('anilist');
@@ -69,7 +69,15 @@ export const SearchScreen: React.FC = () => {
           type: 'info',
           message: `Selected: ${selectedPane === 'anilist' ? selected.title : (selected as SearchedManhwa).title}`,
         });
-        // TODO: Navigate to manga detail screen
+        // Navigate to manga detail screen
+        if (selectedPane === 'anilist') {
+          const m = selected as { id: number; title: string };
+          setSelectedManga({ id: m.id, title: m.title });
+        } else {
+          const m = selected as SearchedManhwa;
+          setSelectedManga({ providerUrl: m.id, title: m.title });
+        }
+        setScreen('manga-detail');
       }
     }
   });
