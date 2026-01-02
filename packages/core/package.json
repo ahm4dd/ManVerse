@@ -1,0 +1,20 @@
+{
+  "name": "@manverse/core",
+  "version": "0.1.0",
+  "description": "Core domain logic and interfaces for ManVerse",
+  "main": "./src/index.ts",
+  "module": "./src/index.ts",
+  "types": "./src/index.ts",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist",
+    "dev": "bun --watch ./src/index.ts"
+  },
+  "dependencies": {
+    "zod": "^4.2.1"
+  },
+  "devDependencies": {}
+}

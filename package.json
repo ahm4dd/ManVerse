@@ -1,0 +1,48 @@
+{
+  "name": "manverse-monorepo",
+  "version": "0.1.0",
+  "description": "ManVerse monorepo - Manga/Manhwa scraper and downloader",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun --filter \"*\" build",
+    "dev": "bun --filter \"*\" dev --parallel",
+    "lint": "eslint \"apps/**/*.ts\" \"packages/**/*.ts\"",
+    "format": "prettier --write \"apps/**/*.ts\" \"packages/**/*.ts\"",
+    "test": "bun test",
+    "backend": "bun --filter \"@manverse/api\" dev",
+    "scraper": "bun --filter \"@manverse/scraper\" dev"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ahm4dd/ManVerse.git"
+  },
+  "keywords": [
+    "manga",
+    "manhwa",
+    "scraper",
+    "pdf",
+    "telegram"
+  ],
+  "author": "ahm4dd",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/ahm4dd/ManVerse/issues"
+  },
+  "homepage": "https://github.com/ahm4dd/ManVerse#readme",
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@types/node": "^24.10.1",
+    "eslint": "^9.39.1",
+    "globals": "^16.5.0",
+    "prettier": "^3.7.4",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.49.0",
+    "vitest": "^4.0.15"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ]
+}
