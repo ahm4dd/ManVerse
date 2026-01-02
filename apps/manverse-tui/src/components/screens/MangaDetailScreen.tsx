@@ -4,9 +4,12 @@ import { Layout } from '../common/Layout.js';
 import { LoadingSpinner } from '../common/LoadingSpinner.js';
 import { ProgressBar } from '../common/ProgressBar.js';
 import { useAppStore } from '../../state/store.js';
+import { useDownloadStore } from '../../state/download-store.js';
 import { getAnilistManga, getLibraryEntry, getMapping } from '@manverse/database';
 import { AsuraScansScarper } from '@manverse/scrapers';
-import type { Manhwa, ManhwaChapter } from '@manverse/core';
+import type { Manhwa } from '@manverse/core';
+
+type ChapterItem = Manhwa['chapters'][number];
 
 interface MangaDetailProps {
   anilistId?: number;
@@ -19,8 +22,9 @@ export const MangaDetailScreen: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [anilistData, setAnilistData] = useState<any>(null);
   const [providerData, setProviderData] = useState<Manhwa | null>(null);
-  const [chapters, setChapters] = useState<ManhwaChapter[]>([]);
+  const [chapters, setChapters] = useState<ChapterItem[]>([]);
   const [libraryEntry, setLibraryEntry] = useState<any>(null);
+  const { addToQueue, queue } = useDownloadStore();
   const [selectedChapterIndex, setSelectedChapterIndex] = useState(0);
   const [viewMode, setViewMode] = useState<'info' | 'chapters' | 'providers'>('info');
 
@@ -89,11 +93,26 @@ export const MangaDetailScreen: React.FC = () => {
         setSelectedChapterIndex(Math.min(chapters.length - 1, selectedChapterIndex + 1));
       } else if (key.return && chapters.length > 0) {
         const selected = chapters[selectedChapterIndex];
-        addToast({
-          type: 'info',
-          message: `Selected: ${selected.chapterTitle || selected.chapterNumber}`,
+
+        const alreadyQueued = queue.some((j) => j.chapterUrl === selected.chapterUrl);
+        if (alreadyQueued) {
+          addToast({ type: 'warning', message: 'Chapter already in download queue' });
+          return;
+        }
+
+        addToQueue({
+          mangaTitle: anilistData?.title_romaji || providerData?.title || 'Unknown',
+          chapterNumber: selected.chapterNumber,
+          chapterUrl: selected.chapterUrl,
+          provider: 'asura',
+          providerMangaId: 0,
+          totalFiles: 0,
         });
-        // TODO: Download chapter
+
+        addToast({
+          type: 'success',
+          message: `Added Chapter ${selected.chapterNumber} to queue`,
+        });
       }
     }
   });
