@@ -1,11 +1,9 @@
 import React from 'react';
 import { Box, Text } from 'ink';
-import type { Manhwa } from '@manverse/core';
-
-type ChapterItem = Manhwa['chapters'][number];
+import type { ManhwaChapter } from '@manverse/core';
 
 interface ChapterListProps {
-  chapters: ChapterItem[];
+  chapters: ManhwaChapter[];
   selectedIndex: number;
   onSelect?: (index: number) => void;
 }
@@ -28,9 +26,9 @@ export const ChapterList: React.FC<ChapterListProps> = ({ chapters, selectedInde
               {chapter.chapterTitle && `: ${chapter.chapterTitle}`}
             </Text>
             {chapter.releaseDate && (
-              <Box marginTop={1}>
-                <Text dimColor>Released: {chapter.releaseDate}</Text>
-              </Box>
+              <Text dimColor marginTop={1}>
+                Released: {chapter.releaseDate}
+              </Text>
             )}
           </Box>
         </Box>

@@ -4,13 +4,28 @@ import TextInput from 'ink-text-input';
 import { Layout } from '../common/Layout.js';
 import { LoadingSpinner } from '../common/LoadingSpinner.js';
 import { useAppStore } from '../../state/store.js';
-import { useMangaSearch } from '../../hooks/useMangaSearch.js';
+import { AniListClient } from '@manverse/anilist';
+import { AsuraScansScarper } from '@manverse/scrapers';
+import { searchLocalAnilist } from '@manverse/database';
 import type { SearchedManhwa } from '@manverse/core';
+import type { AniListMangaDb } from '@manverse/database';
+
+interface SearchResults {
+  anilist: Array<{ id: number; title: string; coverImage?: string }>;
+  provider: SearchedManhwa[];
+  loading: boolean;
+  error: string | null;
+}
 
 export const SearchScreen: React.FC = () => {
-  const { setScreen, addToast, setSelectedManga } = useAppStore();
+  const { setScreen, browser, isAuthenticated, accessToken, addToast } = useAppStore();
   const [query, setQuery] = useState('');
-  const { results, loading, error, search, clear } = useMangaSearch();
+  const [results, setResults] = useState<SearchResults>({
+    anilist: [],
+    provider: [],
+    loading: false,
+    error: null,
+  });
   const [selectedPane, setSelectedPane] = useState<'anilist' | 'provider'>('anilist');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [searchFocused, setSearchFocused] = useState(true);
@@ -18,17 +33,76 @@ export const SearchScreen: React.FC = () => {
   // Debounced search
   useEffect(() => {
     if (!query || query.length < 2) {
-      clear();
+      setResults({ anilist: [], provider: [], loading: false, error: null });
       return;
     }
 
     const timer = setTimeout(() => {
-      search(query);
-      setSelectedIndex(0);
+      performSearch(query);
     }, 500);
 
     return () => clearTimeout(timer);
-  }, [query, search, clear]);
+  }, [query]);
+
+  const performSearch = async (searchQuery: string) => {
+    setResults((prev) => ({ ...prev, loading: true, error: null }));
+
+    try {
+      // Search AniList (local cache first)
+      const localResults = searchLocalAnilist(searchQuery, 10);
+
+      let anilistResults = localResults.map((item: AniListMangaDb) => ({
+        id: item.id,
+        title: item.title_romaji || item.title_english || 'Unknown',
+        coverImage: item.cover_image_url || undefined,
+      }));
+
+      // If authenticated and no local results, search API
+      if (anilistResults.length === 0 && isAuthenticated && accessToken) {
+        const client = AniListClient.create({
+          clientId: process.env.ANILIST_CLIENT_ID || '',
+          clientSecret: process.env.ANILIST_CLIENT_SECRET || '',
+          accessToken,
+        });
+        const apiResults = await client.searchManga(searchQuery);
+        anilistResults = apiResults.media.map((item) => ({
+          id: item.id,
+          title: item.title?.romaji || item.title?.english || 'Unknown',
+          coverImage: item.coverImage?.large,
+        }));
+      }
+
+      // Search provider (AsuraScans)
+      let providerResults: SearchedManhwa[] = [];
+      if (browser) {
+        const page = await browser.newPage();
+        try {
+          const scraper = new AsuraScansScarper();
+          const searchResult = await scraper.search(false, page, searchQuery, 1);
+          providerResults = searchResult.results as SearchedManhwa[];
+        } catch (error) {
+          console.error('Provider search failed:', error);
+        } finally {
+          await page.close();
+        }
+      }
+
+      setResults({
+        anilist: anilistResults,
+        provider: providerResults,
+        loading: false,
+        error: null,
+      });
+      setSelectedIndex(0);
+    } catch (error) {
+      setResults({
+        anilist: [],
+        provider: [],
+        loading: false,
+        error: error instanceof Error ? error.message : 'Search failed',
+      });
+    }
+  };
 
   // Keyboard navigation
   useInput((input, key) => {
@@ -69,15 +143,7 @@ export const SearchScreen: React.FC = () => {
           type: 'info',
           message: `Selected: ${selectedPane === 'anilist' ? selected.title : (selected as SearchedManhwa).title}`,
         });
-        // Navigate to manga detail screen
-        if (selectedPane === 'anilist') {
-          const m = selected as { id: number; title: string };
-          setSelectedManga({ id: m.id, title: m.title });
-        } else {
-          const m = selected as SearchedManhwa;
-          setSelectedManga({ providerUrl: m.id, title: m.title });
-        }
-        setScreen('manga-detail');
+        // TODO: Navigate to manga detail screen
       }
     }
   });
@@ -104,21 +170,21 @@ export const SearchScreen: React.FC = () => {
         </Box>
 
         {/* Loading State */}
-        {loading && (
+        {results.loading && (
           <Box marginBottom={1}>
             <LoadingSpinner message="Searching..." />
           </Box>
         )}
 
         {/* Error State */}
-        {error && (
+        {results.error && (
           <Box borderStyle="round" borderColor="red" padding={1} marginBottom={1}>
-            <Text color="red">✗ {error}</Text>
+            <Text color="red">✗ {results.error}</Text>
           </Box>
         )}
 
         {/* Results */}
-        {!loading && !error && query.length >= 2 && (
+        {!results.loading && !results.error && query.length >= 2 && (
           <Box flexDirection="row" gap={2}>
             {/* AniList Results */}
             <Box

@@ -4,11 +4,10 @@ import { Layout } from '../common/Layout.js';
 import { ProgressBar } from '../common/ProgressBar.js';
 import { useDownloadStore } from '../../state/download-store.js';
 import { useAppStore } from '../../state/store.js';
-import { formatFileSize } from '../../utils/formatting.js';
 
 export const DownloadsScreen: React.FC = () => {
   const { setScreen } = useAppStore();
-  const { queue, removeJob, clearCompleted, concurrency } = useDownloadStore();
+  const { queue, clearCompleted, maxConcurrent } = useDownloadStore();
 
   const activeDownloads = queue.filter((j) => j.status === 'downloading');
   const queuedDownloads = queue.filter((j) => j.status === 'queued');
@@ -42,7 +41,7 @@ export const DownloadsScreen: React.FC = () => {
             ⬇️ Active: {activeDownloads.length} | 📋 Queued: {queuedDownloads.length} | ✅ Complete:{' '}
             {completedDownloads.length} | ❌ Failed: {failedDownloads.length}
           </Text>
-          <Text dimColor>Concurrency: {concurrency}</Text>
+          <Text dimColor>Concurrency: {maxConcurrent}</Text>
         </Box>
 
         {/* Active Downloads */}
@@ -55,7 +54,7 @@ export const DownloadsScreen: React.FC = () => {
             </Box>
             {activeDownloads.map((job) => (
               <Box key={job.id} flexDirection="column" marginBottom={1}>
-                <Text>{job.title}</Text>
+                <Text>{job.mangaTitle}</Text>
                 <Box>
                   <ProgressBar current={job.progress} total={100} width={30} />
                   <Text> {job.progress}%</Text>
@@ -76,7 +75,7 @@ export const DownloadsScreen: React.FC = () => {
             </Box>
             {queuedDownloads.slice(0, 5).map((job) => (
               <Box key={job.id}>
-                <Text dimColor>• {job.title}</Text>
+                <Text dimColor>• {job.mangaTitle}</Text>
               </Box>
             ))}
             {queuedDownloads.length > 5 && (
@@ -96,7 +95,7 @@ export const DownloadsScreen: React.FC = () => {
             </Box>
             {completedDownloads.slice(0, 5).map((job) => (
               <Box key={job.id}>
-                <Text>✓ {job.title}</Text>
+                <Text>✓ {job.mangaTitle}</Text>
               </Box>
             ))}
             {completedDownloads.length > 5 && (
@@ -115,7 +114,7 @@ export const DownloadsScreen: React.FC = () => {
             </Box>
             {failedDownloads.slice(0, 5).map((job) => (
               <Box key={job.id} flexDirection="column">
-                <Text color="red">✗ {job.title}</Text>
+                <Text color="red">✗ {job.mangaTitle}</Text>
                 {job.error && <Text dimColor> {job.error}</Text>}
               </Box>
             ))}

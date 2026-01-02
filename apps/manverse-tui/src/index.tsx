@@ -5,7 +5,6 @@ import puppeteer from 'puppeteer';
 import { initDatabase, migrate, closeDatabase } from '@manverse/database';
 import { defaultBrowserConfig } from '@manverse/core';
 import { useAppStore } from './state/store.js';
-import { DownloadService } from './services/download-service.js';
 import { App } from './App.js';
 
 /**
@@ -24,9 +23,6 @@ async function main() {
 
     // Store browser in Zustand
     useAppStore.getState().setBrowser(browser);
-
-    // Initialize Services
-    DownloadService.getInstance();
 
     // 3. Set up cleanup handlers
     const cleanup = async () => {
