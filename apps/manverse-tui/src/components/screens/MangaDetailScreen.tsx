@@ -9,9 +9,6 @@ import { getAnilistManga, getLibraryEntry, getMapping } from '@manverse/database
 import type { AniListMangaDb, UserLibraryDb } from '@manverse/database';
 import { AsuraScansScarper } from '@manverse/scrapers';
 import type { Manhwa } from '@manverse/core';
-import { libraryService } from '../../services/library-service.js';
-import { downloadService } from '../../services/download-service.js';
-import { mappingService } from '../../services/mapping-service.js';
 
 interface MangaDetailProps {
   anilistId?: number;
@@ -25,7 +22,14 @@ export const MangaDetailScreen: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [anilistData, setAnilistData] = useState<AniListMangaDb | null>(null);
   const [providerData, setProviderData] = useState<Manhwa | null>(null);
-  const [chapters, setChapters] = useState<any[]>([]);
+  const [chapters, setChapters] = useState<
+    Array<{
+      chapterNumber: string;
+      chapterUrl: string;
+      chapterTitle?: string;
+      releaseDate?: string;
+    }>
+  >([]);
   const [libraryEntry, setLibraryEntry] = useState<UserLibraryDb | null>(null);
   const [selectedChapterIndex, setSelectedChapterIndex] = useState(0);
   const [viewMode, setViewMode] = useState<'info' | 'chapters' | 'providers'>('info');
@@ -98,11 +102,11 @@ export const MangaDetailScreen: React.FC = () => {
         // Add to download queue
         if (providerData && selected) {
           addToQueue({
-            mangaTitle: providerData.metadata?.title || providerData.title,
+            mangaTitle: providerData.title,
             chapterNumber: selected.chapterNumber,
             chapterUrl: selected.chapterUrl,
             provider: 'asura',
-            providerMangaId: providerData.id,
+            providerMangaId: parseInt(providerData.id, 10),
             libraryId: libraryEntry?.id,
             totalFiles: 0,
           });

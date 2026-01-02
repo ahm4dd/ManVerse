@@ -8,7 +8,7 @@ import {
   getLibraryEntry,
   updateProgress,
 } from '@manverse/database';
-import type { AniListSyncStateDb, UserLibraryDb, AniListSyncStateInput } from '@manverse/database';
+import type { AniListSyncStateDb } from '@manverse/database';
 import { libraryService } from './library-service.js';
 
 export interface SyncResult {
@@ -20,110 +20,97 @@ export interface SyncResult {
 
 /**
  * Sync Service - Bidirectional AniList sync
- * Uses correct database and AniList client APIs
+ * CORRECT APIs: recordLocalUpdate(id, progress, status?, score?)
  */
 export class SyncService {
-  /**
-   * Get list of manga that need syncing
-   */
   getNeedsSyncList(): AniListSyncStateDb[] {
     return getNeedsSyncList();
   }
 
-  /**
-   * Sync single manga to AniList (push local changes)
-   */
   async syncToAniList(
     client: AniListClient,
     anilistId: number,
     provider: string = 'asura',
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      // Correct: getSyncState takes 1 arg (anilistId only)
       const syncState = getSyncState(anilistId);
       if (!syncState) {
         return { success: false, error: 'No sync state found' };
       }
 
-      // Correct: getMapping takes 2 args (anilistId, provider)
       const mapping = getMapping(anilistId, provider);
       if (!mapping) {
         return { success: false, error: 'No mapping found' };
       }
 
-      // Get library entry
       const libraryEntry = getLibraryEntry(mapping.provider, mapping.provider_manga_id);
       if (!libraryEntry) {
         return { success: false, error: 'Library entry not found' };
       }
 
-      // Sync to AniList
       await libraryService.syncProgressToAniList(client, libraryEntry);
 
-      // Correct: recordAnilistUpdate takes (anilistId, object)
-      const updateData: Partial<AniListSyncStateInput> = {
-        anilist_progress: libraryEntry.progress,
-        last_synced: Date.now(),
-      };
-      recordAnilistUpdate(anilistId, updateData);
+      // CORRECT: recordAnilistUpdate(anilistId, progress, status?, score?)
+      recordAnilistUpdate(
+        anilistId,
+        libraryEntry.progress,
+        libraryEntry.status,
+        libraryEntry.score || undefined,
+      );
 
       return { success: true };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      return { success: false, error: errorMessage };
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
     }
   }
 
-  /**
-   * Sync from AniList (pull remote changes)
-   */
   async syncFromAniList(
     client: AniListClient,
     anilistId: number,
     provider: string = 'asura',
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      // Get AniList manga details
       const anilistDetails = await client.getMangaDetails(anilistId);
-
-      // Get user's list entry (need to use getUserMangaList)
       const user = await client.getCurrentUser();
       const userList = await client.getUserMangaList(user.id);
-      const listEntry = userList.find((entry) => entry.media.id === anilistId);
+
+      // FIXED: Added optional chaining for media
+      const listEntry = userList.find((entry) => entry.media?.id === anilistId);
 
       if (!listEntry) {
         return { success: false, error: 'Not in user list on AniList' };
       }
 
-      // Correct: getMapping takes 2 args
       const mapping = getMapping(anilistId, provider);
       if (!mapping) {
         return { success: false, error: 'No mapping found' };
       }
 
-      // Update local library
       const libraryEntry = getLibraryEntry(mapping.provider, mapping.provider_manga_id);
       if (libraryEntry) {
         updateProgress(libraryEntry.id, listEntry.progress || 0);
 
-        // Correct: recordLocalUpdate takes (anilistId, object)
-        const updateData: Partial<AniListSyncStateInput> = {
-          local_progress: listEntry.progress || 0,
-          last_synced: Date.now(),
-        };
-        recordLocalUpdate(anilistId, updateData);
+        // CORRECT: recordLocalUpdate(anilistId, progress, status?, score?)
+        recordLocalUpdate(
+          anilistId,
+          listEntry.progress || 0,
+          listEntry.status || undefined,
+          listEntry.score || undefined,
+        );
       }
 
       return { success: true };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      return { success: false, error: errorMessage };
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
     }
   }
 
-  /**
-   * Sync all pending manga
-   */
   async syncAll(
     client: AniListClient,
     direction: 'push' | 'pull' | 'both' = 'push',
@@ -174,9 +161,6 @@ export class SyncService {
     return result;
   }
 
-  /**
-   * Resolve sync conflict
-   */
   async resolveConflict(
     client: AniListClient,
     anilistId: number,
@@ -198,5 +182,4 @@ export class SyncService {
   }
 }
 
-// Singleton instance
 export const syncService = new SyncService();
