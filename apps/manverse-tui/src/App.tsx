@@ -6,6 +6,7 @@ import { useGlobalKeyboard } from './hooks/useKeyboard.js';
 import { WelcomeScreen } from './components/screens/WelcomeScreen.js';
 import { DashboardScreen } from './components/screens/DashboardScreen.js';
 import { SearchScreen } from './components/screens/SearchScreen.js';
+import { LibraryScreen } from './components/screens/LibraryScreen.js';
 
 export const App: React.FC = () => {
   const { currentScreen } = useAppStore();
@@ -22,8 +23,7 @@ export const App: React.FC = () => {
     case 'search':
       return <SearchScreen />;
     case 'library':
-      // TODO: Implement LibraryScreen
-      return <DashboardScreen />;
+      return <LibraryScreen />;
     case 'downloads':
       // TODO: Implement DownloadsScreen
       return <DashboardScreen />;
