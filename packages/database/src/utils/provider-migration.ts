@@ -1,6 +1,6 @@
-import { getAllMappings, createMapping, deleteMapping, remapManga } from './mapping.js';
-import { saveProviderManga, deactivateProvider } from './provider.js';
-import { deactivateProviderDomain, migrateProviderDomain } from './domains.js';
+import { getAllMappings, createMapping, deleteMapping, remapManga } from '../operations/mapping.js';
+import { saveProviderManga, deactivateProvider } from '../operations/provider.js';
+import { deactivateProviderDomain, migrateProviderDomain } from '../operations/domains.js';
 import { getDatabase } from '../db.js';
 
 /**

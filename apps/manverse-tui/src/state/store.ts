@@ -1,9 +1,30 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
+import type { Browser } from 'puppeteer';
 
-interface User {
+// Type definitions
+export type Screen =
+  | 'welcome'
+  | 'dashboard'
+  | 'search'
+  | 'library'
+  | 'manga-detail'
+  | 'downloads'
+  | 'sync'
+  | 'providers'
+  | 'settings';
+
+export interface User {
   id: number;
   username: string;
   avatar?: string;
+}
+
+export interface Toast {
+  id: string;
+  type: 'success' | 'error' | 'info' | 'warning';
+  message: string;
+  duration?: number;
 }
 
 interface AppState {
@@ -13,27 +34,83 @@ interface AppState {
   accessToken: string | null;
 
   // UI State
+  currentScreen: Screen;
   sidebarCollapsed: boolean;
-  currentScreen: string;
+  theme: 'dark' | 'light';
+
+  // Notifications
+  toasts: Toast[];
+
+  // Browser instance (for scrapers)
+  browser: Browser | null;
 
   // Actions
   login: (user: User, token: string) => void;
   logout: () => void;
+  setScreen: (screen: Screen) => void;
   toggleSidebar: () => void;
-  setScreen: (screen: string) => void;
+  addToast: (toast: Omit<Toast, 'id'>) => void;
+  removeToast: (id: string) => void;
+  setBrowser: (browser: Browser | null) => void;
 }
 
-export const useAppStore = create<AppState>((set) => ({
-  // Initial state
-  isAuthenticated: false,
-  user: null,
-  accessToken: null,
-  sidebarCollapsed: false,
-  currentScreen: 'dashboard',
+export const useAppStore = create<AppState>()(
+  persist(
+    (set) => ({
+      // Initial state
+      isAuthenticated: false,
+      user: null,
+      accessToken: null,
+      currentScreen: 'welcome',
+      sidebarCollapsed: false,
+      theme: 'dark',
+      toasts: [],
+      browser: null,
 
-  // Actions
-  login: (user, token) => set({ isAuthenticated: true, user, accessToken: token }),
-  logout: () => set({ isAuthenticated: false, user: null, accessToken: null }),
-  toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
-  setScreen: (screen) => set({ currentScreen: screen }),
-}));
+      // Actions
+      login: (user, token) =>
+        set({
+          isAuthenticated: true,
+          user,
+          accessToken: token,
+          currentScreen: 'dashboard',
+        }),
+
+      logout: () =>
+        set({
+          isAuthenticated: false,
+          user: null,
+          accessToken: null,
+          currentScreen: 'welcome',
+        }),
+
+      setScreen: (screen) => set({ currentScreen: screen }),
+
+      toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
+
+      addToast: (toast) =>
+        set((state) => ({
+          toasts: [
+            ...state.toasts,
+            {
+              ...toast,
+              id: `toast-${Date.now()}-${Math.random()}`,
+            },
+          ],
+        })),
+
+      removeToast: (id) => set((state) => ({ toasts: state.toasts.filter((t) => t.id !== id) })),
+
+      setBrowser: (browser) => set({ browser }),
+    }),
+    {
+      name: 'manverse-app-storage',
+      partialize: (state) => ({
+        isAuthenticated: state.isAuthenticated,
+        user: state.user,
+        accessToken: state.accessToken,
+        theme: state.theme,
+      }),
+    },
+  ),
+);

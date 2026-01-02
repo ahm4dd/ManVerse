@@ -1,51 +1,45 @@
-import React, { useState } from 'react';
-import { Box } from 'ink';
-import WelcomeScreen from './components/screens/WelcomeScreen.js';
-import DashboardScreen from './components/screens/DashboardScreen.js';
+import React from 'react';
 import { useAppStore } from './state/store.js';
-import type { Config } from './config/types.js';
+import { useGlobalKeyboard } from './hooks/useKeyboard.js';
 
-interface AppProps {
-  config: Config;
-}
+// Screens
+import { WelcomeScreen } from './components/screens/WelcomeScreen.js';
+import { DashboardScreen } from './components/screens/DashboardScreen.js';
 
-type Screen =
-  | 'welcome'
-  | 'dashboard'
-  | 'search'
-  | 'library'
-  | 'downloads'
-  | 'sync'
-  | 'providers'
-  | 'settings';
+export const App: React.FC = () => {
+  const { currentScreen } = useAppStore();
 
-const App: React.FC<AppProps> = ({ config }) => {
-  const { isAuthenticated } = useAppStore();
-  const [currentScreen, setCurrentScreen] = useState<Screen>(
-    config.firstLaunch ? 'welcome' : 'dashboard',
-  );
+  // Global keyboard shortcuts
+  useGlobalKeyboard();
 
-  const navigateTo = (screen: Screen) => {
-    setCurrentScreen(screen);
-  };
-
-  const renderScreen = () => {
-    switch (currentScreen) {
-      case 'welcome':
-        return <WelcomeScreen onComplete={() => navigateTo('dashboard')} />;
-      case 'dashboard':
-        return <DashboardScreen onNavigate={navigateTo} />;
-      // TODO: Other screens
-      default:
-        return <DashboardScreen onNavigate={navigateTo} />;
-    }
-  };
-
-  return (
-    <Box flexDirection="column" width="100%">
-      {renderScreen()}
-    </Box>
-  );
+  // Render current screen
+  switch (currentScreen) {
+    case 'welcome':
+      return <WelcomeScreen />;
+    case 'dashboard':
+      return <DashboardScreen />;
+    case 'search':
+      // TODO: Implement SearchScreen
+      return <DashboardScreen />;
+    case 'library':
+      // TODO: Implement LibraryScreen
+      return <DashboardScreen />;
+    case 'downloads':
+      // TODO: Implement DownloadsScreen
+      return <DashboardScreen />;
+    case 'sync':
+      // TODO: Implement SyncScreen
+      return <DashboardScreen />;
+    case 'providers':
+      // TODO: Implement ProvidersScreen
+      return <DashboardScreen />;
+    case 'settings':
+      // TODO: Implement SettingsScreen
+      return <DashboardScreen />;
+    case 'manga-detail':
+      // TODO: Implement MangaDetailScreen
+      return <DashboardScreen />;
+    default:
+      return <WelcomeScreen />;
+  }
 };
-
-export default App;

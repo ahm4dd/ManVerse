@@ -1,34 +1,48 @@
+#!/usr/bin/env bun
 import React from 'react';
 import { render } from 'ink';
-import App from './App.js';
-import { initDatabase, migrate } from '@manverse/database';
-import { loadConfig, saveConfig } from './config/index.js';
+import puppeteer from 'puppeteer';
+import { initDatabase, migrate, closeDatabase } from '@manverse/database';
+import { defaultBrowserConfig } from '@manverse/core';
+import { useAppStore } from './state/store.js';
+import { App } from './App.js';
 
-// Initialize database
-console.log('📦 Initializing database...');
-initDatabase();
-migrate();
-console.log('✅ Database ready\n');
+/**
+ * Initialize the ManVerse TUI
+ */
+async function main() {
+  try {
+    // 1. Initialize database
+    console.log('📦 Initializing database...');
+    initDatabase();
+    migrate();
 
-// Load or create config
-const config = loadConfig();
+    // 2. Launch browser
+    console.log('🌐 Launching browser...');
+    const browser = await puppeteer.launch(defaultBrowserConfig);
 
-// Check first launch
-if (config.firstLaunch) {
-  config.firstLaunch = false;
-  saveConfig(config);
+    // Store browser in Zustand
+    useAppStore.getState().setBrowser(browser);
+
+    // 3. Set up cleanup handlers
+    const cleanup = async () => {
+      console.log('\\n🧹 Cleaning up...');
+      await browser.close();
+      closeDatabase();
+      process.exit(0);
+    };
+
+    process.on('SIGINT', cleanup);
+    process.on('SIGTERM', cleanup);
+
+    // 4. Render Ink app
+    console.clear();
+    render(<App />);
+  } catch (error) {
+    console.error('❌ Failed to start ManVerse TUI:', error);
+    process.exit(1);
+  }
 }
 
-// Render app
-const { clear } = render(<App config={config} />);
-
-// Cleanup on exit
-process.on('SIGINT', () => {
-  clear();
-  process.exit(0);
-});
-
-process.on('SIGTERM', () => {
-  clear();
-  process.exit(0);
-});
+// Run the app
+main();

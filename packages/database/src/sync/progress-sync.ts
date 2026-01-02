@@ -31,7 +31,7 @@ export class ProgressSyncService {
   }> {
     try {
       const syncState = getSyncState(anilistId);
-      
+
       if (!syncState) {
         return { success: false, error: 'No sync state found' };
       }
@@ -45,7 +45,7 @@ export class ProgressSyncService {
       // Get all mappings to find library entry
       const mappings = []; // Would need to get from getAllMappings
       let libraryEntry = null;
-      
+
       for (const mapping of mappings) {
         const entry = getLibraryEntry(mapping.provider, mapping.provider_manga_id);
         if (entry) {
@@ -104,11 +104,11 @@ export class ProgressSyncService {
     try {
       // Fetch from AniList
       const anilistEntry = await this.anilistClient.getUserList(this.userId);
-      
+
       // Find the specific entry (simplified - would need proper filtering)
       const entry = anilistEntry.lists
-        ?.flatMap(list => list.entries)
-        .find(e => e.media?.id === anilistId);
+        ?.flatMap((list) => list.entries)
+        .find((e) => e.media?.id === anilistId);
 
       if (!entry || !entry.media) {
         return { success: false, error: 'Not in AniList library' };
@@ -142,7 +142,7 @@ export class ProgressSyncService {
     errors: Array<{ anilistId: number; error: string }>;
   }> {
     const needsSync = getNeedsSyncList();
-    
+
     let pushed = 0;
     let pulled = 0;
     let conflicts = 0;
@@ -166,16 +166,24 @@ export class ProgressSyncService {
           }
         } else if (state.sync_direction === 'conflict') {
           conflicts++;
-          
+
           // Resolve based on strategy
           if (strategy === 'prefer-local') {
             const result = await this.pushProgress(state.anilist_id);
             if (result.success) pushed++;
-            else errors.push({ anilistId: state.anilist_id, error: result.error || 'Conflict resolution failed' });
+            else
+              errors.push({
+                anilistId: state.anilist_id,
+                error: result.error || 'Conflict resolution failed',
+              });
           } else {
             const result = await this.pullProgress(state.anilist_id);
             if (result.success) pulled++;
-            else errors.push({ anilistId: state.anilist_id, error: result.error || 'Conflict resolution failed' });
+            else
+              errors.push({
+                anilistId: state.anilist_id,
+                error: result.error || 'Conflict resolution failed',
+              });
           }
         }
       } catch (error) {
@@ -202,22 +210,22 @@ export class ProgressSyncService {
 
     return {
       totalNeedsSync: needsSync.length,
-      needsPush: needsSync.filter(s => s.sync_direction === 'push').length,
-      needsPull: needsSync.filter(s => s.sync_direction === 'pull').length,
-      conflicts: needsSync.filter(s => s.sync_direction === 'conflict').length,
+      needsPush: needsSync.filter((s) => s.sync_direction === 'push').length,
+      needsPull: needsSync.filter((s) => s.sync_direction === 'pull').length,
+      conflicts: needsSync.filter((s) => s.sync_direction === 'conflict').length,
     };
   }
 
   /**
    * Convert local status to AniList status
    */
-  private convert ToAniListStatus(localStatus: string): string {
+  private convertToAniListStatus(localStatus: string): string {
     const mapping: Record<string, string> = {
-      'reading': 'CURRENT',
-      'completed': 'COMPLETED',
-      'plan_to_read': 'PLANNING',
-      'paused': 'PAUSED',
-      'dropped': 'DROPPED',
+      reading: 'CURRENT',
+      completed: 'COMPLETED',
+      plan_to_read: 'PLANNING',
+      paused: 'PAUSED',
+      dropped: 'DROPPED',
     };
 
     return mapping[localStatus] || 'CURRENT';
@@ -228,11 +236,11 @@ export class ProgressSyncService {
    */
   private convertFromAniListStatus(anilistStatus: string): string {
     const mapping: Record<string, string> = {
-      'CURRENT': 'reading',
-      'COMPLETED': 'completed',
-      'PLANNING': 'plan_to_read',
-      'PAUSED': 'paused',
-      'DROPPED': 'dropped',
+      CURRENT: 'reading',
+      COMPLETED: 'completed',
+      PLANNING: 'plan_to_read',
+      PAUSED: 'paused',
+      DROPPED: 'dropped',
     };
 
     return mapping[anilistStatus] || 'reading';
