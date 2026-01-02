@@ -1,9 +1,11 @@
 import React from 'react';
 import { Box, Text } from 'ink';
-import type { ManhwaChapter } from '@manverse/core';
+import type { Manhwa } from '@manverse/core';
+
+type ChapterItem = Manhwa['chapters'][number];
 
 interface ChapterListProps {
-  chapters: ManhwaChapter[];
+  chapters: ChapterItem[];
   selectedIndex: number;
   onSelect?: (index: number) => void;
 }
