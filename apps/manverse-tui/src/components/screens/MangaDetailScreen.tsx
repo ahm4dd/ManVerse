@@ -4,10 +4,14 @@ import { Layout } from '../common/Layout.js';
 import { LoadingSpinner } from '../common/LoadingSpinner.js';
 import { ProgressBar } from '../common/ProgressBar.js';
 import { useAppStore } from '../../state/store.js';
+import { useDownloadStore } from '../../state/download-store.js';
 import { getAnilistManga, getLibraryEntry, getMapping } from '@manverse/database';
 import type { AniListMangaDb, UserLibraryDb } from '@manverse/database';
 import { AsuraScansScarper } from '@manverse/scrapers';
-import type { Manhwa, ManhwaChapter } from '@manverse/core';
+import type { Manhwa } from '@manverse/core';
+import { libraryService } from '../../services/library-service.js';
+import { downloadService } from '../../services/download-service.js';
+import { mappingService } from '../../services/mapping-service.js';
 
 interface MangaDetailProps {
   anilistId?: number;
@@ -17,10 +21,11 @@ interface MangaDetailProps {
 
 export const MangaDetailScreen: React.FC = () => {
   const { setScreen, browser, addToast } = useAppStore();
+  const { addToQueue } = useDownloadStore();
   const [loading, setLoading] = useState(true);
   const [anilistData, setAnilistData] = useState<AniListMangaDb | null>(null);
   const [providerData, setProviderData] = useState<Manhwa | null>(null);
-  const [chapters, setChapters] = useState<ManhwaChapter[]>([]);
+  const [chapters, setChapters] = useState<any[]>([]);
   const [libraryEntry, setLibraryEntry] = useState<UserLibraryDb | null>(null);
   const [selectedChapterIndex, setSelectedChapterIndex] = useState(0);
   const [viewMode, setViewMode] = useState<'info' | 'chapters' | 'providers'>('info');
@@ -90,11 +95,22 @@ export const MangaDetailScreen: React.FC = () => {
         setSelectedChapterIndex(Math.min(chapters.length - 1, selectedChapterIndex + 1));
       } else if (key.return && chapters.length > 0) {
         const selected = chapters[selectedChapterIndex];
-        addToast({
-          type: 'info',
-          message: `Selected: ${selected.chapterTitle || selected.chapterNumber}`,
-        });
-        // TODO: Download chapter
+        // Add to download queue
+        if (providerData && selected) {
+          addToQueue({
+            mangaTitle: providerData.metadata?.title || providerData.title,
+            chapterNumber: selected.chapterNumber,
+            chapterUrl: selected.chapterUrl,
+            provider: 'asura',
+            providerMangaId: providerData.id,
+            libraryId: libraryEntry?.id,
+            totalFiles: 0,
+          });
+          addToast({
+            type: 'success',
+            message: `Added Chapter ${selected.chapterNumber} to download queue`,
+          });
+        }
       }
     }
   });
@@ -175,10 +191,16 @@ export const MangaDetailScreen: React.FC = () => {
               <Text bold color="yellow">
                 ⚡ Actions
               </Text>
-              <Text>[A] Add to Library</Text>
-              <Text>[S] Sync with AniList</Text>
-              <Text>[D] Download Chapters</Text>
-              <Text>[M] Map to Provider</Text>
+              {!libraryEntry && anilistData && <Text>[A] Add to Library</Text>}
+              {libraryEntry && (
+                <>
+                  <Text>[+] Increase Progress</Text>
+                  <Text>[-] Decrease Progress</Text>
+                  <Text>[R] Rate (1-10)</Text>
+                  <Text>[F] Toggle Favorite</Text>
+                </>
+              )}
+              <Text>[D] Download All</Text>
             </Box>
           </Box>
         )}
