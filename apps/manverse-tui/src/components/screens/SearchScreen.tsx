@@ -63,8 +63,13 @@ export const SearchScreen: React.FC = () => {
           clientId: process.env.ANILIST_CLIENT_ID || '',
           clientSecret: process.env.ANILIST_CLIENT_SECRET || '',
         });
-        // CORRECT: Use setToken method, not accessToken in config
-        client.setToken({ accessToken, expiresAt: Date.now() + 3600000 });
+        // CORRECT: AuthToken needs tokenType and expiresIn
+        client.setToken({
+          accessToken,
+          tokenType: 'Bearer',
+          expiresIn: 3600,
+          expiresAt: Date.now() + 3600000,
+        });
         const apiResults = await client.searchManga(searchQuery);
         anilistResults = apiResults.media.map((item) => ({
           id: item.id,

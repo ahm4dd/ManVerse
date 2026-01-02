@@ -73,7 +73,6 @@ export class SyncService {
     provider: string = 'asura',
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      const anilistDetails = await client.getMangaDetails(anilistId);
       const user = await client.getCurrentUser();
       const userList = await client.getUserMangaList(user.id);
 
