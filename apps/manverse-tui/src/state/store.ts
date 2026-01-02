@@ -19,6 +19,12 @@ export interface User {
   avatar?: string;
 }
 
+export interface SelectedManga {
+  id?: number;
+  providerUrl?: string;
+  title?: string;
+}
+
 export interface Toast {
   id: string;
   type: 'success' | 'error' | 'info' | 'warning';
@@ -43,6 +49,10 @@ interface AppState {
   // Browser instance (for scrapers)
   browser: Browser | null;
 
+  // Navigation Data
+  selectedManga: SelectedManga | null;
+  setSelectedManga: (manga: SelectedManga | null) => void;
+
   // Actions
   login: (user: User, token: string) => void;
   logout: () => void;
@@ -63,6 +73,7 @@ export const useAppStore = create<AppState>((set) => ({
   theme: 'dark',
   toasts: [],
   browser: null,
+  selectedManga: null,
 
   // Actions
   login: (user, token) =>
@@ -99,4 +110,5 @@ export const useAppStore = create<AppState>((set) => ({
   removeToast: (id) => set((state) => ({ toasts: state.toasts.filter((t) => t.id !== id) })),
 
   setBrowser: (browser) => set({ browser }),
+  setSelectedManga: (manga) => set({ selectedManga: manga }),
 }));
