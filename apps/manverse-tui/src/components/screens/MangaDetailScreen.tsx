@@ -7,6 +7,7 @@ import { useAppStore } from '../../state/store.js';
 import { useDownloadStore } from '../../state/download-store.js';
 import { getAnilistManga, getLibraryEntry, getMapping } from '@manverse/database';
 import { AsuraScansScarper } from '@manverse/scrapers';
+import { ChapterList } from '../manga/ChapterList.js';
 import type { Manhwa } from '@manverse/core';
 
 type ChapterItem = Manhwa['chapters'][number];
@@ -225,22 +226,33 @@ export const MangaDetailScreen: React.FC = () => {
             {chapters.length === 0 ? (
               <Text dimColor>No chapters found</Text>
             ) : (
-              chapters.slice(0, 15).map((chapter, idx) => (
-                <Box
-                  key={idx}
-                  borderStyle={selectedChapterIndex === idx ? 'round' : 'single'}
-                  borderColor={selectedChapterIndex === idx ? 'cyan' : 'gray'}
-                  padding={1}
-                  marginBottom={1}
-                >
-                  <Text bold={selectedChapterIndex === idx}>
-                    {selectedChapterIndex === idx ? '› ' : '  '}
-                    Chapter {chapter.chapterNumber}
-                    {chapter.chapterTitle && `: ${chapter.chapterTitle}`}
-                  </Text>
-                  {chapter.releaseDate && <Text dimColor> • {chapter.releaseDate}</Text>}
-                </Box>
-              ))
+              <Box flexDirection="column">
+                <ChapterList
+                  chapters={chapters.slice(
+                    Math.max(0, Math.min(
+                        selectedChapterIndex - 7,
+                        chapters.length - 15
+                    )),
+                    Math.max(0, Math.min(
+                        selectedChapterIndex - 7,
+                        chapters.length - 15
+                    )) + 15
+                  ).map(c => c)} // slice returns correct type
+                  selectedIndex={selectedChapterIndex - Math.max(0, Math.min(
+                        selectedChapterIndex - 7,
+                        chapters.length - 15
+                    ))}
+                />
+                
+                {chapters.length > 15 && (
+                    <Box marginTop={1} borderStyle="single" borderColor="gray" paddingX={1}>
+                       <Text dimColor>
+                         {Math.floor((selectedChapterIndex / chapters.length) * 100)}% 
+                         ({selectedChapterIndex + 1}/{chapters.length})
+                       </Text>
+                    </Box>
+                )}
+              </Box>
             )}
           </Box>
         )}
