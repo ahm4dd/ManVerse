@@ -79,7 +79,7 @@ export const SearchScreen: React.FC = () => {
         try {
           const scraper = new AsuraScansScarper();
           const searchResult = await scraper.search(false, page, searchQuery, 1);
-          providerResults = searchResult.manhwas;
+          providerResults = searchResult.results as SearchedManhwa[];
         } catch (error) {
           console.error('Provider search failed:', error);
         } finally {
@@ -105,54 +105,51 @@ export const SearchScreen: React.FC = () => {
   };
 
   // Keyboard navigation
-  useInput(
-    (input, key) => {
-      if (searchFocused) {
-        if (key.escape) {
-          setSearchFocused(false);
-        }
-        return;
-      }
-
-      // Navigation
+  useInput((input, key) => {
+    if (searchFocused) {
       if (key.escape) {
-        setScreen('dashboard');
-        return;
+        setSearchFocused(false);
       }
+      return;
+    }
 
-      if (input === '/') {
-        setSearchFocused(true);
-        return;
+    // Navigation
+    if (key.escape) {
+      setScreen('dashboard');
+      return;
+    }
+
+    if (input === '/') {
+      setSearchFocused(true);
+      return;
+    }
+
+    if (key.tab) {
+      setSelectedPane(selectedPane === 'anilist' ? 'provider' : 'anilist');
+      setSelectedIndex(0);
+      return;
+    }
+
+    const currentList = selectedPane === 'anilist' ? results.anilist : results.provider;
+
+    if (key.upArrow) {
+      setSelectedIndex(Math.max(0, selectedIndex - 1));
+    } else if (key.downArrow) {
+      setSelectedIndex(Math.min(currentList.length - 1, selectedIndex + 1));
+    } else if (key.return && currentList.length > 0) {
+      const selected = currentList[selectedIndex];
+      if (selected) {
+        addToast({
+          type: 'info',
+          message: `Selected: ${selectedPane === 'anilist' ? selected.title : (selected as SearchedManhwa).title}`,
+        });
+        // TODO: Navigate to manga detail screen
       }
+    }
+  });
 
-      if (key.tab) {
-        setSelectedPane(selectedPane === 'anilist' ? 'provider' : 'anilist');
-        setSelectedIndex(0);
-        return;
-      }
-
-      const currentList = selectedPane === 'anilist' ? results.anilist : results.provider;
-
-      if (key.upArrow) {
-        setSelectedIndex(Math.max(0, selectedIndex - 1));
-      } else if (key.downArrow) {
-        setSelectedIndex(Math.min(currentList.length - 1, selectedIndex + 1));
-      } else if (key.return && currentList.length > 0) {
-        const selected = currentList[selectedIndex];
-        if (selected) {
-          addToast({
-            type: 'info',
-            message: `Selected: ${selectedPane === 'anilist' ? selected.title : (selected as SearchedManhwa).title}`,
-          });
-          // TODO: Navigate to manga detail screen
-        }
-      }
-    },
-    { isActive: true },
-  );
-
-  const anilistList = results.anilist;
-  const providerList = results.provider;
+  const anilistList = results.anilist || [];
+  const providerList = results.provider || [];
 
   return (
     <Layout title="Search" showSidebar>
