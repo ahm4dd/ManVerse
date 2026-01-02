@@ -4,25 +4,13 @@ import TextInput from 'ink-text-input';
 import { Layout } from '../common/Layout.js';
 import { LoadingSpinner } from '../common/LoadingSpinner.js';
 import { useAppStore } from '../../state/store.js';
-import { SearchService } from '../../services/search-service.js';
+import { useMangaSearch } from '../../hooks/useMangaSearch.js';
 import type { SearchedManhwa } from '@manverse/core';
-
-interface SearchResults {
-  anilist: Array<{ id: number; title: string; coverImage?: string }>;
-  provider: SearchedManhwa[];
-  loading: boolean;
-  error: string | null;
-}
 
 export const SearchScreen: React.FC = () => {
   const { setScreen, addToast } = useAppStore();
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<SearchResults>({
-    anilist: [],
-    provider: [],
-    loading: false,
-    error: null,
-  });
+  const { results, loading, error, search, clear } = useMangaSearch();
   const [selectedPane, setSelectedPane] = useState<'anilist' | 'provider'>('anilist');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [searchFocused, setSearchFocused] = useState(true);
@@ -30,40 +18,17 @@ export const SearchScreen: React.FC = () => {
   // Debounced search
   useEffect(() => {
     if (!query || query.length < 2) {
-      setResults({ anilist: [], provider: [], loading: false, error: null });
+      clear();
       return;
     }
 
     const timer = setTimeout(() => {
-      performSearch(query);
+      search(query);
+      setSelectedIndex(0);
     }, 500);
 
     return () => clearTimeout(timer);
-  }, [query]);
-
-  const performSearch = async (searchQuery: string) => {
-    setResults((prev) => ({ ...prev, loading: true, error: null }));
-
-    try {
-      const service = SearchService.getInstance();
-      const { anilist, provider } = await service.search(searchQuery);
-
-      setResults({
-        anilist,
-        provider,
-        loading: false,
-        error: null,
-      });
-      setSelectedIndex(0);
-    } catch (error) {
-      setResults({
-        anilist: [],
-        provider: [],
-        loading: false,
-        error: error instanceof Error ? error.message : 'Search failed',
-      });
-    }
-  };
+  }, [query, search, clear]);
 
   // Keyboard navigation
   useInput((input, key) => {
@@ -131,21 +96,21 @@ export const SearchScreen: React.FC = () => {
         </Box>
 
         {/* Loading State */}
-        {results.loading && (
+        {loading && (
           <Box marginBottom={1}>
             <LoadingSpinner message="Searching..." />
           </Box>
         )}
 
         {/* Error State */}
-        {results.error && (
+        {error && (
           <Box borderStyle="round" borderColor="red" padding={1} marginBottom={1}>
-            <Text color="red">✗ {results.error}</Text>
+            <Text color="red">✗ {error}</Text>
           </Box>
         )}
 
         {/* Results */}
-        {!results.loading && !results.error && query.length >= 2 && (
+        {!loading && !error && query.length >= 2 && (
           <Box flexDirection="row" gap={2}>
             {/* AniList Results */}
             <Box
