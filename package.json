@@ -1,0 +1,13 @@
+{
+  "name": "manverse",
+  "private": true,
+  "workspaces": [
+    "app",
+    "api",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:app": "npm --prefix app run dev",
+    "dev:api": "bun --cwd api run dev"
+  }
+}

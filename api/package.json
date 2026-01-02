@@ -1,0 +1,21 @@
+{
+  "name": "@manverse/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "start": "bun src/index.ts",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@manverse/anilist": "workspace:*",
+    "@manverse/core": "workspace:*",
+    "@manverse/scrapers": "workspace:*",
+    "hono": "^4.6.0",
+    "zod": "^4.2.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1"
+  }
+}

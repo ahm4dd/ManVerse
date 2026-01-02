@@ -1,0 +1,23 @@
+{
+  "name": "@manverse/database",
+  "version": "0.1.0",
+  "description": "SQLite persistence layer for ManVerse",
+  "main": "./src/index.ts",
+  "module": "./src/index.ts",
+  "types": "./src/index.ts",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist",
+    "dev": "bun --watch ./src/index.ts"
+  },
+  "dependencies": {
+    "@manverse/core": "workspace:*",
+    "zod": "^4.2.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1"
+  }
+}

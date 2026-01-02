@@ -1,0 +1,24 @@
+{
+  "name": "@manverse/anilist",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "codegen": "graphql-codegen --config codegen.yml",
+    "test": "vitest"
+  },
+  "dependencies": {
+    "@manverse/core": "workspace:*",
+    "graphql": "^16.8.1",
+    "graphql-request": "^7.0.1",
+    "zod": "^4.2.1"
+  },
+  "devDependencies": {
+    "@graphql-codegen/cli": "^5.0.0",
+    "@graphql-codegen/typescript": "^4.0.1",
+    "@graphql-codegen/typescript-operations": "^4.0.1",
+    "@types/node": "latest",
+    "vitest": "^4.0.15"
+  }
+}

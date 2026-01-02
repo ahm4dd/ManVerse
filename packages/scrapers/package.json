@@ -1,0 +1,21 @@
+{
+  "name": "@manverse/scrapers",
+  "version": "0.1.0",
+  "main": "./src/index.ts",
+  "module": "./src/index.ts",
+  "types": "./src/index.ts",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@manverse/core": "workspace:*",
+    "axios": "^1.6.2",
+    "defu": "^6.1.4",
+    "puppeteer": "^24.34.0",
+    "zod": "^4.2.1"
+  },
+  "devDependencies": {
+    "@types/puppeteer": "^7.0.4"
+  }
+}
