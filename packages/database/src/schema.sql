@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS anilist_manga (
   popularity INTEGER,
   favourites INTEGER,
   updated_at INTEGER,
+  country_of_origin TEXT,
   cached_at INTEGER NOT NULL
 );
 
@@ -73,6 +74,7 @@ CREATE TABLE IF NOT EXISTS user_library (
   anilist_id INTEGER,
   provider TEXT,
   provider_manga_id INTEGER,
+  anilist_entry_id INTEGER,
   status TEXT NOT NULL,
   progress REAL DEFAULT 0,
   score REAL,
@@ -88,6 +90,7 @@ CREATE TABLE IF NOT EXISTS user_library (
 
 CREATE INDEX IF NOT EXISTS idx_library_user ON user_library (user_id);
 CREATE INDEX IF NOT EXISTS idx_library_status ON user_library (status);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_library_user_anilist ON user_library (user_id, anilist_id);
 
 CREATE TABLE IF NOT EXISTS downloaded_chapters (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -117,6 +120,7 @@ CREATE TABLE IF NOT EXISTS anilist_sync_state (
 );
 
 CREATE INDEX IF NOT EXISTS idx_sync_user ON anilist_sync_state (user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sync_user_anilist ON anilist_sync_state (user_id, anilist_id);
 
 CREATE TABLE IF NOT EXISTS provider_domains (
   provider TEXT PRIMARY KEY,

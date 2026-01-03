@@ -44,6 +44,18 @@ export function migrate(target: Database = getDatabase()): void {
   const schemaPath = new URL('./schema.sql', import.meta.url);
   const schema = fs.readFileSync(schemaPath, 'utf8');
   target.exec(schema);
+
+  ensureColumn(target, 'anilist_manga', 'country_of_origin', 'TEXT');
+  ensureColumn(target, 'user_library', 'anilist_entry_id', 'INTEGER');
+}
+
+function ensureColumn(dbRef: Database, table: string, column: string, definition: string): void {
+  const columns = dbRef.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  if (columns.some((entry) => entry.name === column)) {
+    return;
+  }
+
+  dbRef.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
 }
 
 export function closeDatabase(): void {
