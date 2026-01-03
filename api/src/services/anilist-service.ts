@@ -19,6 +19,13 @@ function requireEnv(name: string): string {
 export class AniListService {
   private guestClient = AniListClient.create();
   private cache = new MemoryCache();
+  private userClients = new Map<string, AniListClient>();
+  private userCacheTtl = {
+    library: 60,
+    stats: 120,
+    activity: 60,
+    notifications: 60,
+  };
 
   private async cached<T>(key: string, ttlSeconds: number, loader: () => Promise<T>): Promise<T> {
     const ttlMs = Math.max(0, ttlSeconds) * 1000;
@@ -26,7 +33,10 @@ export class AniListService {
   }
 
   private getClientWithToken(accessToken: string): AniListClient {
-    return AniListClient.create({
+    const cached = this.userClients.get(accessToken);
+    if (cached) return cached;
+
+    const client = AniListClient.create({
       token: {
         accessToken,
         tokenType: 'Bearer',
@@ -34,6 +44,8 @@ export class AniListService {
         expiresAt: Date.now(),
       },
     });
+    this.userClients.set(accessToken, client);
+    return client;
   }
 
   private getAuthClient(): AniListAuth {
@@ -59,15 +71,24 @@ export class AniListService {
   }
 
   async getUserStats(userId: number, accessToken: string) {
-    return this.getClientWithToken(accessToken).getUserStats(userId);
+    const key = `user:${userId}:stats`;
+    return this.cached(key, this.userCacheTtl.stats, () =>
+      this.getClientWithToken(accessToken).getUserStats(userId),
+    );
   }
 
   async getUserActivity(userId: number, accessToken: string) {
-    return this.getClientWithToken(accessToken).getUserActivity(userId);
+    const key = `user:${userId}:activity`;
+    return this.cached(key, this.userCacheTtl.activity, () =>
+      this.getClientWithToken(accessToken).getUserActivity(userId),
+    );
   }
 
   async getNotifications(accessToken: string) {
-    return this.getClientWithToken(accessToken).getNotifications();
+    const key = `user:${accessToken}:notifications`;
+    return this.cached(key, this.userCacheTtl.notifications, () =>
+      this.getClientWithToken(accessToken).getNotifications(),
+    );
   }
 
   async searchManga(query: string, page = 1) {
@@ -121,7 +142,11 @@ export class AniListService {
   }
 
   async getUserLibrary(userId: number, accessToken: string, status?: MediaListStatus) {
-    return this.getClientWithToken(accessToken).getUserMangaCollection(userId, status);
+    const statusKey = status ?? 'ALL';
+    const key = `user:${userId}:library:${statusKey}`;
+    return this.cached(key, this.userCacheTtl.library, () =>
+      this.getClientWithToken(accessToken).getUserMangaCollection(userId, status),
+    );
   }
 
   async updateProgress(accessToken: string, mediaId: number, progress: number) {

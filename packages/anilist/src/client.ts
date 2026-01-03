@@ -1,4 +1,4 @@
-import { GraphQLClient } from 'graphql-request';
+import { GraphQLClient, ClientError } from 'graphql-request';
 import { AniListAuth, type AuthOptions } from './auth.js';
 import type {
   AuthToken,
@@ -15,6 +15,7 @@ import type {
 import {
   AniListAuthError,
   AniListError,
+  AniListRateLimitError,
   SearchResultSchema,
   AniListUserSchema,
   AniListMangaSchema,
@@ -104,6 +105,7 @@ interface AniListClientConfig {
   clientSecret?: string;
   token?: AuthToken;
   enableRateLimit?: boolean;
+  rateLimiter?: RateLimiter;
 }
 
 /**
@@ -115,6 +117,7 @@ export class AniListClient implements IAniListClient {
   private token?: AuthToken;
   private auth?: AniListAuth;
   private rateLimiter?: RateLimiter;
+  private static sharedRateLimiter = new RateLimiter();
 
   private constructor(config: AniListClientConfig) {
     this.graphql = new GraphQLClient(anilistConfig.apiUrl, {
@@ -130,7 +133,7 @@ export class AniListClient implements IAniListClient {
     }
 
     if (config.enableRateLimit !== false) {
-      this.rateLimiter = new RateLimiter();
+      this.rateLimiter = config.rateLimiter ?? AniListClient.sharedRateLimiter;
     }
 
     if (config.clientId && config.clientSecret) {
@@ -212,7 +215,19 @@ export class AniListClient implements IAniListClient {
       try {
         return await this.graphql.request<T>(query, variables);
       } catch (error) {
+        if (error instanceof ClientError) {
+          const status = error.response.status;
+          const retryAfterRaw = error.response.headers.get('retry-after');
+          const retryAfter = retryAfterRaw ? Number.parseInt(retryAfterRaw, 10) : undefined;
+          if (status === 429) {
+            throw new AniListRateLimitError(error.message, Number.isFinite(retryAfter) ? retryAfter : undefined);
+          }
+          throw new AniListError(error.message, 'HTTP_ERROR', status);
+        }
         // Wrap errors in AniListError
+        if (error instanceof AniListError) {
+          throw error;
+        }
         if (error instanceof Error) {
           throw new AniListError(error.message);
         }
