@@ -1,9 +1,11 @@
 import {
   AniListAuth,
   AniListClient,
+  anilistConfig,
   type AuthToken,
   type MediaListStatus,
 } from '@manverse/anilist';
+import { MemoryCache } from '../utils/cache.ts';
 
 function requireEnv(name: string): string {
   const value = Bun.env[name];
@@ -16,6 +18,12 @@ function requireEnv(name: string): string {
 
 export class AniListService {
   private guestClient = AniListClient.create();
+  private cache = new MemoryCache();
+
+  private async cached<T>(key: string, ttlSeconds: number, loader: () => Promise<T>): Promise<T> {
+    const ttlMs = Math.max(0, ttlSeconds) * 1000;
+    return this.cache.getOrLoad(key, ttlMs, loader);
+  }
 
   private getClientWithToken(accessToken: string): AniListClient {
     return AniListClient.create({
@@ -63,7 +71,10 @@ export class AniListService {
   }
 
   async searchManga(query: string, page = 1) {
-    return this.guestClient.searchManga(query, page);
+    const key = `search:${JSON.stringify({ query, page })}`;
+    return this.cached(key, anilistConfig.cache.searchResults, () =>
+      this.guestClient.searchManga(query, page),
+    );
   }
 
   async searchMangaWithFilters(
@@ -71,23 +82,42 @@ export class AniListService {
     page = 1,
     filters: { sort?: string[]; format?: string; status?: string; genre?: string; country?: string },
   ) {
-    return this.guestClient.searchManga(query, page, filters);
+    const key = `search:${JSON.stringify({ query, page, filters })}`;
+    return this.cached(key, anilistConfig.cache.searchResults, () =>
+      this.guestClient.searchManga(query, page, filters),
+    );
   }
 
   async getTrending(page = 1) {
-    return this.guestClient.getTrendingManga(page);
+    const key = `trending:${page}`;
+    return this.cached(key, anilistConfig.cache.searchResults, () =>
+      this.guestClient.getTrendingManga(page),
+    );
   }
 
   async getPopular(page = 1) {
-    return this.guestClient.getPopularManga(page);
+    const key = `popular:${page}`;
+    return this.cached(key, anilistConfig.cache.searchResults, () =>
+      this.guestClient.getPopularManga(page),
+    );
   }
 
   async getTopRated(page = 1) {
-    return this.guestClient.getTopRatedManga(page);
+    const key = `top-rated:${page}`;
+    return this.cached(key, anilistConfig.cache.searchResults, () =>
+      this.guestClient.getTopRatedManga(page),
+    );
   }
 
   async getMangaDetails(id: number) {
-    return this.guestClient.getMangaDetails(id);
+    const key = `media:${id}`;
+    return this.cached(key, anilistConfig.cache.mediaDetails, () =>
+      this.guestClient.getMangaDetails(id),
+    );
+  }
+
+  async getMangaDetailsForUser(accessToken: string, id: number) {
+    return this.getClientWithToken(accessToken).getMangaDetails(id);
   }
 
   async getUserLibrary(userId: number, accessToken: string, status?: MediaListStatus) {
