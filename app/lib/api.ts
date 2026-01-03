@@ -1,12 +1,89 @@
 import { Series, SeriesDetails, ChapterPage } from '../types';
-import { AsuraScansScraper } from './scrapers/asura';
-import { asuraScansConfig } from './config';
 import { anilistApi, SearchFilters } from './anilist';
-
-// Initialize the scraper (Mock Mode: true)
-const asuraScraper = new AsuraScansScraper(asuraScansConfig, true);
+import { API_URL, apiRequest } from './api-client';
 
 export type Source = 'AniList' | 'AsuraScans';
+
+type ProviderSearchResult = {
+  currentPage: number;
+  hasNextPage: boolean;
+  results: Array<{
+    id: string;
+    title: string;
+    image: string;
+    status?: string;
+    chapters?: string;
+    rating?: string;
+    genres?: string[];
+  }>;
+};
+
+type ProviderSeriesDetails = {
+  id: string;
+  title: string;
+  description: string;
+  image: string;
+  status: string;
+  rating?: string;
+  genres?: string[];
+  chapters: Array<{
+    chapterNumber: string;
+    chapterTitle?: string;
+    chapterUrl: string;
+    releaseDate?: string;
+  }>;
+  author?: string;
+  artist?: string;
+  serialization?: string;
+  updatedOn?: string;
+};
+
+function encodeChapterId(url: string): string {
+  const base = btoa(url);
+  return base.replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/g, '');
+}
+
+function formatSeriesResult(item: ProviderSearchResult['results'][number]): Series {
+  return {
+    id: item.id,
+    title: item.title,
+    image: item.image,
+    status: item.status || 'Unknown',
+    rating: item.rating || 'N/A',
+    latestChapter: item.chapters || '',
+    type: 'Manhwa',
+    genres: item.genres,
+    source: 'AsuraScans',
+  };
+}
+
+function formatSeriesDetails(details: ProviderSeriesDetails): SeriesDetails {
+  const chapters = details.chapters.map((ch) => ({
+    id: encodeChapterId(ch.chapterUrl),
+    number: ch.chapterNumber,
+    title: ch.chapterTitle || `Chapter ${ch.chapterNumber}`,
+    date: ch.releaseDate || '',
+    url: ch.chapterUrl,
+  }));
+
+  return {
+    id: details.id,
+    title: details.title,
+    image: details.image,
+    status: details.status,
+    rating: details.rating || 'N/A',
+    latestChapter: chapters[0]?.title || '',
+    type: 'Manhwa',
+    genres: details.genres || [],
+    description: details.description,
+    author: details.author || 'Unknown',
+    artist: details.artist || 'Unknown',
+    serialization: details.serialization || 'Unknown',
+    updatedOn: details.updatedOn || '',
+    chapters,
+    source: 'AsuraScans',
+  };
+}
 
 export const api = {
   // Home Page / Discovery
@@ -15,9 +92,14 @@ export const api = {
     try {
       return await anilistApi.getTrending();
     } catch (error) {
-      console.warn("AniList failed, falling back to mock scraper", error);
-      const res = await asuraScraper.search('');
-      return res.results.map(s => ({ ...s, source: 'AsuraScans' }));
+      console.warn("AniList failed, falling back to provider search", error);
+      try {
+        const res = await apiRequest<ProviderSearchResult>('/api/manga/search?source=asura&query=');
+        return res.results.map(formatSeriesResult);
+      } catch (e) {
+        console.warn('Provider fallback failed', e);
+        return [];
+      }
     }
   },
 
@@ -30,9 +112,15 @@ export const api = {
         return [];
       }
     } else {
-      // Direct Provider Search (Filters ignore for now on Asura mock)
-      const response = await asuraScraper.search(query);
-      return response.results.map(s => ({ ...s, source: 'AsuraScans' }));
+      try {
+        const res = await apiRequest<ProviderSearchResult>(
+          `/api/manga/search?source=asura&query=${encodeURIComponent(query)}`,
+        );
+        return res.results.map(formatSeriesResult);
+      } catch (e) {
+        console.warn('Provider search failed', e);
+        return [];
+      }
     }
   },
 
@@ -45,14 +133,30 @@ export const api = {
 
     if (source === 'AniList' && isAniListId) {
       return await anilistApi.getDetails(parseInt(id));
-    } else {
-      const details = await asuraScraper.getSeriesDetails(id);
-      return { ...details, source: 'AsuraScans' };
     }
+
+    const details = await apiRequest<ProviderSeriesDetails>(
+      `/api/manga/provider?provider=AsuraScans&id=${encodeURIComponent(id)}`,
+    );
+    return formatSeriesDetails(details);
   },
 
   getChapterImages: async (chapterId: string): Promise<ChapterPage[]> => {
     // Chapters always come from the scraper
-    return await asuraScraper.getChapterImages(chapterId);
+    const pages = await apiRequest<Array<{ page: number; img: string; headerForImage?: string }>>(
+      `/api/chapters/${encodeURIComponent(chapterId)}?provider=AsuraScans`,
+    );
+    return pages.map((page) => {
+      const referer = page.headerForImage || 'https://asuracomic.net/';
+      const proxyUrl = `${API_URL}/api/chapters/image?url=${encodeURIComponent(page.img)}&referer=${encodeURIComponent(referer)}`;
+      return { page: page.page, src: proxyUrl };
+    });
+  },
+
+  mapProviderSeries: async (anilistId: string, providerId: string) => {
+    return apiRequest(`/api/manga/${anilistId}/map`, {
+      method: 'POST',
+      body: JSON.stringify({ provider: 'AsuraScans', providerId }),
+    });
   },
 };

@@ -105,6 +105,14 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
       const details = await api.getSeriesDetails(id, 'AsuraScans');
       setActiveProviderSeries(details);
       setProviderResults(null); // Clear list to show chapters
+
+      if (user && data?.source === 'AniList') {
+        try {
+          await api.mapProviderSeries(data.id, id);
+        } catch (e) {
+          console.warn('Failed to persist provider mapping', e);
+        }
+      }
     } catch (e) {
       console.error(e);
       notify("Failed to load chapters.", 'error');
