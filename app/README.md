@@ -1,20 +1,18 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# ManVerse Frontend
 
-# Run and deploy your AI Studio app
+This folder contains the React frontend. The repo is managed as a workspace, so install from the repo root.
 
-This contains everything you need to run your app locally.
+## Run locally
 
-View your app in AI Studio: https://ai.studio/apps/drive/1eda4zz_0GJR5IEkGd6kSgNhG0an9qhrZ
+From the repo root:
 
-## Run Locally
+```bash
+bun install
+bun run dev:app
+```
 
-**Prerequisites:**  Node.js
+`bun install` downloads all workspace dependencies, including the frontend.
 
+The API defaults to `http://localhost:3001`. If needed, set `VITE_API_URL` in `app/.env.local`.
 
-1. Install dependencies:
-   `npm install`
-2. Update the API URL in [.env.local](.env.local) if needed
-3. Run the app:
-   `npm run dev`
+For full docs, see the root `README.md`.

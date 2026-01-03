@@ -1,150 +1,238 @@
 # ManVerse
 
-ManVerse is a local-first, full-stack manga/manhwa reader that combines AniList metadata with provider scraping for chapters and reading progress.
-It runs entirely on your machine: a React (Vite) frontend, a Bun + Hono API, and a shared package workspace.
+ManVerse is a local-first manga/manhwa reader. It uses AniList for metadata and library status, and uses providers (currently Asura) to fetch chapters and images. Everything runs on your own machine.
 
-## Features
+This repo contains:
+- A React + Vite frontend (`app/`)
+- A Bun + Hono API (`api/`)
+- Shared packages (`packages/*`)
 
-- AniList OAuth login with JWT session handling
-- Trending / popular / top-rated discovery via AniList
-- Provider scraping (Asura) for chapters and images
-- Provider <-> AniList mapping (manual search or URL/ID linking)
-- Continue Reading (AniList) and Recent Reads (local-only)
-- Reader with progress sync, resume, and mark-as-read
-- Library management and sync status
-- Rate-limit aware AniList requests
+## Table of contents
 
-## Repo Structure
+- [What you get](#what-you-get)
+- [How it works](#how-it-works)
+- [Quick start (fastest path)](#quick-start-fastest-path)
+- [AniList OAuth setup](#anilist-oauth-setup)
+- [Developer setup](#developer-setup)
+- [Configuration](#configuration)
+- [API docs (Scalar)](#api-docs-scalar)
+- [Frontend documentation](#frontend-documentation)
+- [Local data and storage](#local-data-and-storage)
+- [Provider mapping](#provider-mapping)
+- [Rate limits](#rate-limits)
+- [Troubleshooting](#troubleshooting)
+- [License](#license)
 
-- `app/` - Frontend (React + Tailwind + Framer Motion)
-- `api/` - API server (Bun + Hono)
-- `packages/` - Shared packages (`core`, `anilist`, `scrapers`, `downloader`, `pdf`, `database`)
-- `shared/` - Shared types
-- `legacy/` - Legacy code (kept for reference)
+## What you get
 
-## Requirements
+### Reading and library
+- AniList OAuth login with local JWT sessions
+- Trending / popular / top-rated discovery
+- Search across AniList and provider sources
+- Library filters (Reading, Planning, Completed, etc.)
+- Continue Reading (AniList + local progress)
+- Recent Reads (local-only history, even without AniList)
 
-- Node.js 18+ (for the frontend)
-- Bun 1.3+ (for the API and workspace packages)
+### Providers and mapping
+- Asura provider scraping (chapters + images)
+- Manual mapping between provider series and AniList entries
+- Resume chapters from where you left off
+- Provider-aware progress tracking
 
-## Installation
+### Local-first behavior
+- SQLite database stored locally
+- Optional custom database path
+- No telemetry or hosted backend
 
-1) Install dependencies
+## How it works
+
+- The frontend calls the local API for data.
+- The API calls AniList for metadata and uses scrapers for chapter lists and pages.
+- Your progress, mappings, and local history live in SQLite on your machine.
+
+## Quick start (fastest path)
+
+This is the quickest way to see ManVerse running locally. You can use Demo mode without AniList credentials.
+
+### 1) Install prerequisites
+
+- Node.js 18+
+- Bun 1.3+
+
+### 2) Install dependencies
 
 ```bash
-npm --prefix app install
-bun --cwd api install
+bun install
 ```
 
-2) Configure environment variables
+This single command downloads dependencies for the API and frontend (workspaces).
 
-Create `api/.env` from the template:
+On first install, a local `.env` file is created for the API and frontend with safe defaults:
+
+- `api/.env`
+- `app/.env.local`
+
+AniList credentials are optional if you only want Demo mode.
+
+### 3) Run the app
 
 ```bash
-cp api/.env.example api/.env
+bun run dev
 ```
 
-Set values in `api/.env`:
+This starts both the API and the frontend.
 
-- `ANILIST_CLIENT_ID` and `ANILIST_CLIENT_SECRET`
-- `ANILIST_REDIRECT_URI` (default: `http://localhost:3001/api/auth/anilist/callback`)
-- `JWT_SECRET` (set to a strong secret)
-- `CORS_ORIGIN` (usually `http://localhost:3000`)
-
-For the frontend, set the API base URL:
+If you prefer separate terminals:
 
 ```bash
-cp app/.env.local.example app/.env.local  # if you add a template later
-# or create manually
+bun run dev:api
+bun run dev:app
 ```
 
-```env
-VITE_API_URL=http://localhost:3001
+Open `http://localhost:3000`.
+
+Click **Try Demo Account** on the login screen to explore without AniList.
+If your API runs on a different URL, set `VITE_API_URL` in `app/.env.local`.
+
+## AniList OAuth setup
+
+AniList requires your own application credentials.
+
+1) Go to https://anilist.co/settings/developer
+2) Create a new application
+3) Set the redirect URI to:
+
+```
+http://localhost:3001/api/auth/anilist/callback
 ```
 
-Optional database location override:
+4) Copy the Client ID and Client Secret into `api/.env`
 
-```env
-MANVERSE_DB_PATH=/absolute/path/to/data.db
+If the redirect URI does not match exactly, login will fail.
+
+## Developer setup
+
+This is a workspace repo. Use Bun at the root.
+
+Use:
+
+```bash
+bun install
 ```
 
-By default, the database is stored at:
+That one command installs everything needed for both `app/` and `api/`.
+
+Useful scripts:
+
+```bash
+bun run dev
+bun run dev:app
+bun run dev:api
+```
+
+## Configuration
+
+These files are created automatically on first `bun install` if missing. Edit them anytime.
+
+### API (`api/.env`)
+
+- `PORT` (default: 3001)
+- `FRONTEND_URL` (default: http://localhost:3000)
+- `FRONTEND_AUTH_PATH` (optional, default: `/`)
+- `CORS_ORIGIN` (default: http://localhost:3000)
+- `JWT_SECRET` (required)
+- `ANILIST_CLIENT_ID` (required)
+- `ANILIST_CLIENT_SECRET` (required)
+- `ANILIST_REDIRECT_URI` (default: http://localhost:3001/api/auth/anilist/callback)
+- `ANILIST_RPM` (default: 30)
+
+### Frontend (`app/.env.local`)
+
+- `VITE_API_URL` (optional, default: http://localhost:3001)
+
+### Optional
+
+- `MANVERSE_DB_PATH` (absolute path to SQLite DB)
+
+If not set, the DB is stored at:
 
 ```
 ~/.config/manverse/data.db
 ```
 
-## Running the App
+## API docs (Scalar)
 
-```bash
-# API
-bun --cwd api run dev
+Interactive API docs are served by the backend and generated from Zod schemas via `@hono/zod-openapi`:
 
-# Frontend
-npm --prefix app run dev
-```
+- Scalar UI: `http://localhost:3001/api/docs`
+- OpenAPI spec: `http://localhost:3001/api/openapi.json`
 
-- Frontend: `http://localhost:3000`
-- API: `http://localhost:3001`
+## Frontend documentation
 
-## Usage
+The frontend is a single-page app in `app/`.
 
-1) Login with AniList (top right)
-2) Browse or search for a series
-3) Open a series
-4) If it is AniList-only, use “Find on Provider” to load chapters
-5) If it is provider-only, use “Link to AniList” to attach the AniList entry
-6) Read chapters, resume from history, and track progress
+### Entry points
 
-## Provider <-> AniList Mapping
+- `app/index.tsx` mounts the app
+- `app/App.tsx` contains the main view router
 
-You can map any provider series to an AniList entry:
+Routing is internal (no React Router). Views are swapped in `App.tsx` using local state.
 
-- Search AniList by title
-- Or paste the AniList URL / ID
-- Once linked, progress sync is enabled
+### Pages
 
-Mappings are stored locally in SQLite and can be changed at any time.
+- `app/pages/Home.tsx` — browse, search, continue reading
+- `app/pages/Details.tsx` — series details, provider mapping
+- `app/pages/Reader.tsx` — chapter reader
+- `app/pages/Library.tsx` — library overview, stats, lists
+- `app/pages/RecentReads.tsx` — local read history
+- `app/pages/Recommendations.tsx` — curated discovery
+- `app/pages/Login.tsx` — login view
 
-## Recent Reads vs Continue Reading
+### Key frontend modules
 
-- **Continue Reading**: AniList library + local progress merged
-- **Recent Reads**: Local-only history (even without AniList library)
+- `app/lib/api-client.ts` — HTTP wrapper + token storage
+- `app/lib/api.ts` — API calls for providers and manga
+- `app/lib/anilist.ts` — AniList integration + sync helpers
+- `app/lib/history.ts` — local read history
+- `app/lib/theme.ts` — theming
 
-Recent Reads supports sorting by tracked vs local, plus search and filtering.
+### Token handling
 
-## Rate Limits
+- The frontend receives `?token=` after AniList OAuth.
+- The token is stored locally and sent via `Authorization: Bearer <token>`.
 
-AniList enforces rate limiting. Configure in `api/.env`:
+## Local data and storage
+
+- SQLite database lives at `~/.config/manverse/data.db` by default.
+- Provider mappings and local history are stored there.
+- You can override the path using `MANVERSE_DB_PATH`.
+
+## Provider mapping
+
+AniList titles and provider titles don’t always match. ManVerse supports manual linking:
+
+1) Open a series page
+2) Use “Link to AniList”
+3) Search by title or paste an AniList URL/ID
+
+Once mapped, provider chapters can be fetched without re-searching.
+
+## Rate limits
+
+AniList limits requests. The API is aware of the limit and will return 429 when exceeded.
+
+You can adjust the local limit:
 
 ```env
 ANILIST_RPM=30
 ```
 
-The API will surface 429 responses when the limit is reached.
-
-## Security & Secrets
-
-Sensitive values are stored in `.env` files and **must not** be committed.
-
-Ignored by git:
-
-- `.env`
-- `api/.env`
-- `app/.env.local`
-
-The `.env.example` files are safe to commit but should not contain secrets.
-
 ## Troubleshooting
 
-- **CORS errors**: Ensure `CORS_ORIGIN` matches the Vite URL
-- **EADDRINUSE**: Another process is already using port 3001
-- **AniList 429**: Reduce request frequency or wait for the reset window
-
-## Publishing / Distribution
-
-Packaging (Docker, desktop app, installers) is planned but not included yet.
-For public releases, rotate secrets and validate `.gitignore` before pushing.
+- **CORS errors**: set `CORS_ORIGIN` to the frontend URL
+- **Port in use**: change `PORT` in `api/.env`
+- **AniList login fails**: check client ID, secret, and redirect URI
+- **Puppeteer errors**: your OS may need Chromium dependencies (see Puppeteer docs)
 
 ## License
 
