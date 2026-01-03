@@ -15,22 +15,31 @@ interface HistoryItem {
 
 interface HistoryCardProps {
   item?: HistoryItem;
-  onClick?: (item: HistoryItem) => void;
+  onClick?: (item?: HistoryItem) => void;
   onRemove?: (id: string) => void;
   isViewMore?: boolean;
+  viewLabel?: string;
 }
 
-const HistoryCard: React.FC<HistoryCardProps> = ({ item, onClick, onRemove, isViewMore = false }) => {
+const HistoryCard: React.FC<HistoryCardProps> = ({
+  item,
+  onClick,
+  onRemove,
+  isViewMore = false,
+  viewLabel,
+}) => {
   if (isViewMore) {
     return (
       <div 
         className="relative h-full w-full rounded-xl border border-white/10 bg-surfaceHighlight/30 flex flex-col items-center justify-center cursor-pointer hover:bg-white/5 transition-colors group aspect-video"
-        onClick={() => onClick && item && onClick(item)} // Generic handler fallback
+        onClick={() => onClick && onClick(item)}
       >
         <div className="w-12 h-12 rounded-full bg-surfaceHighlight flex items-center justify-center mb-3 group-hover:scale-110 transition-transform border border-white/5 shadow-lg">
            <span className="text-gray-400 group-hover:text-white transition-colors">View</span>
         </div>
-        <span className="text-sm font-bold text-gray-400 group-hover:text-white transition-colors">View Library</span>
+        <span className="text-sm font-bold text-gray-400 group-hover:text-white transition-colors">
+          {viewLabel || 'View Library'}
+        </span>
       </div>
     );
   }

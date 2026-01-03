@@ -355,8 +355,12 @@ const Home: React.FC<HomeProps> = ({
                               />
                           </div>
                         ))}
-                       <div className="w-[150px] aspect-video flex-shrink-0">
-                           <HistoryCard isViewMore={true} onClick={() => onNavigate('library')} />
+                        <div className="w-[150px] aspect-video flex-shrink-0">
+                           <HistoryCard
+                             isViewMore={true}
+                             viewLabel="View Library"
+                             onClick={() => onNavigate('library')}
+                           />
                         </div>
                      </motion.div>
                   </motion.div>
@@ -397,6 +401,13 @@ const Home: React.FC<HomeProps> = ({
                               />
                           </div>
                         ))}
+                        <div className="w-[150px] aspect-video flex-shrink-0">
+                           <HistoryCard
+                             isViewMore={true}
+                             viewLabel="View Recent Reads"
+                             onClick={() => onNavigate('recent-reads')}
+                           />
+                        </div>
                      </motion.div>
                   </motion.div>
                </motion.div>

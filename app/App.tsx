@@ -5,6 +5,7 @@ import Reader from './pages/Reader';
 import Login from './pages/Login';
 import Library from './pages/Library';
 import Recommendations from './pages/Recommendations';
+import RecentReads from './pages/RecentReads';
 import { PaletteIcon, BellIcon, SearchIcon, FilterIcon, XIcon, ChevronDown, SyncIcon } from './components/Icons';
 import NotificationsMenu from './components/NotificationsMenu';
 import { anilistApi } from './lib/anilist';
@@ -16,7 +17,7 @@ import PageTransition from './components/PageTransition';
 import SearchFilters, { FilterState } from './components/SearchFilters';
 import { Source } from './lib/api';
 
-type View = 'home' | 'details' | 'reader' | 'login' | 'library' | 'recommendations';
+type View = 'home' | 'details' | 'reader' | 'login' | 'library' | 'recommendations' | 'recent-reads';
 
 interface ReaderViewData {
   chapterId: string;
@@ -526,6 +527,12 @@ const AppContent: React.FC = () => {
           {currentView === 'recommendations' && (
             <PageTransition key="recommendations">
               <Recommendations onNavigate={navigate} />
+            </PageTransition>
+          )}
+
+          {currentView === 'recent-reads' && (
+            <PageTransition key="recent-reads">
+              <RecentReads onNavigate={navigate} onBack={() => navigate('home')} />
             </PageTransition>
           )}
 
