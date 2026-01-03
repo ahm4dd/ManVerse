@@ -73,7 +73,7 @@ function normalizeStatus(input?: string): MediaListStatus | undefined {
 
 library.get('/', requireAuth, async (c) => {
   const auth = c.get('auth');
-  const { status } = parseQuery(c, z.object({ status: z.string().optional() }));
+  const status = c.req.query('status');
   const userKey = resolveUserKey(c.req.header('Authorization'), auth?.id ?? null);
   const normalizedStatus = normalizeStatus(status);
   const data = await service.list(userKey, normalizedStatus, auth);

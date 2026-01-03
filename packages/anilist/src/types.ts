@@ -285,7 +285,7 @@ export type AniListUserStats = z.infer<typeof AniListUserStatsSchema>;
 export const AniListActivitySchema = z.object({
   id: z.number(),
   status: z.string().nullable().optional(),
-  progress: z.number().nullable().optional(),
+  progress: z.union([z.number(), z.string()]).nullable().optional(),
   createdAt: z.number(),
   media: z
     .object({

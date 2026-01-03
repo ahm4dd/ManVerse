@@ -247,7 +247,15 @@ export class AniListClient implements IAniListClient {
       { userId },
     );
 
-    return response.Page.activities.map((activity) => AniListActivitySchema.parse(activity));
+    const activities = response.Page.activities ?? [];
+    const parsed: AniListActivity[] = [];
+    for (const activity of activities) {
+      const result = AniListActivitySchema.safeParse(activity);
+      if (result.success) {
+        parsed.push(result.data);
+      }
+    }
+    return parsed;
   }
 
   async getNotifications(): Promise<AniListNotification[]> {
