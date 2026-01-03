@@ -43,19 +43,225 @@ export function getDatabase(): Database {
 export function migrate(target: Database = getDatabase()): void {
   const schemaPath = new URL('./schema.sql', import.meta.url);
   const schema = fs.readFileSync(schemaPath, 'utf8');
-  target.exec(schema);
+
+  const legacyProvider = isLegacyProviderManga(target);
+  const legacyLibrary = isLegacyUserLibrary(target);
+
+  if (legacyProvider) {
+    renameTableIfExists(target, 'provider_manga', 'provider_manga_legacy');
+  }
+
+  if (legacyLibrary) {
+    renameTableIfExists(target, 'user_library', 'user_library_legacy');
+  }
+
+  try {
+    target.exec(schema);
+  } catch (error) {
+    console.warn('Database schema migration warning:', error);
+  }
 
   ensureColumn(target, 'anilist_manga', 'country_of_origin', 'TEXT');
+  ensureColumn(target, 'user_library', 'user_id', 'TEXT');
   ensureColumn(target, 'user_library', 'anilist_entry_id', 'INTEGER');
+  ensureColumn(target, 'user_library', 'created_at', 'INTEGER');
+  ensureColumn(target, 'user_library', 'updated_at', 'INTEGER');
+  ensureColumn(target, 'anilist_sync_state', 'user_id', 'TEXT');
+
+  ensureColumn(target, 'provider_manga', 'image', 'TEXT');
+  ensureColumn(target, 'provider_manga', 'rating', 'TEXT');
+  ensureColumn(target, 'provider_manga', 'chapters', 'TEXT');
+  ensureColumn(target, 'provider_manga', 'genres', 'TEXT');
+  ensureColumn(target, 'provider_manga', 'description', 'TEXT');
+  ensureColumn(target, 'provider_manga', 'author', 'TEXT');
+  ensureColumn(target, 'provider_manga', 'artist', 'TEXT');
+  ensureColumn(target, 'provider_manga', 'serialization', 'TEXT');
+  ensureColumn(target, 'provider_manga', 'updated_on', 'TEXT');
+  ensureColumn(target, 'provider_manga', 'created_at', 'INTEGER');
+  ensureColumn(target, 'provider_manga', 'updated_at', 'INTEGER');
+
+  if (legacyProvider) {
+    migrateLegacyProviderData(target);
+  }
+
+  if (legacyLibrary) {
+    migrateLegacyLibraryData(target);
+  }
 }
 
 function ensureColumn(dbRef: Database, table: string, column: string, definition: string): void {
-  const columns = dbRef.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  if (!tableExists(dbRef, table)) {
+    return;
+  }
+
+  const columns = getTableColumns(dbRef, table);
   if (columns.some((entry) => entry.name === column)) {
     return;
   }
 
   dbRef.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+}
+
+function tableExists(dbRef: Database, table: string): boolean {
+  const row = dbRef
+    .prepare('SELECT name FROM sqlite_master WHERE type = ? AND name = ?')
+    .get('table', table) as { name?: string } | undefined;
+  return Boolean(row?.name);
+}
+
+function getTableColumns(dbRef: Database, table: string): Array<{ name: string; notnull: number }> {
+  return dbRef.prepare(`PRAGMA table_info(${table})`).all() as Array<{
+    name: string;
+    notnull: number;
+  }>;
+}
+
+function renameTableIfExists(dbRef: Database, source: string, target: string): void {
+  if (!tableExists(dbRef, source)) {
+    return;
+  }
+
+  dbRef.exec(`ALTER TABLE ${source} RENAME TO ${target}`);
+}
+
+function isLegacyProviderManga(dbRef: Database): boolean {
+  if (!tableExists(dbRef, 'provider_manga')) {
+    return false;
+  }
+
+  const columns = getTableColumns(dbRef, 'provider_manga');
+  return columns.some((entry) => entry.name === 'provider_url');
+}
+
+function isLegacyUserLibrary(dbRef: Database): boolean {
+  if (!tableExists(dbRef, 'user_library')) {
+    return false;
+  }
+
+  const columns = getTableColumns(dbRef, 'user_library');
+  return columns.some((entry) => entry.name === 'added_at') || !columns.some((entry) => entry.name === 'user_id');
+}
+
+function migrateLegacyProviderData(dbRef: Database): void {
+  if (!tableExists(dbRef, 'provider_manga_legacy')) {
+    return;
+  }
+
+  dbRef.exec(`
+    INSERT INTO provider_manga (
+      provider,
+      provider_id,
+      title,
+      image,
+      status,
+      rating,
+      chapters,
+      genres,
+      description,
+      author,
+      artist,
+      serialization,
+      updated_on,
+      is_active,
+      domain_changed_from,
+      last_scraped,
+      created_at,
+      updated_at
+    )
+    SELECT
+      provider,
+      provider_id,
+      title,
+      cover_url,
+      status,
+      NULL,
+      COALESCE(latest_chapter, CAST(total_chapters AS TEXT)),
+      genres,
+      description,
+      NULL,
+      NULL,
+      NULL,
+      NULL,
+      is_active,
+      domain_changed_from,
+      last_scraped,
+      COALESCE(last_scraped, unixepoch()),
+      COALESCE(last_scraped, unixepoch())
+    FROM provider_manga_legacy
+    ON CONFLICT(provider, provider_id) DO UPDATE SET
+      title = excluded.title,
+      image = excluded.image,
+      status = excluded.status,
+      chapters = excluded.chapters,
+      genres = excluded.genres,
+      description = excluded.description,
+      is_active = excluded.is_active,
+      domain_changed_from = excluded.domain_changed_from,
+      last_scraped = excluded.last_scraped,
+      updated_at = excluded.updated_at
+  `);
+}
+
+function migrateLegacyLibraryData(dbRef: Database): void {
+  if (!tableExists(dbRef, 'user_library_legacy')) {
+    return;
+  }
+
+  dbRef.exec(`
+    INSERT INTO user_library (
+      user_id,
+      anilist_id,
+      provider,
+      provider_manga_id,
+      anilist_entry_id,
+      status,
+      progress,
+      score,
+      notes,
+      is_favorite,
+      started_at,
+      completed_at,
+      created_at,
+      updated_at
+    )
+    SELECT
+      NULL,
+      anilist_id,
+      provider,
+      provider_manga_id,
+      NULL,
+      CASE LOWER(status)
+        WHEN 'reading' THEN 'CURRENT'
+        WHEN 'current' THEN 'CURRENT'
+        WHEN 'planned' THEN 'PLANNING'
+        WHEN 'planning' THEN 'PLANNING'
+        WHEN 'completed' THEN 'COMPLETED'
+        WHEN 'dropped' THEN 'DROPPED'
+        WHEN 'paused' THEN 'PAUSED'
+        WHEN 'on_hold' THEN 'PAUSED'
+        ELSE UPPER(status)
+      END,
+      progress,
+      score,
+      notes,
+      is_favorite,
+      started_at,
+      completed_at,
+      COALESCE(added_at, unixepoch()),
+      COALESCE(last_read, added_at, unixepoch())
+    FROM user_library_legacy
+    ON CONFLICT(user_id, anilist_id) DO UPDATE SET
+      provider = excluded.provider,
+      provider_manga_id = excluded.provider_manga_id,
+      status = excluded.status,
+      progress = excluded.progress,
+      score = excluded.score,
+      notes = excluded.notes,
+      is_favorite = excluded.is_favorite,
+      started_at = excluded.started_at,
+      completed_at = excluded.completed_at,
+      updated_at = excluded.updated_at
+  `);
 }
 
 export function closeDatabase(): void {

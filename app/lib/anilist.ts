@@ -826,14 +826,18 @@ export const anilistApi = {
     let statusText = 'N/A';
     const recentChapters: {name: string, date: string}[] = [];
     const dateStr = timeAgo(media.updatedAt);
+    const hasChapterCount = media.chapters !== null && media.chapters !== undefined;
 
     if (media.nextAiringEpisode) {
        const days = Math.floor(media.nextAiringEpisode.timeUntilAiring / (3600 * 24));
        statusText = `EP ${media.nextAiringEpisode.episode} in ${days}d`;
        recentChapters.push({ name: `Episode ${media.nextAiringEpisode.episode}`, date: `in ${days}d` });
-    } else if (media.chapters) {
-       statusText = `${media.chapters} Chapters`;
+    } else if (hasChapterCount) {
+       statusText = `Chapter ${media.chapters}`;
        recentChapters.push({ name: `Chapter ${media.chapters}`, date: dateStr || (media.status === 'FINISHED' ? 'End' : 'Latest') });
+    } else if (dateStr) {
+       statusText = 'Updated';
+       recentChapters.push({ name: 'Updated', date: dateStr });
     } else {
        statusText = media.status || 'Unknown';
     }
