@@ -34,6 +34,8 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
   const [activeProviderSeries, setActiveProviderSeries] = useState<SeriesDetails | null>(null);
   const [selectedProvider, setSelectedProvider] = useState<string>('AsuraScans');
   const [showProviderMenu, setShowProviderMenu] = useState(false);
+  const [manualQuery, setManualQuery] = useState('');
+  const [manualProviderUrl, setManualProviderUrl] = useState('');
 
   // Chapter Search State
   const [chapterSearchQuery, setChapterSearchQuery] = useState('');
@@ -70,7 +72,21 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     load();
   }, [seriesId]);
 
-  const handleSearchOnProvider = async (providerId: string) => {
+  const normalizeAsuraInput = (input: string) => {
+    const trimmed = input.trim();
+    if (!trimmed) return '';
+    if (/^https?:\/\//i.test(trimmed)) return trimmed;
+    const cleaned = trimmed.replace(/^\/+/, '');
+    if (cleaned.startsWith('series/')) {
+      return `https://asuracomic.net/${cleaned}`;
+    }
+    if (cleaned.startsWith('asuracomic.net/')) {
+      return `https://${cleaned}`;
+    }
+    return `https://asuracomic.net/series/${cleaned}`;
+  };
+
+  const searchProvider = async (providerId: string, query: string) => {
     if (!data) return;
     if (providerId !== 'AsuraScans') return; // Only Asura supported for now
 
@@ -80,11 +96,9 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     setSelectedProvider(providerId);
 
     try {
-      // Search Asura for the current title
-      const results = await api.searchSeries(data.title, 'AsuraScans');
+      const results = await api.searchSeries(query, 'AsuraScans');
       setProviderResults(results);
-      
-      // If we find an exact match or only one result, automatically select it
+
       if (results.length === 1) {
         handleSelectProviderSeries(results[0].id);
         notify(`Found match on ${providerId}`, 'success');
@@ -97,6 +111,11 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     } finally {
       setProviderLoading(false);
     }
+  };
+
+  const handleSearchOnProvider = async (providerId: string) => {
+    if (!data) return;
+    await searchProvider(providerId, data.title);
   };
 
   const handleSelectProviderSeries = async (id: string) => {
@@ -119,6 +138,23 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     } finally {
       setProviderLoading(false);
     }
+  };
+
+  const handleManualSearch = async () => {
+    if (!manualQuery.trim()) {
+      notify('Enter a title to search the provider.', 'warning');
+      return;
+    }
+    await searchProvider(selectedProvider, manualQuery.trim());
+  };
+
+  const handleManualUrlMap = async () => {
+    const normalized = normalizeAsuraInput(manualProviderUrl);
+    if (!normalized) {
+      notify('Paste a valid Asura series URL.', 'warning');
+      return;
+    }
+    await handleSelectProviderSeries(normalized);
   };
 
   const navigateToReader = (chapter: any) => {
@@ -554,6 +590,52 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
                           </div>
                         </div>
                       ))}
+                    </div>
+                  )}
+
+                  {providerResults.length === 0 && (
+                    <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      <div className="p-5 rounded-2xl bg-surfaceHighlight/30 border border-white/10">
+                        <h4 className="text-sm font-bold text-white mb-2">Search with a different name</h4>
+                        <p className="text-xs text-gray-400 mb-4">
+                          Try the provider’s official title or an alternate name.
+                        </p>
+                        <div className="flex gap-2">
+                          <input
+                            value={manualQuery}
+                            onChange={(e) => setManualQuery(e.target.value)}
+                            placeholder="Search Asura by title..."
+                            className="flex-1 bg-surfaceHighlight border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary"
+                          />
+                          <button
+                            onClick={handleManualSearch}
+                            className="px-4 py-2 rounded-lg bg-primary text-white text-sm font-semibold"
+                          >
+                            Search
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="p-5 rounded-2xl bg-surfaceHighlight/30 border border-white/10">
+                        <h4 className="text-sm font-bold text-white mb-2">Paste the exact series URL</h4>
+                        <p className="text-xs text-gray-400 mb-4">
+                          We’ll load it directly and map it to AniList.
+                        </p>
+                        <div className="flex gap-2">
+                          <input
+                            value={manualProviderUrl}
+                            onChange={(e) => setManualProviderUrl(e.target.value)}
+                            placeholder="https://asuracomic.net/series/..."
+                            className="flex-1 bg-surfaceHighlight border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary"
+                          />
+                          <button
+                            onClick={handleManualUrlMap}
+                            className="px-4 py-2 rounded-lg bg-white/10 text-white text-sm font-semibold border border-white/10 hover:bg-white/20"
+                          >
+                            Load
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
