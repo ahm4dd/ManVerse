@@ -205,12 +205,8 @@ function buildStats(entries: ReturnType<typeof listLibraryEntries>) {
 export class LibraryService {
   constructor(private anilist = new AniListService()) {}
 
-  private async ensureSeeded(userKey: string, auth?: AuthUser) {
-    if (!auth?.anilistToken || auth.id === null || auth.id === undefined) {
-      return;
-    }
-
-    if (countLibraryEntries(userKey) > 0) {
+  private async seedFromAnilist(userKey: string, auth: AuthUser) {
+    if (!auth.anilistToken || auth.id === null || auth.id === undefined) {
       return;
     }
 
@@ -243,6 +239,29 @@ export class LibraryService {
         });
       }
     }
+  }
+
+  private async ensureSeeded(userKey: string, auth?: AuthUser) {
+    if (!auth?.anilistToken || auth.id === null || auth.id === undefined) {
+      return;
+    }
+
+    const existingCount = countLibraryEntries(userKey);
+    let needsSeed = existingCount === 0;
+
+    if (!needsSeed) {
+      const entries = listLibraryEntries(userKey);
+      const missingMedia = entries.some((entry) => !entry.media && entry.entry.anilist_id);
+      if (missingMedia) {
+        needsSeed = true;
+      }
+    }
+
+    if (!needsSeed) {
+      return;
+    }
+
+    await this.seedFromAnilist(userKey, auth);
   }
 
   private async ensureMediaCached(mediaId: number): Promise<void> {
