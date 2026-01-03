@@ -12,12 +12,60 @@ const service = new MangaService();
 const searchSchema = z.object({
   query: z.string().min(1),
   source: z.enum(['anilist', 'asura', 'both']).optional(),
+  format: z.string().optional(),
+  status: z.string().optional(),
+  genre: z.string().optional(),
+  country: z.string().optional(),
+  sort: z.string().optional(),
 });
 
+function normalizeSort(input?: string): string[] | undefined {
+  if (!input || input === 'All') return undefined;
+  const normalized = input.toUpperCase().replace(/\\s+/g, '_');
+
+  if (normalized.endsWith('_DESC') || normalized.endsWith('_ASC')) {
+    return [normalized];
+  }
+
+  const map: Record<string, string> = {
+    POPULARITY: 'POPULARITY_DESC',
+    TITLE: 'TITLE_ROMAJI',
+    SCORE: 'SCORE_DESC',
+    PROGRESS: 'POPULARITY_DESC',
+    LAST_UPDATED: 'UPDATED_AT_DESC',
+    LAST_ADDED: 'ID_DESC',
+    START_DATE: 'START_DATE_DESC',
+  };
+
+  const mapped = map[normalized];
+  return mapped ? [mapped] : undefined;
+}
+
+function normalizeFormat(input?: string): string | undefined {
+  if (!input || input === 'All') return undefined;
+  return input.toUpperCase().replace(/\\s+/g, '_');
+}
+
+function normalizeStatus(input?: string): string | undefined {
+  if (!input || input === 'All') return undefined;
+  return input.toUpperCase().replace(/\\s+/g, '_');
+}
+
+function normalizeCountry(input?: string): string | undefined {
+  if (!input || input === 'All') return undefined;
+  return input.toUpperCase();
+}
+
 manga.get('/search', (c) => {
-  const { query, source } = parseQuery(c, searchSchema);
+  const { query, source, format, status, genre, country, sort } = parseQuery(c, searchSchema);
   return service
-    .search(query, (source || 'anilist') as MangaSource)
+    .search(query, (source || 'anilist') as MangaSource, {
+      sort: normalizeSort(sort),
+      format: normalizeFormat(format),
+      status: normalizeStatus(status),
+      genre: genre && genre !== 'All' ? genre : undefined,
+      country: normalizeCountry(country),
+    })
     .then((results) => jsonSuccess(c, results))
     .catch((error) =>
       jsonError(

@@ -9,15 +9,19 @@ export class MangaService {
     private scraper = new ScraperService(),
   ) {}
 
-  async search(query: string, source: MangaSource = 'anilist') {
+  async search(
+    query: string,
+    source: MangaSource = 'anilist',
+    filters?: { sort?: string[]; format?: string; status?: string; genre?: string; country?: string },
+  ) {
     if (source === 'asura') {
-      return this.scraper.search();
+      return this.scraper.search(query);
     }
 
     if (source === 'both') {
       const [anilist, provider] = await Promise.all([
-        this.anilist.searchManga(query, 1),
-        this.scraper.search().catch(() => null),
+        this.anilist.searchMangaWithFilters(query, 1, filters || {}),
+        this.scraper.search(query).catch(() => null),
       ]);
 
       return {
@@ -26,7 +30,7 @@ export class MangaService {
       };
     }
 
-    return this.anilist.searchManga(query, 1);
+    return this.anilist.searchMangaWithFilters(query, 1, filters || {});
   }
 
   async getMangaDetails(anilistId: number) {

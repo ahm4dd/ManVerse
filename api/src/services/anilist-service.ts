@@ -111,4 +111,12 @@ export class AniListService {
   }) {
     return this.getClientWithToken(accessToken).updateEntry(input);
   }
+
+  async addToList(accessToken: string, mediaId: number, status: MediaListStatus) {
+    return this.getClientWithToken(accessToken).addToList(mediaId, status);
+  }
+
+  async removeFromList(accessToken: string, entryId: number) {
+    return this.getClientWithToken(accessToken).removeFromList(entryId);
+  }
 }

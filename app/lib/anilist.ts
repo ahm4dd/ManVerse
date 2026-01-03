@@ -576,7 +576,7 @@ export const anilistApi = {
 
   async getUserStats(userId: number) {
     if (this.token === DEMO_TOKEN) return MOCK_STATS.User;
-    return await apiRequest<any>('/api/anilist/stats');
+    return await apiRequest<any>('/api/library/stats');
   },
 
   async getUserActivity(userId: number) {
@@ -586,14 +586,14 @@ export const anilistApi = {
 
   async getFullUserLibrary(userId: number) {
     if (this.token === DEMO_TOKEN) return MOCK_LIBRARY.MediaListCollection;
-    return await apiRequest<any>('/api/anilist/library');
+    return await apiRequest<any>('/api/library');
   },
 
   async getUserReadingList(userId: number): Promise<any[]> {
     if (this.token === DEMO_TOKEN) {
        return MOCK_LIBRARY.MediaListCollection.lists.flatMap(l => l.entries);
     }
-    const data = await apiRequest<any>('/api/anilist/library?status=CURRENT');
+    const data = await apiRequest<any>('/api/library?status=CURRENT');
     if (!data?.lists) return [];
     return data.lists.flatMap((l: any) => l.entries);
   },
@@ -724,9 +724,9 @@ export const anilistApi = {
     if (this.token === DEMO_TOKEN) return true;
     if (!this.token) return;
     try {
-      await apiRequest<any>('/api/anilist/progress', {
-        method: 'POST',
-        body: JSON.stringify({ mediaId, progress }),
+      await apiRequest<any>(`/api/library/${mediaId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ progress }),
       });
       return true;
     } catch (e) {
@@ -738,9 +738,9 @@ export const anilistApi = {
     if (this.token === DEMO_TOKEN) return true;
     if (!this.token) return;
     try {
-      await apiRequest<any>('/api/anilist/status', {
-        method: 'POST',
-        body: JSON.stringify({ mediaId, status }),
+      await apiRequest<any>(`/api/library/${mediaId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ status }),
       });
       return true;
     } catch (e) {
@@ -752,9 +752,10 @@ export const anilistApi = {
     if (this.token === DEMO_TOKEN) return true;
     if (!this.token) return;
     try {
-      await apiRequest<any>('/api/anilist/entry', {
-        method: 'POST',
-        body: JSON.stringify(variables),
+      const { mediaId, ...payload } = variables;
+      await apiRequest<any>(`/api/library/${mediaId}`, {
+        method: 'PUT',
+        body: JSON.stringify(payload),
       });
       return true;
     } catch (e) {
