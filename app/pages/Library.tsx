@@ -511,17 +511,23 @@ const Library: React.FC<LibraryProps> = ({ onNavigate, user }) => {
                              />
                              <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent" />
                              <div className="absolute inset-x-0 bottom-0 p-3">
-                                <div className="rounded-lg bg-black/70 backdrop-blur-md border border-white/10 px-3 py-2 space-y-1.5">
+                                <div className="rounded-lg bg-black/70 backdrop-blur-md border border-white/10 px-3 py-2.5 space-y-2">
                                    <h4 className="text-[13px] font-bold text-white leading-snug line-clamp-2">
                                      {title}
                                    </h4>
-                                   <div className="flex items-center justify-between text-[11px] text-gray-200">
-                                     <span className="font-semibold text-white/90">Reading ch {entry.progress ?? 0}</span>
-                                     <span className="text-primary/90">Latest ch {latestCh}</span>
+                                   <div className="grid grid-cols-2 gap-2 text-[11px] text-gray-200">
+                                     <div className="flex flex-col gap-1">
+                                       <span className="text-[10px] uppercase tracking-wide text-gray-400">Reading</span>
+                                       <span className="font-semibold text-white/90">Ch {entry.progress ?? 0}</span>
+                                     </div>
+                                     <div className="flex flex-col gap-1 text-right">
+                                       <span className="text-[10px] uppercase tracking-wide text-gray-400">Latest</span>
+                                       <span className="text-primary/90">Ch {latestCh}</span>
+                                     </div>
                                    </div>
-                                   <div className="flex items-center justify-between text-[10px] text-gray-400">
+                                   <div className="grid grid-cols-2 gap-2 text-[10px] text-gray-400">
                                      <span>Last read {lastReadAgo}</span>
-                                     <span>Latest update {latestUpdateAgo}</span>
+                                     <span className="text-right">Updated {latestUpdateAgo}</span>
                                    </div>
                                 </div>
                              </div>
