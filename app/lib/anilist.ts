@@ -5,6 +5,41 @@ const ANILIST_API = 'https://graphql.anilist.co';
 // NOTE: Replace with your actual Client ID from https://anilist.co/settings/developer
 const CLIENT_ID = '24867'; 
 const DEMO_TOKEN = 'DEMO_MODE_TOKEN';
+const USER_CACHE_KEY = 'manverse_user';
+const USER_CACHE_TTL_MS = 5 * 60 * 1000;
+
+function readCachedUser(token: string): any | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(USER_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed?.token || !parsed?.expiresAt || !parsed?.user) return null;
+    if (parsed.token !== token) return null;
+    if (Date.now() > parsed.expiresAt) {
+      localStorage.removeItem(USER_CACHE_KEY);
+      return null;
+    }
+    return parsed.user;
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedUser(token: string, user: any) {
+  if (typeof window === 'undefined') return;
+  const payload = {
+    token,
+    user,
+    expiresAt: Date.now() + USER_CACHE_TTL_MS,
+  };
+  localStorage.setItem(USER_CACHE_KEY, JSON.stringify(payload));
+}
+
+function clearCachedUser() {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem(USER_CACHE_KEY);
+}
 
 const SEARCH_QUERY = `
 query ($search: String, $page: Int, $perPage: Int, $sort: [MediaSort], $format: MediaFormat, $status: MediaStatus, $genre: String, $countryOfOrigin: CountryCode) {
@@ -546,6 +581,7 @@ export const anilistApi = {
   setToken(token: string) {
     this.token = token;
     setStoredToken(token);
+    clearCachedUser();
   },
 
   logout() {
@@ -554,6 +590,7 @@ export const anilistApi = {
     }
     this.token = null;
     setStoredToken(null);
+    clearCachedUser();
   },
 
   async getLoginUrl() {
@@ -568,8 +605,12 @@ export const anilistApi = {
     if (this.token === DEMO_TOKEN) return MOCK_USER;
 
     if (!this.token) return null;
+    const cached = readCachedUser(this.token);
+    if (cached) return cached;
     try {
-      return await apiRequest<any>('/api/anilist/me');
+      const user = await apiRequest<any>('/api/anilist/me');
+      writeCachedUser(this.token, user);
+      return user;
     } catch (e) {
       console.error("Auth check failed:", e);
       this.logout();
@@ -764,6 +805,16 @@ export const anilistApi = {
     } catch (e) {
       console.error(e);
       return false;
+    }
+  },
+
+  async syncPending() {
+    if (this.token === DEMO_TOKEN) return;
+    if (!this.token) return;
+    try {
+      await apiRequest<any>('/api/sync/all', { method: 'POST' });
+    } catch (e) {
+      console.error('Sync failed:', e);
     }
   },
 

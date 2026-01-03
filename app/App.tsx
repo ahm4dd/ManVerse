@@ -72,6 +72,9 @@ const AppContent: React.FC = () => {
   const loadUser = async () => {
     const u = await anilistApi.getCurrentUser();
     setUser(u);
+    if (u) {
+      void anilistApi.syncPending();
+    }
     setIsVerifying(false); 
   };
 

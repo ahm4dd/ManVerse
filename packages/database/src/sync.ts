@@ -90,3 +90,25 @@ export function getSyncState(userId: string, anilistId: number): SyncStateRecord
     .get(userId, anilistId) as SyncStateRecord | undefined;
   return row ?? null;
 }
+
+export function listSyncStates(
+  userId: string,
+  options: { needsSync?: boolean } = {},
+): SyncStateRecord[] {
+  const db = getDatabase();
+  const clauses = ['user_id = ?'];
+  const params: Array<string | number> = [userId];
+
+  if (options.needsSync) {
+    clauses.push('needs_sync = 1');
+  }
+
+  const query = `
+    SELECT *
+    FROM anilist_sync_state
+    WHERE ${clauses.join(' AND ')}
+    ORDER BY updated_at DESC
+  `;
+
+  return db.prepare(query).all(...params) as SyncStateRecord[];
+}
