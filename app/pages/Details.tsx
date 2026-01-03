@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { Series, SeriesDetails } from '../types';
 import { api } from '../lib/api';
 import { anilistApi } from '../lib/anilist';
+import { history, type HistoryItem } from '../lib/history';
 import { ChevronLeft, StarIcon, ChevronDown, SearchIcon, LibraryIcon } from '../components/Icons';
 import SeriesCard from '../components/SeriesCard';
 import { useNotification } from '../lib/notifications';
@@ -20,6 +21,24 @@ const PROVIDERS = [
   { id: 'FlameScans', name: 'Flame Scans (Soon)', enabled: false },
 ];
 
+const formatTimeAgo = (timestamp?: number) => {
+  if (!timestamp) return '';
+  const seconds = Math.floor(Date.now() / 1000) - Math.floor(timestamp / 1000);
+  if (seconds < 60) return 'just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  const weeks = Math.floor(days / 7);
+  if (weeks < 4) return `${weeks}w ago`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months}mo ago`;
+  const years = Math.floor(months / 12);
+  return `${years}y ago`;
+};
+
 const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user }) => {
   const [data, setData] = useState<SeriesDetails | null>(null);
   const [loading, setLoading] = useState(true);
@@ -36,6 +55,8 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
   const [showProviderMenu, setShowProviderMenu] = useState(false);
   const [manualQuery, setManualQuery] = useState('');
   const [manualProviderUrl, setManualProviderUrl] = useState('');
+  const [historyMatch, setHistoryMatch] = useState<HistoryItem | null>(null);
+  const [readChapterIds, setReadChapterIds] = useState<Set<string>>(new Set());
 
   // Chapter Search State
   const [chapterSearchQuery, setChapterSearchQuery] = useState('');
@@ -51,6 +72,14 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
   useEffect(() => {
     const load = async () => {
       setLoading(true);
+      setActiveProviderSeries(null);
+      setProviderResults(null);
+      setProviderLoading(false);
+      setManualQuery('');
+      setManualProviderUrl('');
+      setShowProviderMenu(false);
+      setHistoryMatch(null);
+      setReadChapterIds(new Set());
       try {
         // Determine source based on ID format (Numeric = AniList, String = Provider)
         const source = /^\d+$/.test(seriesId) ? 'AniList' : 'AsuraScans';
@@ -71,6 +100,60 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     };
     load();
   }, [seriesId]);
+
+  useEffect(() => {
+    if (!data) return;
+    if (data.source !== 'AniList') return;
+    if (activeProviderSeries) return;
+
+    let cancelled = false;
+    setProviderLoading(true);
+
+    api
+      .getMappedProviderDetails(data.id, 'AsuraScans')
+      .then((details) => {
+        if (cancelled) return;
+        setActiveProviderSeries(details);
+        setProviderResults(null);
+      })
+      .catch(() => {
+        if (cancelled) return;
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setProviderLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [data, activeProviderSeries]);
+
+  useEffect(() => {
+    if (!data) return;
+    let match =
+      data.source === 'AniList'
+        ? history.getItem({ seriesId: data.id, anilistId: data.id, title: data.title })
+        : history.getItem({ seriesId: data.id, providerSeriesId: data.id, title: data.title });
+    if (!match && data.title) {
+      match = history.getItem({ title: data.title });
+    }
+    setHistoryMatch(match);
+
+    const providerIdFallback =
+      match?.providerSeriesId ||
+      (match && !/^\d+$/.test(match.seriesId) ? match.seriesId : undefined) ||
+      (data.source === 'AsuraScans' ? data.id : undefined);
+    const readIds = new Set(
+      history.getReadChapters({
+        seriesId: data.id,
+        anilistId: data.source === 'AniList' ? data.id : undefined,
+        providerSeriesId: providerIdFallback,
+        title: data.title,
+      }),
+    );
+    setReadChapterIds(readIds);
+  }, [data, activeProviderSeries]);
 
   const normalizeAsuraInput = (input: string) => {
     const trimmed = input.trim();
@@ -171,9 +254,64 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
       chapterId: chapter.id,
       seriesId: seriesId, // Back navigation ID
       anilistId: isAniListSource ? data?.id : undefined,
+      providerSeriesId: activeProviderSeries.id,
       chapterNumber: !isNaN(chapterNum) ? chapterNum : undefined,
-      chapters: activeProviderSeries.chapters // Pass the full chapter list for navigation
+      chapters: activeProviderSeries.chapters, // Pass the full chapter list for navigation
+      seriesTitle: data?.title,
+      seriesImage: data?.image,
+      source: activeProviderSeries.source || 'AsuraScans'
     });
+  };
+
+  const resumeChapter = useMemo(() => {
+    if (!activeProviderSeries) return null;
+
+    if (historyMatch) {
+      const byId = activeProviderSeries.chapters.find(ch => ch.id === historyMatch.chapterId);
+      if (byId) return byId;
+      const byNumber = activeProviderSeries.chapters.find(
+        ch => ch.number === historyMatch.chapterNumber || ch.title === historyMatch.chapterTitle,
+      );
+      if (byNumber) return byNumber;
+    }
+
+    const progress = data?.mediaListEntry?.progress;
+    if (typeof progress === 'number' && progress > 0) {
+      const target = progress + 1;
+      const byNext = activeProviderSeries.chapters.find(
+        ch => parseFloat(ch.number) === target,
+      );
+      if (byNext) return byNext;
+      const byCurrent = activeProviderSeries.chapters.find(
+        ch => parseFloat(ch.number) === progress,
+      );
+      return byCurrent || null;
+    }
+
+    return null;
+  }, [activeProviderSeries, historyMatch, data?.mediaListEntry?.progress]);
+
+  const resumeProviderId = useMemo(() => {
+    if (!historyMatch) return null;
+    if (historyMatch.providerSeriesId) return historyMatch.providerSeriesId;
+    if (/^\d+$/.test(historyMatch.seriesId)) return null;
+    return historyMatch.seriesId;
+  }, [historyMatch]);
+
+  const handleToggleChapterRead = (chapter: any) => {
+    if (!data || !activeProviderSeries) return;
+    const updated = history.toggleRead({
+      seriesId: data.source === 'AniList' ? data.id : activeProviderSeries.id,
+      anilistId: data.source === 'AniList' ? data.id : undefined,
+      providerSeriesId: activeProviderSeries.id,
+      seriesTitle: data.title,
+      seriesImage: data.image,
+      chapterId: chapter.id,
+      chapterNumber: chapter.number,
+      chapterTitle: chapter.title,
+      source: activeProviderSeries.source || 'AsuraScans',
+    });
+    setReadChapterIds(new Set(updated));
   };
 
   const handleStatusUpdate = async (status: string) => {
@@ -363,6 +501,21 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
                   {showChapters ? (
                     // Reading Actions
                     <>
+                      {resumeChapter && (
+                        <button 
+                          onClick={() => navigateToReader(resumeChapter)}
+                          className="flex-1 min-w-[160px] px-8 py-4 bg-primary/90 hover:bg-primary text-onPrimary font-bold text-lg rounded-xl shadow-lg shadow-primary/25 transition-all transform hover:scale-[1.02] active:scale-95 whitespace-nowrap"
+                        >
+                          {historyMatch ? 'Resume' : 'Continue'} Ch {resumeChapter.number}
+                          {historyMatch?.timestamp ? (
+                            <span className="ml-2 text-xs font-semibold text-black/70">
+                              {formatTimeAgo(historyMatch.timestamp)}
+                            </span>
+                          ) : data?.mediaListEntry?.progress ? (
+                            <span className="ml-2 text-xs font-semibold text-black/70">AniList</span>
+                          ) : null}
+                        </button>
+                      )}
                       <button 
                         onClick={() => navigateToReader(activeProviderSeries!.chapters[activeProviderSeries!.chapters.length - 1])}
                         className="flex-1 min-w-[160px] px-8 py-4 bg-primary hover:bg-primaryHover text-onPrimary font-bold text-lg rounded-xl shadow-lg shadow-primary/25 transition-all transform hover:scale-[1.02] active:scale-95 whitespace-nowrap"
@@ -491,6 +644,31 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
                  <div className="text-center py-16 text-gray-400 font-medium animate-pulse text-lg">Searching {selectedProvider} repository...</div>
               )}
 
+              {!showChapters && resumeProviderId && (
+                <div className="mb-8 p-6 rounded-2xl bg-surfaceHighlight/40 border border-white/10 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+                  <div>
+                    <h4 className="text-lg font-bold text-white">Resume from your last read</h4>
+                    <p className="text-sm text-gray-400 mt-1">
+                      We found your progress on Asura. Attach once and skip future searches.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-3">
+                    <button
+                      onClick={() => handleSelectProviderSeries(resumeProviderId)}
+                      className="px-5 py-2.5 rounded-xl bg-primary text-onPrimary font-bold text-sm shadow-lg shadow-primary/20"
+                    >
+                      Resume Ch {historyMatch?.chapterNumber}
+                    </button>
+                    <button
+                      onClick={() => handleSearchOnProvider(selectedProvider)}
+                      className="px-5 py-2.5 rounded-xl bg-white/5 text-white font-semibold text-sm border border-white/10 hover:bg-white/10"
+                    >
+                      Search Again
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* 1. Show Chapters if available */}
               {showChapters && (
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
@@ -531,14 +709,32 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
                             whileHover={{ x: 5 }}
                           >
                             <div className="flex-1 min-w-0 pr-4">
-                              <h4 className="font-bold text-[15px] text-gray-200 group-hover:text-primary transition-colors truncate">
+                              <h4 className={`font-bold text-[15px] transition-colors truncate ${readChapterIds.has(chapter.id) ? 'text-gray-500' : 'text-gray-200 group-hover:text-primary'}`}>
                                 {chapter.title.toLowerCase().includes('chapter') || chapter.title.toLowerCase().includes('episode') 
                                   ? chapter.title 
                                   : `Chapter ${chapter.number}${chapter.title ? ` - ${chapter.title}` : ''}`}
+                                {readChapterIds.has(chapter.id) && (
+                                  <span className="ml-2 text-[9px] uppercase tracking-wider text-gray-500">Read</span>
+                                )}
                               </h4>
                               <p className="text-xs font-medium text-gray-500 mt-1.5">{chapter.date}</p>
                             </div>
-                            <ChevronLeft className="w-5 h-5 text-gray-600 group-hover:text-primary rotate-180 transition-colors flex-shrink-0" />
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleToggleChapterRead(chapter);
+                                }}
+                                className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide border transition-colors ${
+                                  readChapterIds.has(chapter.id)
+                                    ? 'border-emerald-400/40 text-emerald-300 bg-emerald-500/10'
+                                    : 'border-white/10 text-gray-400 hover:text-white hover:border-white/20'
+                                }`}
+                              >
+                                {readChapterIds.has(chapter.id) ? 'Read' : 'Mark'}
+                              </button>
+                              <ChevronLeft className="w-5 h-5 text-gray-600 group-hover:text-primary rotate-180 transition-colors" />
+                            </div>
                           </motion.button>
                         ))}
                       </div>

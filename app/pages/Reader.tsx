@@ -11,6 +11,7 @@ interface ReaderProps {
     chapterId: string;
     seriesId: string;
     anilistId?: string;
+    providerSeriesId?: string;
     chapterNumber?: number;
     chapters: Chapter[];
     // Passed for history context
@@ -84,6 +85,13 @@ const Reader: React.FC<ReaderProps> = ({ data: readerData, onBack, onNavigate })
   // Calculate Navigation
   const currentChapterIndex = readerData.chapters ? readerData.chapters.findIndex(c => c.id === readerData.chapterId) : -1;
   const currentChapter = currentChapterIndex !== -1 ? readerData.chapters[currentChapterIndex] : null;
+  const historyKey = readerData.anilistId ?? readerData.seriesId;
+  const historyMatch = {
+    seriesId: historyKey,
+    anilistId: readerData.anilistId,
+    providerSeriesId: readerData.providerSeriesId,
+    title: readerData.seriesTitle,
+  };
   
   const nextChapter = currentChapterIndex > 0 ? readerData.chapters[currentChapterIndex - 1] : null;
   const prevChapter = currentChapterIndex !== -1 && currentChapterIndex < readerData.chapters.length - 1 
@@ -108,15 +116,14 @@ const Reader: React.FC<ReaderProps> = ({ data: readerData, onBack, onNavigate })
         setTotalPages(data.length);
 
         // Check history for saved page
-        const savedPage = history.getPage(readerData.seriesId, readerData.chapterId);
+        const savedPage = history.getPage(historyKey, readerData.chapterId);
         if (savedPage > 1 && savedPage <= data.length) {
             setCurrentPage(savedPage);
             shouldScrollRef.current = savedPage;
         }
 
         // Initialize read chapters set
-        const localHistory = history.get();
-        const readIds = new Set(localHistory.filter(h => h.seriesId === readerData.seriesId).map(h => h.chapterId));
+        const readIds = new Set(history.getReadChapters(historyMatch));
         setReadChapters(readIds);
       } catch (e) {
         console.error(e);
@@ -125,7 +132,7 @@ const Reader: React.FC<ReaderProps> = ({ data: readerData, onBack, onNavigate })
       }
     };
     load();
-  }, [readerData.chapterId]);
+  }, [readerData.chapterId, historyKey]);
 
   // Handle Scroll Restoration
   useEffect(() => {
@@ -150,7 +157,9 @@ const Reader: React.FC<ReaderProps> = ({ data: readerData, onBack, onNavigate })
     // 1. Always Save to Local Storage (Instant)
     if (readerData.seriesTitle) {
       history.add({
-        seriesId: readerData.seriesId,
+        seriesId: historyKey,
+        anilistId: readerData.anilistId,
+        providerSeriesId: readerData.providerSeriesId,
         seriesTitle: readerData.seriesTitle,
         seriesImage: readerData.seriesImage || '',
         chapterId: readerData.chapterId,

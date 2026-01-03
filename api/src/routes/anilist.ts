@@ -6,6 +6,9 @@ import type { HonoEnv } from '../types/api.ts';
 import { AniListService } from '../services/anilist-service.ts';
 import { parseQuery } from '../utils/validation.ts';
 import { MediaListStatusSchema } from '@manverse/anilist';
+import { verify } from 'hono/jwt';
+import { getJwtSecret } from '../utils/jwt.ts';
+import type { AuthUser } from '../../../shared/types.ts';
 
 const anilist = new Hono<HonoEnv>();
 const service = new AniListService();
@@ -79,6 +82,20 @@ function normalizeCountry(input?: string): string | undefined {
   return input.toUpperCase();
 }
 
+async function getOptionalAuth(c: Parameters<typeof anilist.get>[1]): Promise<AuthUser | null> {
+  const header = c.req.header('Authorization');
+  if (!header || !header.startsWith('Bearer ')) {
+    return null;
+  }
+  const token = header.slice('Bearer '.length).trim();
+  if (!token) return null;
+  try {
+    return (await verify(token, getJwtSecret())) as AuthUser;
+  } catch {
+    return null;
+  }
+}
+
 anilist.get('/me', requireAuth, async (c) => {
   const auth = c.get('auth');
   if (!auth?.anilistToken) {
@@ -135,7 +152,10 @@ anilist.get('/media/:id', async (c) => {
     return jsonError(c, { code: 'INVALID_ID', message: 'Media id must be a number' }, 400);
   }
 
-  const media = await service.getMangaDetails(id);
+  const auth = await getOptionalAuth(c);
+  const media = auth?.anilistToken
+    ? await service.getMangaDetailsForUser(auth.anilistToken, id)
+    : await service.getMangaDetails(id);
   return jsonSuccess(c, media);
 });
 

@@ -22,8 +22,12 @@ interface ReaderViewData {
   chapterId: string;
   seriesId: string; // for back navigation
   anilistId?: string; // for tracking
+  providerSeriesId?: string;
   chapterNumber?: number; // for tracking
   chapters: Chapter[]; // Full list for navigation
+  seriesTitle?: string;
+  seriesImage?: string;
+  source?: 'AniList' | 'AsuraScans';
 }
 
 const DEFAULT_FILTERS: FilterState = {

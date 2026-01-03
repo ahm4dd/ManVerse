@@ -32,6 +32,10 @@ export interface SeriesDetails extends Series {
   chapters: Chapter[];
   recommendations?: Series[]; // New field
   userListStatus?: 'CURRENT' | 'PLANNING' | 'COMPLETED' | 'DROPPED' | 'PAUSED' | 'REPEATING' | null;
+  mediaListEntry?: {
+    progress?: number | null;
+    status?: string | null;
+  };
 }
 
 export interface Chapter {

@@ -23,6 +23,8 @@ interface HomeProps {
 
 interface ContinueItem {
   id: string; // Series ID
+  anilistId?: string;
+  providerSeriesId?: string;
   title: string;
   image: string;
   chapterNumber: string | number;
@@ -47,14 +49,17 @@ const Home: React.FC<HomeProps> = ({
   const [searchResults, setSearchResults] = useState<Series[]>([]); // Search Results
   
   const [continueReading, setContinueReading] = useState<ContinueItem[]>([]);
+  const [recentReads, setRecentReads] = useState<ContinueItem[]>([]);
   const [loading, setLoading] = useState(true);
   
   // View/Filter States for default view
   const [activeTab, setActiveTab] = useState<'Newest' | 'Popular' | 'Top Rated'>('Newest');
 
   // Drag Constraints for History
-  const historyContainerRef = useRef<HTMLDivElement>(null);
-  const [historyWidth, setHistoryWidth] = useState(0);
+  const continueHistoryRef = useRef<HTMLDivElement>(null);
+  const recentHistoryRef = useRef<HTMLDivElement>(null);
+  const [continueHistoryWidth, setContinueHistoryWidth] = useState(0);
+  const [recentHistoryWidth, setRecentHistoryWidth] = useState(0);
 
   // Check if filters are active (dirty)
   const isFiltersDirty = 
@@ -80,10 +85,16 @@ const Home: React.FC<HomeProps> = ({
 
   // Update drag constraints when history changes
   useEffect(() => {
-     if (historyContainerRef.current) {
-        setHistoryWidth(historyContainerRef.current.scrollWidth - historyContainerRef.current.offsetWidth);
+     if (continueHistoryRef.current) {
+        setContinueHistoryWidth(continueHistoryRef.current.scrollWidth - continueHistoryRef.current.offsetWidth);
      }
   }, [continueReading]);
+
+  useEffect(() => {
+     if (recentHistoryRef.current) {
+        setRecentHistoryWidth(recentHistoryRef.current.scrollWidth - recentHistoryRef.current.offsetWidth);
+     }
+  }, [recentReads]);
 
   // Trigger global search when global props change (Debounced)
   useEffect(() => {
@@ -122,12 +133,15 @@ const Home: React.FC<HomeProps> = ({
 
   const loadContinueReading = async () => {
     let items: ContinueItem[] = [];
+    let localOnly: ContinueItem[] = [];
 
     // 1. Get Local History
     const localHistory = history.get();
     const localMap = new Map<string, typeof localHistory[0]>();
     localHistory.forEach(item => {
       localMap.set(item.seriesId, item);
+      if (item.anilistId) localMap.set(item.anilistId, item);
+      if (item.providerSeriesId) localMap.set(item.providerSeriesId, item);
       localMap.set(item.seriesTitle.toLowerCase(), item);
     });
 
@@ -145,6 +159,8 @@ const Home: React.FC<HomeProps> = ({
           let chapterId = undefined;
           let progressSource: 'AniList' | 'Local' = 'AniList';
           let timestamp = entry.updatedAt * 1000;
+          let providerSeriesId = undefined;
+          let source: 'AniList' | 'AsuraScans' = 'AniList';
 
           if (localMatch) {
              const localNum = parseFloat(localMatch.chapterNumber.replace(/[^0-9.]/g, ''));
@@ -154,16 +170,21 @@ const Home: React.FC<HomeProps> = ({
                  progressSource = 'Local';
                  timestamp = localMatch.timestamp;
              }
+             providerSeriesId =
+               localMatch.providerSeriesId || (!/^\d+$/.test(localMatch.seriesId) ? localMatch.seriesId : undefined);
+             source = localMatch.source === 'AsuraScans' ? 'AsuraScans' : 'AniList';
           }
 
           return {
             id: aniListId,
+            anilistId: aniListId,
+            providerSeriesId,
             title: title,
             image: entry.media.bannerImage || entry.media.coverImage.extraLarge || entry.media.coverImage.large,
             chapterNumber: chapterNum,
             chapterId: chapterId,
             timestamp: timestamp,
-            source: 'AniList',
+            source,
             progressSource
           };
         });
@@ -173,26 +194,32 @@ const Home: React.FC<HomeProps> = ({
     }
 
     // 3. Add any Local History items that were NOT matched in AniList
-    const processedIds = new Set(items.map(i => i.id));
+    const processedIds = new Set(items.map(i => i.anilistId || i.id));
     const processedTitles = new Set(items.map(i => i.title.toLowerCase()));
 
     localHistory.forEach(local => {
-       if (!processedIds.has(local.seriesId) && !processedTitles.has(local.seriesTitle.toLowerCase())) {
-          items.push({
-            id: local.seriesId,
-            title: local.seriesTitle,
-            image: local.seriesImage,
-            chapterNumber: local.chapterNumber,
-            chapterId: local.chapterId,
-            timestamp: local.timestamp,
-            source: local.source,
-            progressSource: 'Local'
-          });
-       }
+       const key = local.anilistId || local.seriesId;
+       if (processedIds.has(key) || processedTitles.has(local.seriesTitle.toLowerCase())) return;
+       const providerSeriesId =
+         local.providerSeriesId || (!/^\d+$/.test(local.seriesId) ? local.seriesId : undefined);
+       localOnly.push({
+         id: key,
+         anilistId: local.anilistId,
+         providerSeriesId,
+         title: local.seriesTitle,
+         image: local.seriesImage,
+         chapterNumber: local.chapterNumber,
+         chapterId: local.chapterId,
+         timestamp: local.timestamp,
+         source: local.source,
+         progressSource: 'Local'
+       });
     });
 
     items.sort((a, b) => b.timestamp - a.timestamp);
     setContinueReading(items);
+    localOnly.sort((a, b) => b.timestamp - a.timestamp);
+    setRecentReads(localOnly);
   };
 
   const handleGlobalSearch = async () => {
@@ -217,16 +244,44 @@ const Home: React.FC<HomeProps> = ({
     }
   };
 
-  const handleContinueClick = (item: ContinueItem) => {
-    if (item.chapterId) {
+  const handleContinueClick = async (item: ContinueItem) => {
+    const anilistId = item.anilistId || (item.source === 'AniList' ? item.id : undefined);
+
+    if (!item.chapterId) {
+      onNavigate('details', anilistId || item.id);
+      return;
+    }
+
+    try {
+      let providerDetails = null;
+      if (item.providerSeriesId) {
+        providerDetails = await api.getSeriesDetails(item.providerSeriesId, 'AsuraScans');
+      } else if (!anilistId && item.source === 'AsuraScans') {
+        providerDetails = await api.getSeriesDetails(item.id, 'AsuraScans');
+      } else if (anilistId) {
+        providerDetails = await api.getMappedProviderDetails(anilistId, 'AsuraScans');
+      }
+
+      if (!providerDetails) {
+        onNavigate('details', anilistId || item.id);
+        return;
+      }
+
+      const chapterNum = typeof item.chapterNumber === 'string' ? parseFloat(item.chapterNumber) : item.chapterNumber;
       onNavigate('reader', {
         chapterId: item.chapterId,
-        seriesId: item.id,
-        anilistId: item.source === 'AniList' ? item.id : undefined,
-        chapterNumber: typeof item.chapterNumber === 'string' ? parseFloat(item.chapterNumber) : item.chapterNumber,
+        seriesId: anilistId || item.id,
+        anilistId: anilistId,
+        providerSeriesId: providerDetails.id,
+        chapterNumber: !isNaN(Number(chapterNum)) ? chapterNum : undefined,
+        chapters: providerDetails.chapters,
+        seriesTitle: item.title,
+        seriesImage: item.image,
+        source: providerDetails.source || item.source
       });
-    } else {
-      onNavigate('details', item.id);
+    } catch (e) {
+      console.warn('Failed to resume reading, falling back to details', e);
+      onNavigate('details', anilistId || item.id);
     }
   };
 
@@ -266,7 +321,7 @@ const Home: React.FC<HomeProps> = ({
          {/* LEFT COLUMN (Main Content) */}
          <div className="xl:col-span-3 space-y-10">
 
-            {/* Watch History (Only on Default View) */}
+            {/* Continue Reading (AniList) */}
             {continueReading.length > 0 && !isDiscoveryMode && (
                <motion.div 
                  initial={{ opacity: 0, y: 20 }}
@@ -276,7 +331,7 @@ const Home: React.FC<HomeProps> = ({
                   <div className="mb-5 flex items-end justify-between">
                      <div>
                         <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">Your Watchlist</h3>
-                        <h2 className="text-2xl font-bold text-white leading-none">Watch History</h2>
+                        <h2 className="text-2xl font-bold text-white leading-none">Continue Reading</h2>
                      </div>
                      <div className="text-xs text-gray-500 font-medium hidden sm:block">
                         Drag to explore
@@ -284,12 +339,12 @@ const Home: React.FC<HomeProps> = ({
                   </div>
                   
                   <motion.div 
-                    ref={historyContainerRef} 
+                    ref={continueHistoryRef} 
                     className="overflow-hidden cursor-grab active:cursor-grabbing -mx-4 px-4 sm:mx-0 sm:px-0"
                   >
                      <motion.div 
                        drag="x"
-                       dragConstraints={{ right: 0, left: -historyWidth }}
+                       dragConstraints={{ right: 0, left: -continueHistoryWidth }}
                        className="flex gap-5 w-max py-2" 
                      >
                         {continueReading.map((item) => (
@@ -300,9 +355,48 @@ const Home: React.FC<HomeProps> = ({
                               />
                           </div>
                         ))}
-                        <div className="w-[150px] aspect-video flex-shrink-0">
+                       <div className="w-[150px] aspect-video flex-shrink-0">
                            <HistoryCard isViewMore={true} onClick={() => onNavigate('library')} />
                         </div>
+                     </motion.div>
+                  </motion.div>
+               </motion.div>
+            )}
+
+            {/* Local Reading History */}
+            {recentReads.length > 0 && !isDiscoveryMode && (
+               <motion.div 
+                 initial={{ opacity: 0, y: 20 }}
+                 animate={{ opacity: 1, y: 0 }}
+                 className="mb-8"
+               >
+                  <div className="mb-5 flex items-end justify-between">
+                     <div>
+                        <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">Local Progress</h3>
+                        <h2 className="text-2xl font-bold text-white leading-none">Recent Reads</h2>
+                     </div>
+                     <div className="text-xs text-gray-500 font-medium hidden sm:block">
+                        Saved on this device
+                     </div>
+                  </div>
+                  
+                  <motion.div 
+                    ref={recentHistoryRef} 
+                    className="overflow-hidden cursor-grab active:cursor-grabbing -mx-4 px-4 sm:mx-0 sm:px-0"
+                  >
+                     <motion.div 
+                       drag="x"
+                       dragConstraints={{ right: 0, left: -recentHistoryWidth }}
+                       className="flex gap-5 w-max py-2" 
+                     >
+                        {recentReads.map((item) => (
+                          <div key={item.id} className="w-[280px] sm:w-[320px] aspect-video flex-shrink-0">
+                              <HistoryCard 
+                                 item={item} 
+                                 onClick={handleContinueClick}
+                              />
+                          </div>
+                        ))}
                      </motion.div>
                   </motion.div>
                </motion.div>
