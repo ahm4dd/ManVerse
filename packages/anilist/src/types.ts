@@ -171,6 +171,7 @@ const AniListMangaListSchema = z.object({
   volumes: z.number().nullable().optional(),
   genres: z.array(z.string()).optional(),
   averageScore: z.number().nullable().optional(),
+  updatedAt: z.number().nullable().optional(),
   countryOfOrigin: z.string().nullable().optional(),
 });
 
@@ -231,7 +232,6 @@ const StatGenreSchema = z.object({
   genre: z.string(),
   count: z.number(),
   meanScore: z.number().nullable().optional(),
-  minutesRead: z.number().optional(),
   chaptersRead: z.number().optional(),
 });
 
@@ -255,6 +255,7 @@ const StatCountrySchema = z.object({
 export const AniListUserStatsSchema = z.object({
   stats: z
     .object({
+      activityHistory: z.array(ActivityHistorySchema).optional(),
       mangaActivityHistory: z.array(ActivityHistorySchema).optional(),
     })
     .optional(),
@@ -267,7 +268,6 @@ export const AniListUserStatsSchema = z.object({
           volumesRead: z.number().optional(),
           meanScore: z.number().nullable().optional(),
           standardDeviation: z.number().nullable().optional(),
-          minutesRead: z.number().optional(),
           genres: z.array(StatGenreSchema).optional(),
           statuses: z.array(StatStatusSchema).optional(),
           formats: z.array(StatFormatSchema).optional(),

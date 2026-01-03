@@ -14,6 +14,8 @@ export interface LibraryEntryInput {
   provider?: string | null;
   provider_manga_id?: number | null;
   anilist_entry_id?: number | null;
+  created_at?: number | null;
+  updated_at?: number | null;
 }
 
 export interface LibraryEntryWithMedia {
@@ -24,6 +26,8 @@ export interface LibraryEntryWithMedia {
 export function upsertLibraryEntry(input: LibraryEntryInput): LibraryEntryRecord {
   const db = getDatabase();
   const now = Math.floor(Date.now() / 1000);
+  const createdAt = input.created_at ?? now;
+  const updatedAt = input.updated_at ?? now;
   const payload = {
     user_id: input.user_id,
     anilist_id: input.anilist_id,
@@ -37,8 +41,8 @@ export function upsertLibraryEntry(input: LibraryEntryInput): LibraryEntryRecord
     is_favorite: input.is_favorite ?? 0,
     started_at: input.started_at ?? null,
     completed_at: input.completed_at ?? null,
-    created_at: now,
-    updated_at: now,
+    created_at: createdAt,
+    updated_at: updatedAt,
   };
 
   const insert = db.prepare(`

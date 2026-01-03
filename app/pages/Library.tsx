@@ -14,6 +14,145 @@ interface LibraryProps {
   user: any;
 }
 
+function formatTimeAgo(timestamp?: number | null): string {
+  if (!timestamp) return 'Unknown';
+  const seconds = Math.floor(Date.now() / 1000) - timestamp;
+  if (seconds < 60) return 'Just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months}mo ago`;
+  const years = Math.floor(months / 12);
+  return `${years}y ago`;
+}
+
+function buildActivityHistoryFromEntries(entries: any[]) {
+  const counts = new Map<number, number>();
+  for (const entry of entries) {
+    const updatedAt = entry.updatedAt;
+    if (!updatedAt) continue;
+    const day = Math.floor(updatedAt / 86400) * 86400;
+    counts.set(day, (counts.get(day) ?? 0) + 1);
+  }
+
+  const history = [];
+  const now = new Date();
+  for (let i = 0; i < 365; i += 1) {
+    const date = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    date.setUTCDate(date.getUTCDate() - i);
+    const unix = Math.floor(date.getTime() / 1000);
+    const amount = counts.get(unix) ?? 0;
+    const level = amount === 0 ? 0 : amount > 12 ? 4 : amount > 7 ? 3 : amount > 3 ? 2 : 1;
+    history.unshift({ date: unix, amount, level });
+  }
+  return history;
+}
+
+function buildStatsFromEntries(entries: any[]) {
+  const scores: number[] = [];
+  const genres = new Map<string, { count: number; scoreTotal: number; scoreCount: number; chaptersRead: number }>();
+  const statuses = new Map<
+    string,
+    { count: number; scoreTotal: number; scoreCount: number; chaptersRead: number }
+  >();
+  const formats = new Map<string, number>();
+  const countries = new Map<string, number>();
+
+  let chaptersRead = 0;
+  let volumesRead = 0;
+
+  for (const entry of entries) {
+    const media = entry.media;
+    if (!media) continue;
+    const score = entry.score ?? null;
+    const progress = entry.progress ?? 0;
+    const progressVolumes = entry.progressVolumes ?? 0;
+    chaptersRead += progress;
+    volumesRead += progressVolumes;
+
+    if (typeof score === 'number') {
+      scores.push(score);
+    }
+
+    const status = entry.status;
+    const statusBucket = statuses.get(status) ?? {
+      count: 0,
+      scoreTotal: 0,
+      scoreCount: 0,
+      chaptersRead: 0,
+    };
+    statusBucket.count += 1;
+    statusBucket.chaptersRead += progress;
+    if (typeof score === 'number') {
+      statusBucket.scoreTotal += score;
+      statusBucket.scoreCount += 1;
+    }
+    statuses.set(status, statusBucket);
+
+    const genreList = media.genres ?? [];
+    for (const genre of genreList) {
+      const bucket = genres.get(genre) ?? {
+        count: 0,
+        scoreTotal: 0,
+        scoreCount: 0,
+        chaptersRead: 0,
+      };
+      bucket.count += 1;
+      bucket.chaptersRead += progress;
+      if (typeof score === 'number') {
+        bucket.scoreTotal += score;
+        bucket.scoreCount += 1;
+      }
+      genres.set(genre, bucket);
+    }
+
+    if (media.format) {
+      formats.set(media.format, (formats.get(media.format) ?? 0) + 1);
+    }
+    if (media.countryOfOrigin) {
+      countries.set(media.countryOfOrigin, (countries.get(media.countryOfOrigin) ?? 0) + 1);
+    }
+  }
+
+  const meanScore =
+    scores.length > 0 ? scores.reduce((acc, value) => acc + value, 0) / scores.length : null;
+  const standardDeviation =
+    scores.length > 1
+      ? Math.sqrt(
+          scores.reduce((sum, value) => sum + Math.pow(value - (meanScore ?? 0), 2), 0) /
+            scores.length,
+        )
+      : null;
+
+  return {
+    count: entries.length,
+    chaptersRead,
+    volumesRead,
+    meanScore,
+    standardDeviation,
+    minutesRead: chaptersRead * 5,
+    genres: Array.from(genres.entries()).map(([genre, bucket]) => ({
+      genre,
+      count: bucket.count,
+      meanScore: bucket.scoreCount ? bucket.scoreTotal / bucket.scoreCount : null,
+      minutesRead: bucket.chaptersRead * 5,
+      chaptersRead: bucket.chaptersRead,
+    })),
+    statuses: Array.from(statuses.entries()).map(([status, bucket]) => ({
+      status,
+      count: bucket.count,
+      meanScore: bucket.scoreCount ? bucket.scoreTotal / bucket.scoreCount : null,
+      chaptersRead: bucket.chaptersRead,
+    })),
+    formats: Array.from(formats.entries()).map(([format, count]) => ({ format, count })),
+    countries: Array.from(countries.entries()).map(([country, count]) => ({ country, count })),
+  };
+}
+
 const Library: React.FC<LibraryProps> = ({ onNavigate, user }) => {
   const [fullLibrary, setFullLibrary] = useState<any>(null);
   const [userStats, setUserStats] = useState<any>(null);
@@ -42,14 +181,20 @@ const Library: React.FC<LibraryProps> = ({ onNavigate, user }) => {
       setLoading(true);
       if (user) {
         try {
-           const [libData, statsData, activityData] = await Promise.all([
+           const [libResult, statsResult, activityResult] = await Promise.allSettled([
              anilistApi.getFullUserLibrary(user.id),
              anilistApi.getUserStats(user.id),
              anilistApi.getUserActivity(user.id)
            ]);
-           setFullLibrary(libData);
-           setUserStats(statsData);
-           setUserActivity(activityData || []);
+           if (libResult.status === 'fulfilled') {
+             setFullLibrary(libResult.value);
+           }
+           if (statsResult.status === 'fulfilled') {
+             setUserStats(statsResult.value);
+           }
+           if (activityResult.status === 'fulfilled') {
+             setUserActivity(activityResult.value || []);
+           }
         } catch (e) {
           console.error(e);
         }
@@ -61,9 +206,30 @@ const Library: React.FC<LibraryProps> = ({ onNavigate, user }) => {
     loadData();
   }, [user]);
 
+  const flattenedEntries = useMemo(() => {
+     if (!fullLibrary?.lists) return [];
+     return fullLibrary.lists.flatMap((list: any) => list.entries ?? []);
+  }, [fullLibrary]);
+
+  const derivedStats = useMemo(() => {
+     if (flattenedEntries.length === 0) return null;
+     return buildStatsFromEntries(flattenedEntries);
+  }, [flattenedEntries]);
+
+  const derivedHistory = useMemo(() => {
+     if (flattenedEntries.length === 0) return null;
+     return buildActivityHistoryFromEntries(flattenedEntries);
+  }, [flattenedEntries]);
+
   // Derive Data
-  const stats = userStats?.statistics?.manga;
+  const apiStats = userStats?.statistics?.manga;
+  const stats = apiStats && (apiStats.count ?? 0) > 0 ? apiStats : derivedStats;
   const genreStats = stats?.genres || [];
+  const activityHistory =
+    userStats?.stats?.mangaActivityHistory ||
+    userStats?.stats?.activityHistory ||
+    derivedHistory ||
+    [];
   
   // Helper to get covers for genres
   const getGenreImages = (genreName: string) => {
@@ -239,8 +405,8 @@ const Library: React.FC<LibraryProps> = ({ onNavigate, user }) => {
                   {/* Activity History Heatmap */}
                   <div className="bg-[#151f2e] p-6 rounded-2xl border border-white/5">
                      <h3 className="text-sm font-bold text-gray-400 mb-4">Activity History</h3>
-                     {userStats?.stats?.mangaActivityHistory && (
-                        <ActivityHeatmap history={userStats.stats.mangaActivityHistory} />
+                     {activityHistory.length > 0 && (
+                        <ActivityHeatmap history={activityHistory} />
                      )}
                   </div>
 
@@ -251,7 +417,9 @@ const Library: React.FC<LibraryProps> = ({ onNavigate, user }) => {
                          <div className="text-xs font-bold text-gray-500 uppercase">Total Manga</div>
                       </div>
                       <div className="p-6 text-center">
-                         <div className="text-2xl font-black text-purple-400 mb-1">{(stats?.minutesRead / 60 / 24).toFixed(1)}</div>
+                         <div className="text-2xl font-black text-purple-400 mb-1">
+                           {stats?.minutesRead ? (stats.minutesRead / 60 / 24).toFixed(1) : '0.0'}
+                         </div>
                          <div className="text-xs font-bold text-gray-500 uppercase">Days Read</div>
                       </div>
                       <div className="p-6 text-center">
@@ -330,21 +498,30 @@ const Library: React.FC<LibraryProps> = ({ onNavigate, user }) => {
                           onClick={() => openEditModal(entry)}
                        >
                           <img 
-                            src={entry.media.coverImage.large} 
+                            src={entry.media.coverImage.extraLarge || entry.media.coverImage.large || entry.media.coverImage.medium || ''} 
                             className="w-full h-full object-cover transition-transform group-hover:scale-110 duration-500" 
                           />
-                          <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-3">
-                             <h4 className="text-sm font-bold text-white line-clamp-2">{entry.media.title.english || entry.media.title.romaji}</h4>
-                             <div className="flex justify-between items-center mt-2">
-                                <span className="text-xs text-primary font-bold">{entry.progress} / {entry.media.chapters || '?'}</span>
-                                {entry.score > 0 && <span className="text-xs text-yellow-500 font-bold">{entry.score}</span>}
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent" />
+                          <div className="absolute inset-x-0 bottom-0 p-3 space-y-1">
+                             <h4 className="text-sm font-bold text-white line-clamp-2">
+                               {entry.media.title.english || entry.media.title.romaji}
+                             </h4>
+                              <div className="flex items-center justify-between text-xs text-gray-200">
+                               <span>Read ch {entry.progress ?? 0}</span>
+                               <span>Latest known {entry.media.chapters ?? '?'}</span>
+                              </div>
+                             <div className="text-[11px] text-gray-400 flex items-center justify-between">
+                               <span>Last read {formatTimeAgo(entry.updatedAt ?? entry.createdAt)}</span>
+                               <span>Updated {formatTimeAgo(entry.media.updatedAt ?? entry.updatedAt)}</span>
                              </div>
-                             <div className="text-[10px] text-gray-400 mt-1 text-center bg-white/10 rounded py-1">
-                                Click to Edit
+                          </div>
+                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-start justify-start p-3">
+                             <div className="text-[10px] text-gray-200 bg-white/10 px-2 py-1 rounded-full">
+                               Edit
                              </div>
                           </div>
                           {/* Status Dot */}
-                          <div className={`absolute top-2 right-2 w-3 h-3 rounded-full border-2 border-black ${
+                          <div className={`absolute top-3 right-3 w-5 h-5 rounded-full ring-2 ring-black/80 shadow-lg ${
                              entry.status === 'CURRENT' ? 'bg-green-500' :
                              entry.status === 'PLANNING' ? 'bg-blue-500' :
                              entry.status === 'COMPLETED' ? 'bg-purple-500' : 'bg-gray-500'

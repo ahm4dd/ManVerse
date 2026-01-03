@@ -238,6 +238,7 @@ export const GET_USER_MANGA_LIST = gql`
             status
             averageScore
             countryOfOrigin
+            updatedAt
           }
         }
       }
@@ -264,7 +265,7 @@ export const GET_USER_STATS = gql`
   query GetUserStats($userId: Int!) {
     User(id: $userId) {
       stats {
-        mangaActivityHistory {
+        activityHistory {
           date
           amount
           level
@@ -277,12 +278,10 @@ export const GET_USER_STATS = gql`
           volumesRead
           meanScore
           standardDeviation
-          minutesRead
           genres(sort: COUNT_DESC) {
             genre
             count
             meanScore
-            minutesRead
             chaptersRead
           }
           statuses {

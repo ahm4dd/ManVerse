@@ -116,7 +116,7 @@ library.delete('/:id', requireAuth, async (c) => {
 library.get('/stats', requireAuth, async (c) => {
   const auth = c.get('auth');
   const userKey = resolveUserKey(c.req.header('Authorization'), auth?.id ?? null);
-  const stats = await service.stats(userKey);
+  const stats = await service.stats(userKey, auth);
   return jsonSuccess(c, stats);
 });
 
