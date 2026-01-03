@@ -53,7 +53,7 @@ export class ScraperService {
 
   private async withPage<T>(
     provider: Provider,
-    handler: (page: Page, scraper: IScraper) => Promise<T>,
+    handler: (page: Page, scraper: Scraper) => Promise<T>,
   ): Promise<T> {
     const browser = await this.getBrowser();
     const scraper = this.getScraper(provider);

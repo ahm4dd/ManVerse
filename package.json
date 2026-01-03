@@ -8,6 +8,6 @@
   ],
   "scripts": {
     "dev:app": "npm --prefix app run dev",
-    "dev:api": "bun --cwd api run dev"
+    "dev:api": "bun --cwd=api run dev"
   }
 }
