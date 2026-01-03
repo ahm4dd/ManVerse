@@ -160,6 +160,20 @@ export const AniListMangaSchema = z.object({
 
 export type AniListManga = z.infer<typeof AniListMangaSchema>;
 
+const AniListMangaListSchema = z.object({
+  id: z.number(),
+  title: TitleSchema,
+  coverImage: CoverImageSchema.optional(),
+  bannerImage: z.string().nullable().optional(),
+  status: MediaStatusSchema.nullable().optional(),
+  format: MediaFormatSchema.nullable().optional(),
+  chapters: z.number().nullable().optional(),
+  volumes: z.number().nullable().optional(),
+  genres: z.array(z.string()).optional(),
+  averageScore: z.number().nullable().optional(),
+  countryOfOrigin: z.string().nullable().optional(),
+});
+
 // ---------- Media List ----------
 
 export const MediaListStatusSchema = z.enum([
@@ -178,9 +192,9 @@ export const MediaListEntrySchema = z.object({
   mediaId: z.number(),
   status: MediaListStatusSchema,
   score: z.number().nullable(), // User's rating (0-100)
-  progress: z.number(), // Chapters read
+  progress: z.number().nullable().optional().transform((value) => value ?? 0), // Chapters read
   progressVolumes: z.number().nullable(),
-  repeat: z.number(), // Re-read count
+  repeat: z.number().nullable().optional().transform((value) => value ?? 0), // Re-read count
   priority: z.number().nullable(), // 0-5
   private: z.boolean().optional(),
   notes: z.string().nullable(),
@@ -189,7 +203,7 @@ export const MediaListEntrySchema = z.object({
   completedAt: FuzzyDateSchema,
   updatedAt: z.number().optional(), // Unix timestamp
   createdAt: z.number().optional(),
-  media: AniListMangaSchema.optional(), // Populated in some queries
+  media: AniListMangaListSchema.optional(), // Populated in list queries
 });
 
 export type MediaListEntry = z.infer<typeof MediaListEntrySchema>;
@@ -270,20 +284,23 @@ export type AniListUserStats = z.infer<typeof AniListUserStatsSchema>;
 
 export const AniListActivitySchema = z.object({
   id: z.number(),
-  status: z.string(),
+  status: z.string().nullable().optional(),
   progress: z.number().nullable().optional(),
   createdAt: z.number(),
-  media: z.object({
-    id: z.number(),
-    title: z.object({
-      userPreferred: z.string(),
-    }),
-    coverImage: z
-      .object({
-        medium: z.string().url().optional(),
-      })
-      .optional(),
-  }),
+  media: z
+    .object({
+      id: z.number(),
+      title: z.object({
+        userPreferred: z.string(),
+      }),
+      coverImage: z
+        .object({
+          medium: z.string().url().optional(),
+        })
+        .optional(),
+    })
+    .nullable()
+    .optional(),
 });
 
 export type AniListActivity = z.infer<typeof AniListActivitySchema>;
