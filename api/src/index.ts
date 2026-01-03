@@ -14,6 +14,7 @@ import syncRoutes from './routes/sync.ts';
 import anilistRoutes from './routes/anilist.ts';
 
 const app = new Hono<HonoEnv>();
+const port = Number(Bun.env.PORT || 3001);
 
 app.use('*', async (c, next) => {
   c.set('requestId', randomUUID());
@@ -34,12 +35,12 @@ app.route('/api/anilist', anilistRoutes);
 
 app.onError(handleError);
 
-const port = Number(Bun.env.PORT || 3001);
-Bun.serve({
-  fetch: app.fetch,
+const server = {
   port,
-});
+  fetch: app.fetch,
+};
 
 console.log(`ManVerse API listening on http://localhost:${port}`);
 
-export default app;
+export { app };
+export default server;
