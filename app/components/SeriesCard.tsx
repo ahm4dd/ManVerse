@@ -51,6 +51,13 @@ const getStatusLabel = (status: string) => {
 
 const SeriesCard: React.FC<SeriesCardProps> = ({ series, onClick, index = 0 }) => {
   const relativeTime = timeAgo(series.updatedAt);
+  let latestLabel = series.latestChapter;
+  if (series.source === 'AniList' && latestLabel) {
+    const lowered = latestLabel.toLowerCase();
+    if (lowered.includes('chapter') || lowered.includes('progress')) {
+      latestLabel = 'Updated';
+    }
+  }
 
   return (
     <motion.div 
@@ -112,7 +119,7 @@ const SeriesCard: React.FC<SeriesCardProps> = ({ series, onClick, index = 0 }) =
         </h3>
         {/* Chapter Info + Date */}
         <div className="flex items-center justify-between mt-1.5 text-xs font-medium text-gray-400">
-           <span className="text-gray-300 truncate max-w-[60%]">{series.latestChapter}</span>
+           <span className="text-gray-300 truncate max-w-[60%]">{latestLabel}</span>
            {relativeTime && (
              <span className="text-[10px] text-gray-500 whitespace-nowrap">{relativeTime}</span>
            )}

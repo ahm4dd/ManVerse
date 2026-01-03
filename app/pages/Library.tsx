@@ -496,7 +496,7 @@ const Library: React.FC<LibraryProps> = ({ onNavigate, user }) => {
                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                     {currentListEntries.map((entry: any) => {
                        const title = entry.media.title.english || entry.media.title.romaji;
-                       const latestCh = entry.media.chapters ?? '?';
+                       const latestCh = entry.media.status === 'FINISHED' ? entry.media.chapters : null;
                        const lastReadAgo = formatTimeAgo(entry.updatedAt ?? entry.createdAt);
                        const latestUpdateAgo = formatTimeAgo(entry.media.updatedAt ?? entry.updatedAt);
                        return (
@@ -522,7 +522,9 @@ const Library: React.FC<LibraryProps> = ({ onNavigate, user }) => {
                                      </div>
                                      <div className="flex flex-col gap-1 text-right">
                                        <span className="text-[10px] uppercase tracking-wide text-gray-400">Latest</span>
-                                       <span className="text-primary/90">Ch {latestCh}</span>
+                                       <span className="text-primary/90">
+                                         {latestCh ? `Ch ${latestCh}` : 'Updated'}
+                                       </span>
                                      </div>
                                    </div>
                                    <div className="grid grid-cols-2 gap-2 text-[10px] text-gray-400">

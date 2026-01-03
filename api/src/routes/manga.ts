@@ -9,6 +9,7 @@ import { ScraperService } from '../services/scraper-service.ts';
 import { Providers } from '@manverse/core';
 import {
   getActiveMapping,
+  getActiveMappingByProviderId,
   getProviderMangaById,
   getProviderMangaByProviderId,
   listProviderMappings,
@@ -31,6 +32,11 @@ const searchSchema = z.object({
 });
 
 const providerDetailsSchema = z.object({
+  provider: z.string().optional(),
+  id: z.string().min(1),
+});
+
+const providerMappingSchema = z.object({
   provider: z.string().optional(),
   id: z.string().min(1),
 });
@@ -134,6 +140,22 @@ manga.get('/search', (c) => {
         500,
       ),
     );
+});
+
+manga.get('/provider/mapping', (c) => {
+  const { provider, id } = parseQuery(c, providerMappingSchema);
+  const resolvedProvider = normalizeProvider(provider);
+  const mapping = getActiveMappingByProviderId(resolvedProvider, id);
+
+  if (!mapping) {
+    return jsonError(
+      c,
+      { code: 'PROVIDER_MAPPING_NOT_FOUND', message: 'No mapping found for provider series' },
+      404,
+    );
+  }
+
+  return jsonSuccess(c, mapping);
 });
 
 manga.get('/provider', (c) => {

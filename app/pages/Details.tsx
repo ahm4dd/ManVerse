@@ -39,6 +39,15 @@ const formatTimeAgo = (timestamp?: number) => {
   return `${years}y ago`;
 };
 
+const parseAniListId = (input: string) => {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+  if (/^\d+$/.test(trimmed)) return trimmed;
+  const match = trimmed.match(/anilist\.co\/manga\/(\d+)/i);
+  if (match?.[1]) return match[1];
+  return null;
+};
+
 const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user }) => {
   const [data, setData] = useState<SeriesDetails | null>(null);
   const [loading, setLoading] = useState(true);
@@ -57,6 +66,12 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
   const [manualProviderUrl, setManualProviderUrl] = useState('');
   const [historyMatch, setHistoryMatch] = useState<HistoryItem | null>(null);
   const [readChapterIds, setReadChapterIds] = useState<Set<string>>(new Set());
+  const [anilistQuery, setAnilistQuery] = useState('');
+  const [anilistResults, setAnilistResults] = useState<Series[]>([]);
+  const [anilistManualInput, setAnilistManualInput] = useState('');
+  const [anilistSearchLoading, setAnilistSearchLoading] = useState(false);
+  const [linkingAniList, setLinkingAniList] = useState(false);
+  const [linkedAniList, setLinkedAniList] = useState<{ id: string; title: string; image?: string } | null>(null);
 
   // Chapter Search State
   const [chapterSearchQuery, setChapterSearchQuery] = useState('');
@@ -80,6 +95,12 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
       setShowProviderMenu(false);
       setHistoryMatch(null);
       setReadChapterIds(new Set());
+      setAnilistQuery('');
+      setAnilistResults([]);
+      setAnilistManualInput('');
+      setAnilistSearchLoading(false);
+      setLinkingAniList(false);
+      setLinkedAniList(null);
       try {
         // Determine source based on ID format (Numeric = AniList, String = Provider)
         const source = /^\d+$/.test(seriesId) ? 'AniList' : 'AsuraScans';
@@ -122,6 +143,38 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
       .finally(() => {
         if (cancelled) return;
         setProviderLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [data, activeProviderSeries]);
+
+  useEffect(() => {
+    if (!data) return;
+    if (data.source !== 'AsuraScans') return;
+
+    const providerId = activeProviderSeries?.id || data.id;
+    let cancelled = false;
+
+    api
+      .getProviderMappingByProviderId(providerId, 'AsuraScans')
+      .then((mapping) => {
+        if (cancelled) return;
+        if (mapping.anilist) {
+          const title = mapping.anilist.title_english || mapping.anilist.title_romaji;
+          setLinkedAniList({
+            id: mapping.anilist.id.toString(),
+            title,
+            image: mapping.anilist.cover_large || mapping.anilist.cover_medium || undefined,
+          });
+        } else {
+          setLinkedAniList(null);
+        }
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setLinkedAniList(null);
       });
 
     return () => {
@@ -210,7 +263,12 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
 
       if (user && data?.source === 'AniList') {
         try {
-          await api.mapProviderSeries(data.id, id);
+          await api.mapProviderSeries(data.id, id, {
+            title: details.title,
+            image: details.image,
+            status: details.status,
+            rating: details.rating,
+          });
         } catch (e) {
           console.warn('Failed to persist provider mapping', e);
         }
@@ -238,6 +296,82 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
       return;
     }
     await handleSelectProviderSeries(normalized);
+  };
+
+  const handleAniListSearch = async () => {
+    if (!anilistQuery.trim()) {
+      notify('Enter a title to search AniList.', 'warning');
+      return;
+    }
+
+    setAnilistSearchLoading(true);
+    setAnilistResults([]);
+    try {
+      const results = await anilistApi.search(anilistQuery.trim(), 1);
+      setAnilistResults(results.slice(0, 10));
+    } catch (e) {
+      console.error(e);
+      notify('Failed to search AniList.', 'error');
+    } finally {
+      setAnilistSearchLoading(false);
+    }
+  };
+
+  const handleLinkAniList = async (anilistId: string, series?: Series) => {
+    if (!user) {
+      notify('Login to link AniList entries.', 'warning');
+      return;
+    }
+    if (!data) return;
+
+    const providerId = activeProviderSeries?.id || data.id;
+
+    setLinkingAniList(true);
+    try {
+      await api.mapProviderSeries(anilistId, providerId, {
+        title: data.title,
+        image: data.image,
+        status: data.status,
+        rating: data.rating,
+      });
+
+      history.attachAnilistId({
+        providerSeriesId: providerId,
+        title: data.title,
+        anilistId,
+      });
+
+      if (series) {
+        setLinkedAniList({
+          id: series.id,
+          title: series.title,
+          image: series.image,
+        });
+      } else {
+        const details = await anilistApi.getDetails(parseInt(anilistId, 10));
+        setLinkedAniList({
+          id: details.id,
+          title: details.title,
+          image: details.image,
+        });
+      }
+
+      notify('Linked to AniList successfully.', 'success');
+    } catch (e) {
+      console.error(e);
+      notify('Failed to link AniList entry.', 'error');
+    } finally {
+      setLinkingAniList(false);
+    }
+  };
+
+  const handleManualAniListLink = async () => {
+    const anilistId = parseAniListId(anilistManualInput);
+    if (!anilistId) {
+      notify('Paste a valid AniList manga URL or ID.', 'warning');
+      return;
+    }
+    await handleLinkAniList(anilistId);
   };
 
   const navigateToReader = (chapter: any) => {
@@ -613,6 +747,119 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
                   )}
               </div>
             </motion.div>
+
+            {!isAniListSource && (
+              <motion.div variants={{ hidden: { y: 20, opacity: 0 }, visible: { y: 0, opacity: 1 } }} className="rounded-2xl border border-white/10 bg-surfaceHighlight/30 p-6 space-y-4">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-lg font-bold text-white">Link to AniList</h3>
+                    <p className="text-sm text-gray-400">
+                      Attach this provider series to AniList so we can sync progress and stats.
+                    </p>
+                  </div>
+                  {linkedAniList && (
+                    <button
+                      onClick={() => onNavigate('details', linkedAniList.id)}
+                      className="px-4 py-2 rounded-xl bg-white/10 text-white text-sm font-semibold border border-white/10 hover:bg-white/20"
+                    >
+                      Open AniList
+                    </button>
+                  )}
+                </div>
+
+                {linkedAniList ? (
+                  <div className="flex items-center gap-4 rounded-xl bg-black/30 border border-white/10 p-4">
+                    {linkedAniList.image && (
+                      <img
+                        src={linkedAniList.image}
+                        alt={linkedAniList.title}
+                        className="w-16 h-24 object-cover rounded-lg"
+                      />
+                    )}
+                    <div>
+                      <div className="text-sm font-bold text-white">{linkedAniList.title}</div>
+                      <div className="text-xs text-green-400 font-semibold mt-1">Linked</div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <div className="rounded-xl border border-white/10 bg-black/30 p-4 space-y-3">
+                      <div>
+                        <h4 className="text-sm font-bold text-white">Search AniList</h4>
+                        <p className="text-xs text-gray-400">Find the official entry and link it.</p>
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          value={anilistQuery}
+                          onChange={(e) => setAnilistQuery(e.target.value)}
+                          placeholder="Search AniList title..."
+                          className="flex-1 bg-surfaceHighlight border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary"
+                        />
+                        <button
+                          onClick={handleAniListSearch}
+                          disabled={anilistSearchLoading}
+                          className="px-4 py-2 rounded-lg bg-primary text-white text-sm font-semibold disabled:opacity-60"
+                        >
+                          {anilistSearchLoading ? '...' : 'Search'}
+                        </button>
+                      </div>
+                      {anilistResults.length > 0 && (
+                        <div className="max-h-56 overflow-y-auto space-y-2">
+                          {anilistResults.map((result) => (
+                            <div
+                              key={result.id}
+                              className="flex items-center gap-3 rounded-lg border border-white/10 bg-black/40 p-2"
+                            >
+                              <img
+                                src={result.image}
+                                alt={result.title}
+                                className="w-10 h-14 object-cover rounded-md"
+                              />
+                              <div className="flex-1 min-w-0">
+                                <div className="text-xs font-semibold text-white truncate">{result.title}</div>
+                                <div className="text-[10px] text-gray-500">ID {result.id}</div>
+                              </div>
+                              <button
+                                onClick={() => handleLinkAniList(result.id, result)}
+                                disabled={!user || linkingAniList}
+                                className="px-3 py-1.5 rounded-full bg-white/10 text-xs font-semibold text-white border border-white/10 hover:bg-white/20 disabled:opacity-50"
+                              >
+                                Link
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="rounded-xl border border-white/10 bg-black/30 p-4 space-y-3">
+                      <div>
+                        <h4 className="text-sm font-bold text-white">Paste AniList URL or ID</h4>
+                        <p className="text-xs text-gray-400">Example: https://anilist.co/manga/30013</p>
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          value={anilistManualInput}
+                          onChange={(e) => setAnilistManualInput(e.target.value)}
+                          placeholder="AniList URL or ID"
+                          className="flex-1 bg-surfaceHighlight border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary"
+                        />
+                        <button
+                          onClick={handleManualAniListLink}
+                          disabled={!user || linkingAniList}
+                          className="px-4 py-2 rounded-lg bg-white/10 text-white text-sm font-semibold border border-white/10 hover:bg-white/20 disabled:opacity-50"
+                        >
+                          Link
+                        </button>
+                      </div>
+                      {!user && (
+                        <div className="text-[11px] text-yellow-400">Login required to link AniList.</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </motion.div>
+            )}
           </motion.div>
         </div>
 

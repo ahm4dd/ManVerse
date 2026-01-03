@@ -1,5 +1,5 @@
 import { getDatabase } from './db.ts';
-import type { MangaMappingRecord, ProviderMangaRecord } from './types.ts';
+import type { AnilistMangaRecord, MangaMappingRecord, ProviderMangaRecord } from './types.ts';
 
 export interface ProviderMangaInput {
   provider: string;

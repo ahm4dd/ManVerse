@@ -37,6 +37,12 @@ type ToggleReadInput = {
   source: 'AniList' | 'AsuraScans';
 };
 
+type AttachAnilistInput = {
+  providerSeriesId?: string;
+  title?: string;
+  anilistId: string;
+};
+
 const normalizeTitle = (title?: string) => title?.trim().toLowerCase();
 
 const matchesEntry = (entry: HistoryItem, match: HistoryMatch) => {
@@ -164,6 +170,27 @@ export const history = {
     };
     localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
     return updated[matchIndex].readChapters ?? [];
+  },
+
+  attachAnilistId: (input: AttachAnilistInput) => {
+    if (typeof window === 'undefined') return;
+    if (!input.anilistId) return;
+    const current = history.get();
+    const matchIndex = current.findIndex((entry) =>
+      matchesEntry(entry, {
+        providerSeriesId: input.providerSeriesId,
+        title: input.title,
+      }),
+    );
+
+    if (matchIndex === -1) return;
+
+    const updated = [...current];
+    updated[matchIndex] = {
+      ...updated[matchIndex],
+      anilistId: input.anilistId,
+    };
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
   },
 
   // Get the last read page for a specific chapter

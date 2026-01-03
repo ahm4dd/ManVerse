@@ -53,6 +53,13 @@ type ProviderMapping = {
     title: string;
     image?: string | null;
   };
+  anilist?: {
+    id: number;
+    title_romaji: string;
+    title_english?: string | null;
+    cover_large?: string | null;
+    cover_medium?: string | null;
+  } | null;
 };
 
 function encodeChapterId(url: string): string {
@@ -174,6 +181,15 @@ export const api = {
     return apiRequest<ProviderMapping[]>(`/api/manga/${anilistId}/providers`);
   },
 
+  getProviderMappingByProviderId: async (
+    providerId: string,
+    provider: Source = 'AsuraScans',
+  ): Promise<ProviderMapping> => {
+    return apiRequest<ProviderMapping>(
+      `/api/manga/provider/mapping?provider=${encodeURIComponent(provider)}&id=${encodeURIComponent(providerId)}`,
+    );
+  },
+
   getMappedProviderDetails: async (anilistId: string, provider: Source = 'AsuraScans'): Promise<SeriesDetails> => {
     const details = await apiRequest<ProviderSeriesDetails>(
       `/api/manga/${anilistId}/chapters?provider=${encodeURIComponent(provider)}`,
@@ -181,10 +197,19 @@ export const api = {
     return formatSeriesDetails(details);
   },
 
-  mapProviderSeries: async (anilistId: string, providerId: string) => {
+  mapProviderSeries: async (
+    anilistId: string,
+    providerId: string,
+    details?: {
+      title?: string;
+      image?: string;
+      status?: string;
+      rating?: string;
+    },
+  ) => {
     return apiRequest(`/api/manga/${anilistId}/map`, {
       method: 'POST',
-      body: JSON.stringify({ provider: 'AsuraScans', providerId }),
+      body: JSON.stringify({ provider: 'AsuraScans', providerId, ...details }),
     });
   },
 };

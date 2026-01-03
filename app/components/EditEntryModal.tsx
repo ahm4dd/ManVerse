@@ -108,7 +108,9 @@ const EditEntryModal: React.FC<EditEntryModalProps> = ({ entry, media, onClose, 
                    onChange={e => setProgress(Number(e.target.value))}
                    className="w-full bg-transparent text-white px-2 py-3 font-medium outline-none"
                  />
-                 <span className="text-gray-500 text-xs font-bold whitespace-nowrap pr-2">/ {media.chapters || '?'}</span>
+                 <span className="text-gray-500 text-xs font-bold whitespace-nowrap pr-2">
+                   / {media.status === 'FINISHED' && media.chapters ? media.chapters : '—'}
+                 </span>
               </div>
            </div>
 
