@@ -39,8 +39,8 @@ type ProviderSeriesDetails = {
 };
 
 function encodeChapterId(url: string): string {
-  const base = btoa(url);
-  return base.replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/g, '');
+  const base = typeof btoa === 'function' ? btoa(url) : Buffer.from(url, 'utf-8').toString('base64');
+  return base.replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/g, '');
 }
 
 function formatSeriesResult(item: ProviderSearchResult['results'][number]): Series {
