@@ -61,7 +61,24 @@ export function migrate(target: Database = getDatabase()): void {
     console.warn('Database schema migration warning:', error);
   }
 
+  ensureColumn(target, 'anilist_manga', 'title_romaji', 'TEXT');
+  ensureColumn(target, 'anilist_manga', 'title_english', 'TEXT');
+  ensureColumn(target, 'anilist_manga', 'title_native', 'TEXT');
+  ensureColumn(target, 'anilist_manga', 'description', 'TEXT');
+  ensureColumn(target, 'anilist_manga', 'cover_large', 'TEXT');
+  ensureColumn(target, 'anilist_manga', 'cover_medium', 'TEXT');
+  ensureColumn(target, 'anilist_manga', 'banner_image', 'TEXT');
+  ensureColumn(target, 'anilist_manga', 'status', 'TEXT');
+  ensureColumn(target, 'anilist_manga', 'format', 'TEXT');
+  ensureColumn(target, 'anilist_manga', 'chapters', 'INTEGER');
+  ensureColumn(target, 'anilist_manga', 'volumes', 'INTEGER');
+  ensureColumn(target, 'anilist_manga', 'genres', 'TEXT');
+  ensureColumn(target, 'anilist_manga', 'average_score', 'REAL');
+  ensureColumn(target, 'anilist_manga', 'popularity', 'INTEGER');
+  ensureColumn(target, 'anilist_manga', 'favourites', 'INTEGER');
+  ensureColumn(target, 'anilist_manga', 'updated_at', 'INTEGER');
   ensureColumn(target, 'anilist_manga', 'country_of_origin', 'TEXT');
+  ensureColumn(target, 'anilist_manga', 'cached_at', 'INTEGER');
   ensureColumn(target, 'user_library', 'user_id', 'TEXT');
   ensureColumn(target, 'user_library', 'anilist_entry_id', 'INTEGER');
   ensureColumn(target, 'user_library', 'created_at', 'INTEGER');
