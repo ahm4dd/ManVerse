@@ -697,7 +697,7 @@ export const anilistApi = {
     return {
       id: media.id.toString(),
       title: media.title.english || media.title.romaji,
-      image: media.coverImage.extraLarge || media.coverImage.large,
+      image: media.coverImage?.extraLarge || media.coverImage?.large || media.coverImage?.medium || '',
       bannerImage: media.bannerImage,
       status: media.status,
       rating: media.averageScore ? (media.averageScore / 10).toFixed(1) : 'N/A',
@@ -840,7 +840,7 @@ export const anilistApi = {
     return {
       id: media.id.toString(),
       title: media.title.english || media.title.romaji,
-      image: media.coverImage.extraLarge || media.coverImage.large,
+      image: media.coverImage?.extraLarge || media.coverImage?.large || media.coverImage?.medium || '',
       bannerImage: media.bannerImage, 
       status: media.status || 'Unknown',
       rating: media.averageScore ? (media.averageScore / 10).toFixed(1) : 'N/A',
