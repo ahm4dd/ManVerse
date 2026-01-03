@@ -5,7 +5,7 @@ import Reader from './pages/Reader';
 import Login from './pages/Login';
 import Library from './pages/Library';
 import Recommendations from './pages/Recommendations';
-import { PaletteIcon, BellIcon, SearchIcon, FilterIcon, XIcon, ChevronDown } from './components/Icons';
+import { PaletteIcon, BellIcon, SearchIcon, FilterIcon, XIcon, ChevronDown, SyncIcon } from './components/Icons';
 import NotificationsMenu from './components/NotificationsMenu';
 import { anilistApi } from './lib/anilist';
 import { Chapter } from './types';
@@ -50,6 +50,8 @@ const AppContent: React.FC = () => {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showLoginMenu, setShowLoginMenu] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [syncPending, setSyncPending] = useState(0);
+  const [syncLoading, setSyncLoading] = useState(false);
 
   // Global Search State
   const [searchQuery, setSearchQuery] = useState('');
@@ -73,9 +75,32 @@ const AppContent: React.FC = () => {
     const u = await anilistApi.getCurrentUser();
     setUser(u);
     if (u) {
-      void anilistApi.syncPending();
+      const status = await anilistApi.getSyncStatus();
+      setSyncPending(status.pending ?? 0);
+      if ((status.pending ?? 0) > 0) {
+        void anilistApi.syncPending().then(async () => {
+          const nextStatus = await anilistApi.getSyncStatus();
+          setSyncPending(nextStatus.pending ?? 0);
+        });
+      }
+    } else {
+      setSyncPending(0);
     }
     setIsVerifying(false); 
+  };
+
+  const refreshSyncStatus = async () => {
+    if (!user) return;
+    const status = await anilistApi.getSyncStatus();
+    setSyncPending(status.pending ?? 0);
+  };
+
+  const handleSyncNow = async () => {
+    if (!user || syncLoading) return;
+    setSyncLoading(true);
+    await anilistApi.syncPending();
+    await refreshSyncStatus();
+    setSyncLoading(false);
   };
 
   useEffect(() => {
@@ -98,6 +123,15 @@ const AppContent: React.FC = () => {
 
     loadUser();
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    void refreshSyncStatus();
+    const interval = window.setInterval(() => {
+      void refreshSyncStatus();
+    }, 60000);
+    return () => window.clearInterval(interval);
+  }, [user]);
 
   // Simple router logic
   const navigate = (view: View, data?: any) => {
@@ -317,6 +351,25 @@ const AppContent: React.FC = () => {
                       <NotificationsMenu onClose={() => setShowNotifications(false)} user={user} />
                     )}
                   </div>
+
+                  {user && (
+                    <button
+                      onClick={handleSyncNow}
+                      className={`p-2.5 rounded-xl transition-colors relative ${
+                        syncLoading
+                          ? 'text-primary'
+                          : 'text-gray-300 hover:text-white hover:bg-white/10'
+                      }`}
+                      title={syncPending > 0 ? `${syncPending} pending sync` : 'All synced'}
+                    >
+                      <SyncIcon className={`w-5 h-5 ${syncLoading ? 'animate-spin' : ''}`} />
+                      {syncPending > 0 && (
+                        <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-[10px] font-bold text-black flex items-center justify-center">
+                          {syncPending}
+                        </span>
+                      )}
+                    </button>
+                  )}
 
                 {user ? (
                   <div className="relative flex items-center gap-3 ml-2">

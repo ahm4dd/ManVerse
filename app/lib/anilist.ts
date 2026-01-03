@@ -812,9 +812,20 @@ export const anilistApi = {
     if (this.token === DEMO_TOKEN) return;
     if (!this.token) return;
     try {
-      await apiRequest<any>('/api/sync/all', { method: 'POST' });
+      return await apiRequest<any>('/api/sync/all', { method: 'POST' });
     } catch (e) {
       console.error('Sync failed:', e);
+    }
+  },
+
+  async getSyncStatus() {
+    if (this.token === DEMO_TOKEN) return { pending: 0, items: [] };
+    if (!this.token) return { pending: 0, items: [] };
+    try {
+      return await apiRequest<any>('/api/sync/status');
+    } catch (e) {
+      console.error('Sync status failed:', e);
+      return { pending: 0, items: [] };
     }
   },
 
