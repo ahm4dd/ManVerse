@@ -7,7 +7,15 @@ import { AniListRateLimitError } from '../types.js';
  */
 export class RateLimiter {
   private timestamps: number[] = [];
-  private config = anilistConfig.rateLimit;
+  private config = {
+    ...anilistConfig.rateLimit,
+    maxRequests:
+      getEnvNumber('ANILIST_RPM') ??
+      getEnvNumber('ANILIST_RATE_LIMIT') ??
+      anilistConfig.rateLimit.maxRequests,
+    window:
+      getEnvNumber('ANILIST_RATE_LIMIT_WINDOW_MS') ?? anilistConfig.rateLimit.window,
+  };
 
   /**
    * Wait if necessary to comply with rate limits
@@ -48,4 +56,13 @@ export class RateLimiter {
     this.timestamps = this.timestamps.filter((timestamp) => now - timestamp < this.config.window);
     return this.timestamps.length;
   }
+}
+
+function getEnvNumber(name: string): number | undefined {
+  if (typeof process === 'undefined' || !process.env) return undefined;
+  const raw = process.env[name];
+  if (!raw) return undefined;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return undefined;
+  return parsed;
 }
