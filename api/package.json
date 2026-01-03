@@ -18,6 +18,7 @@
     "zod": "^4.2.1"
   },
   "devDependencies": {
-    "@types/node": "^24.10.1"
+    "@types/node": "^24.10.1",
+    "@types/puppeteer": "^7.0.4"
   }
 }
