@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { requireAuth } from '../middleware/auth.ts';
 import type { HonoEnv } from '../types/api.ts';
 import { jsonError, jsonSuccess } from '../utils/response.ts';
-import { MediaListStatusSchema } from '@manverse/anilist';
+import { MediaListStatusSchema, type MediaListStatus } from '@manverse/anilist';
 import { parseQuery } from '../utils/validation.ts';
 import { LibraryService } from '../services/library-service.ts';
 import { createHash } from 'node:crypto';
@@ -44,11 +44,39 @@ function resolveUserKey(authHeader: string | undefined, userId: number | null | 
   return `guest:${hash}`;
 }
 
+function normalizeStatus(input?: string): MediaListStatus | undefined {
+  if (!input) return undefined;
+  const trimmed = input.trim();
+  if (!trimmed) return undefined;
+  const upper = trimmed.toUpperCase();
+
+  const direct = MediaListStatusSchema.safeParse(upper);
+  if (direct.success) return upper as MediaListStatus;
+
+  const mapped: Record<string, MediaListStatus> = {
+    READING: 'CURRENT',
+    CURRENT: 'CURRENT',
+    PLANNING: 'PLANNING',
+    PLAN: 'PLANNING',
+    PLAN_TO_READ: 'PLANNING',
+    COMPLETED: 'COMPLETED',
+    PAUSED: 'PAUSED',
+    ON_HOLD: 'PAUSED',
+    DROPPED: 'DROPPED',
+    REPEATING: 'REPEATING',
+    REREADING: 'REPEATING',
+  };
+
+  const normalized = upper.replace(/\s+/g, '_');
+  return mapped[normalized];
+}
+
 library.get('/', requireAuth, async (c) => {
   const auth = c.get('auth');
-  const { status } = parseQuery(c, z.object({ status: MediaListStatusSchema.optional() }));
+  const { status } = parseQuery(c, z.object({ status: z.string().optional() }));
   const userKey = resolveUserKey(c.req.header('Authorization'), auth?.id ?? null);
-  const data = await service.list(userKey, status, auth);
+  const normalizedStatus = normalizeStatus(status);
+  const data = await service.list(userKey, normalizedStatus, auth);
   return jsonSuccess(c, data);
 });
 

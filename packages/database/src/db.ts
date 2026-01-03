@@ -67,6 +67,15 @@ export function migrate(target: Database = getDatabase()): void {
   ensureColumn(target, 'user_library', 'created_at', 'INTEGER');
   ensureColumn(target, 'user_library', 'updated_at', 'INTEGER');
   ensureColumn(target, 'anilist_sync_state', 'user_id', 'TEXT');
+  ensureColumn(target, 'anilist_sync_state', 'local_status', 'TEXT');
+  ensureColumn(target, 'anilist_sync_state', 'local_progress', 'REAL');
+  ensureColumn(target, 'anilist_sync_state', 'local_score', 'REAL');
+  ensureColumn(target, 'anilist_sync_state', 'anilist_status', 'TEXT');
+  ensureColumn(target, 'anilist_sync_state', 'anilist_progress', 'REAL');
+  ensureColumn(target, 'anilist_sync_state', 'anilist_score', 'REAL');
+  ensureColumn(target, 'anilist_sync_state', 'needs_sync', 'INTEGER');
+  ensureColumn(target, 'anilist_sync_state', 'conflict_state', 'TEXT');
+  ensureColumn(target, 'anilist_sync_state', 'updated_at', 'INTEGER');
 
   ensureColumn(target, 'provider_manga', 'image', 'TEXT');
   ensureColumn(target, 'provider_manga', 'rating', 'TEXT');
