@@ -382,7 +382,7 @@ const AppContent: React.FC = () => {
                               setShowLoginMenu(false);
                               handleOAuthLogin();
                             }}
-                            className="w-full text-left px-4 py-3 text-sm font-semibold text-white hover:bg-white/5 transition-colors"
+                            className="mx-2 mb-1 flex w-[calc(100%-1rem)] items-center justify-center rounded-lg bg-gradient-to-r from-[#02A9FF] to-[#7AD9FF] px-4 py-2.5 text-xs font-bold text-white shadow-lg shadow-blue-500/30 transition hover:brightness-110"
                           >
                             Continue with AniList
                           </button>
