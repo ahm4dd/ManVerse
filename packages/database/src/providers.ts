@@ -294,6 +294,107 @@ export function getActiveMapping(
   };
 }
 
+export function getActiveMappingByProviderId(
+  provider: string,
+  providerId: string,
+): {
+  mapping: MangaMappingRecord;
+  provider: ProviderMangaRecord;
+  anilist: Pick<AnilistMangaRecord, 'id' | 'title_romaji' | 'title_english' | 'cover_large' | 'cover_medium'> | null;
+} | null {
+  const db = getDatabase();
+  const row = db
+    .prepare(
+      `SELECT
+        mm.id as mm_id,
+        mm.anilist_id as mm_anilist_id,
+        mm.provider as mm_provider,
+        mm.provider_manga_id as mm_provider_manga_id,
+        mm.mapping_source as mm_mapping_source,
+        mm.is_active as mm_is_active,
+        mm.replaced_by as mm_replaced_by,
+        mm.created_at as mm_created_at,
+        mm.updated_at as mm_updated_at,
+        pm.id as pm_id,
+        pm.provider as pm_provider,
+        pm.provider_id as pm_provider_id,
+        pm.title as pm_title,
+        pm.image as pm_image,
+        pm.status as pm_status,
+        pm.rating as pm_rating,
+        pm.chapters as pm_chapters,
+        pm.genres as pm_genres,
+        pm.description as pm_description,
+        pm.author as pm_author,
+        pm.artist as pm_artist,
+        pm.serialization as pm_serialization,
+        pm.updated_on as pm_updated_on,
+        pm.is_active as pm_is_active,
+        pm.domain_changed_from as pm_domain_changed_from,
+        pm.last_scraped as pm_last_scraped,
+        pm.created_at as pm_created_at,
+        pm.updated_at as pm_updated_at,
+        am.id as am_id,
+        am.title_romaji as am_title_romaji,
+        am.title_english as am_title_english,
+        am.cover_large as am_cover_large,
+        am.cover_medium as am_cover_medium
+       FROM provider_manga pm
+       JOIN manga_mappings mm ON mm.provider_manga_id = pm.id AND mm.is_active = 1
+       LEFT JOIN anilist_manga am ON am.id = mm.anilist_id
+       WHERE pm.provider = ? AND pm.provider_id = ?
+       ORDER BY mm.updated_at DESC
+       LIMIT 1`,
+    )
+    .get(provider, providerId) as Record<string, unknown> | undefined;
+
+  if (!row) return null;
+
+  return {
+    mapping: {
+      id: row.mm_id as number,
+      anilist_id: row.mm_anilist_id as number,
+      provider: row.mm_provider as string,
+      provider_manga_id: row.mm_provider_manga_id as number,
+      mapping_source: row.mm_mapping_source as string | null,
+      is_active: row.mm_is_active as number,
+      replaced_by: row.mm_replaced_by as number | null,
+      created_at: row.mm_created_at as number,
+      updated_at: row.mm_updated_at as number,
+    },
+    provider: {
+      id: row.pm_id as number,
+      provider: row.pm_provider as string,
+      provider_id: row.pm_provider_id as string,
+      title: row.pm_title as string,
+      image: row.pm_image as string | null,
+      status: row.pm_status as string | null,
+      rating: row.pm_rating as string | null,
+      chapters: row.pm_chapters as string | null,
+      genres: row.pm_genres as string | null,
+      description: row.pm_description as string | null,
+      author: row.pm_author as string | null,
+      artist: row.pm_artist as string | null,
+      serialization: row.pm_serialization as string | null,
+      updated_on: row.pm_updated_on as string | null,
+      is_active: row.pm_is_active as number,
+      domain_changed_from: row.pm_domain_changed_from as string | null,
+      last_scraped: row.pm_last_scraped as number | null,
+      created_at: row.pm_created_at as number,
+      updated_at: row.pm_updated_at as number,
+    },
+    anilist: row.am_id
+      ? {
+          id: row.am_id as number,
+          title_romaji: row.am_title_romaji as string,
+          title_english: row.am_title_english as string | null,
+          cover_large: row.am_cover_large as string | null,
+          cover_medium: row.am_cover_medium as string | null,
+        }
+      : null,
+  };
+}
+
 export function setActiveMapping(
   anilistId: number,
   provider: string,
