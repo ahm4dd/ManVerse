@@ -48,6 +48,8 @@ const AppContent: React.FC = () => {
   // Menus
   const [showThemeMenu, setShowThemeMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showLoginMenu, setShowLoginMenu] = useState(false);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
 
   // Global Search State
   const [searchQuery, setSearchQuery] = useState('');
@@ -98,12 +100,28 @@ const AppContent: React.FC = () => {
   const handleLogout = () => {
     anilistApi.logout();
     setUser(null);
+    setShowProfileMenu(false);
     navigate('home');
   };
 
   const handleLoginSuccess = async () => {
     await loadUser();
+    setShowLoginMenu(false);
     navigate('home');
+  };
+
+  const handleOAuthLogin = async () => {
+    try {
+      const authUrl = await anilistApi.getLoginUrl();
+      window.location.href = authUrl;
+    } catch (error) {
+      console.error('Failed to start AniList login', error);
+    }
+  };
+
+  const handleDemoLogin = () => {
+    anilistApi.setToken('DEMO_MODE_TOKEN');
+    handleLoginSuccess();
   };
 
   const handleSearchSubmit = (e: React.FormEvent) => {
@@ -292,16 +310,104 @@ const AppContent: React.FC = () => {
                   </div>
 
                 {user ? (
-                  <div className="flex items-center gap-3 ml-2">
-                    <img src={user.avatar.large} alt="avatar" className="w-10 h-10 rounded-full border border-surfaceHighlight cursor-pointer hover:ring-2 ring-primary transition-all" onClick={() => navigate('library')} />
+                  <div className="relative flex items-center gap-3 ml-2">
+                    <button
+                      onClick={() => setShowProfileMenu(!showProfileMenu)}
+                      className="flex items-center gap-2"
+                    >
+                      <img
+                        src={user?.avatar?.large || '/logo.png'}
+                        alt="avatar"
+                        className="w-10 h-10 rounded-full border border-surfaceHighlight cursor-pointer hover:ring-2 ring-primary transition-all"
+                      />
+                      <ChevronDown className="w-4 h-4 text-gray-400 hidden sm:block" />
+                    </button>
+
+                    {showProfileMenu && (
+                      <>
+                        <div
+                          className="fixed inset-0 z-10"
+                          onClick={() => setShowProfileMenu(false)}
+                        />
+                        <div className="absolute right-0 mt-2 w-56 bg-surface border border-white/10 rounded-2xl shadow-xl z-20 py-2 overflow-hidden animate-fade-in ring-1 ring-black/50">
+                          <div className="px-4 py-3 border-b border-white/10">
+                            <div className="text-sm font-semibold text-white">
+                              {user?.name || 'Account'}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {user?.name ? 'AniList connected' : 'Session active'}
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => {
+                              setShowProfileMenu(false);
+                              navigate('library');
+                            }}
+                            className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
+                          >
+                            Library
+                          </button>
+                          <button
+                            onClick={handleLogout}
+                            className="w-full text-left px-4 py-2.5 text-sm text-red-300 hover:text-red-200 hover:bg-red-500/10 transition-colors"
+                          >
+                            Sign out
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </div>
                 ) : (
-                  <button 
-                    onClick={() => navigate('login')}
-                    className="hidden sm:flex text-xs font-bold bg-[#3DB4F2] hover:bg-[#3DB4F2]/90 text-white px-5 py-2.5 rounded-xl transition-colors items-center gap-2 shadow-lg shadow-blue-500/20"
-                  >
-                     Login
-                  </button>
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowLoginMenu(!showLoginMenu)}
+                      className="hidden sm:flex text-xs font-bold bg-[#3DB4F2] hover:bg-[#3DB4F2]/90 text-white px-5 py-2.5 rounded-xl transition-colors items-center gap-2 shadow-lg shadow-blue-500/20"
+                    >
+                      Login
+                      <ChevronDown className="w-4 h-4" />
+                    </button>
+
+                    {showLoginMenu && (
+                      <>
+                        <div
+                          className="fixed inset-0 z-10"
+                          onClick={() => setShowLoginMenu(false)}
+                        />
+                        <div className="absolute right-0 mt-2 w-64 bg-surface border border-white/10 rounded-2xl shadow-xl z-20 py-2 overflow-hidden animate-fade-in ring-1 ring-black/50">
+                          <div className="px-4 py-2 text-[11px] font-bold text-gray-500 uppercase tracking-widest">
+                            Sign in
+                          </div>
+                          <button
+                            onClick={() => {
+                              setShowLoginMenu(false);
+                              handleOAuthLogin();
+                            }}
+                            className="w-full text-left px-4 py-3 text-sm font-semibold text-white hover:bg-white/5 transition-colors"
+                          >
+                            Continue with AniList
+                          </button>
+                          <button
+                            onClick={() => {
+                              setShowLoginMenu(false);
+                              handleDemoLogin();
+                            }}
+                            className="w-full text-left px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
+                          >
+                            Try demo account
+                          </button>
+                          <button
+                            onClick={() => {
+                              setShowLoginMenu(false);
+                              navigate('login');
+                            }}
+                            className="w-full text-left px-4 py-2.5 text-xs text-gray-500 hover:text-gray-300 hover:bg-white/5 transition-colors"
+                          >
+                            Learn more
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 )}
               </div>
             </div>

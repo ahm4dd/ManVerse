@@ -549,6 +549,9 @@ export const anilistApi = {
   },
 
   logout() {
+    if (this.token && this.token !== DEMO_TOKEN) {
+      apiRequest('/api/auth/logout', { method: 'POST', skipAuth: true }).catch(() => {});
+    }
     this.token = null;
     setStoredToken(null);
   },
