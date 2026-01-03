@@ -329,7 +329,7 @@ const AppContent: React.FC = () => {
                           className="fixed inset-0 z-10"
                           onClick={() => setShowProfileMenu(false)}
                         />
-                        <div className="absolute right-0 mt-2 w-56 bg-surface border border-white/10 rounded-2xl shadow-xl z-20 py-2 overflow-hidden animate-fade-in ring-1 ring-black/50">
+                        <div className="absolute right-0 top-full mt-2 w-56 bg-surface border border-white/10 rounded-2xl shadow-xl z-20 py-2 overflow-hidden animate-fade-in ring-1 ring-black/50">
                           <div className="px-4 py-3 border-b border-white/10">
                             <div className="text-sm font-semibold text-white">
                               {user?.name || 'Account'}
@@ -373,7 +373,7 @@ const AppContent: React.FC = () => {
                           className="fixed inset-0 z-10"
                           onClick={() => setShowLoginMenu(false)}
                         />
-                        <div className="absolute right-0 mt-2 w-64 bg-surface border border-white/10 rounded-2xl shadow-xl z-20 py-2 overflow-hidden animate-fade-in ring-1 ring-black/50">
+                        <div className="absolute right-0 top-full mt-2 w-64 bg-surface border border-white/10 rounded-2xl shadow-xl z-20 py-2 overflow-hidden animate-fade-in ring-1 ring-black/50">
                           <div className="px-4 py-2 text-[11px] font-bold text-gray-500 uppercase tracking-widest">
                             Sign in
                           </div>
