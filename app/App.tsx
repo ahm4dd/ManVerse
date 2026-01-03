@@ -78,13 +78,19 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const token = params.get('token');
+    const authError = params.get('error');
 
     if (token) {
       setIsVerifying(true);
       anilistApi.setToken(token);
       params.delete('token');
-      const nextUrl = `${window.location.pathname}${params.toString() ? `?${params}` : ''}`;
-      window.history.replaceState(null, '', nextUrl);
+      params.delete('error');
+      window.history.replaceState(null, '', '/');
+    }
+
+    if (authError) {
+      params.delete('error');
+      window.history.replaceState(null, '', '/');
     }
 
     loadUser();

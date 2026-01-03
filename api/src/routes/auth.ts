@@ -12,6 +12,12 @@ function getFrontendBaseUrl(): string {
   return Bun.env.FRONTEND_URL || 'http://localhost:3000';
 }
 
+function getFrontendAuthPath(): string {
+  const path = Bun.env.FRONTEND_AUTH_PATH;
+  if (!path) return '/';
+  return path.startsWith('/') ? path : `/${path}`;
+}
+
 auth.post('/anilist/login', (c) => {
   const authUrl = service.getAuthorizationUrl();
   return jsonSuccess(c, { authUrl });
@@ -36,7 +42,7 @@ auth.get('/anilist/callback', async (c) => {
   });
 
   const redirectUrl = new URL(getFrontendBaseUrl());
-  redirectUrl.pathname = '/auth/callback';
+  redirectUrl.pathname = getFrontendAuthPath();
   redirectUrl.searchParams.set('token', jwt);
 
   return c.redirect(redirectUrl.toString());
