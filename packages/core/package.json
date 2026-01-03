@@ -1,6 +1,7 @@
 {
   "name": "@manverse/core",
   "version": "0.1.0",
+  "license": "Apache-2.0",
   "description": "Core domain logic and interfaces for ManVerse",
   "main": "./src/index.ts",
   "module": "./src/index.ts",

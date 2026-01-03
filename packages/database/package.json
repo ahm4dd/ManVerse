@@ -1,6 +1,7 @@
 {
   "name": "@manverse/database",
   "version": "0.1.0",
+  "license": "Apache-2.0",
   "description": "SQLite persistence layer for ManVerse",
   "main": "./src/index.ts",
   "module": "./src/index.ts",
