@@ -14,6 +14,7 @@
     "@manverse/database": "workspace:*",
     "@manverse/scrapers": "workspace:*",
     "hono": "^4.6.0",
+    "puppeteer": "^24.34.0",
     "zod": "^4.2.1"
   },
   "devDependencies": {

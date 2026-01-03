@@ -1,6 +1,5 @@
 import { Providers, type Manhwa, type ManhwaChapter, type SearchResult } from '@manverse/core';
-import ScraperFactory from '@manverse/scrapers';
-import { asuraScansConfig, type ScraperConfig } from '@manverse/scrapers';
+import { ScraperFactory, asuraScansConfig, type ScraperConfig } from '@manverse/scrapers';
 import puppeteer, { type Browser, type Page } from 'puppeteer';
 
 type Provider = typeof Providers[keyof typeof Providers];
