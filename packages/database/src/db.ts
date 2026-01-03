@@ -121,6 +121,10 @@ function renameTableIfExists(dbRef: Database, source: string, target: string): v
     return;
   }
 
+  if (tableExists(dbRef, target)) {
+    return;
+  }
+
   dbRef.exec(`ALTER TABLE ${source} RENAME TO ${target}`);
 }
 
@@ -144,6 +148,14 @@ function isLegacyUserLibrary(dbRef: Database): boolean {
 
 function migrateLegacyProviderData(dbRef: Database): void {
   if (!tableExists(dbRef, 'provider_manga_legacy')) {
+    return;
+  }
+
+  if (!tableExists(dbRef, 'provider_manga')) {
+    return;
+  }
+
+  if (!isTableEmpty(dbRef, 'provider_manga')) {
     return;
   }
 
@@ -188,22 +200,20 @@ function migrateLegacyProviderData(dbRef: Database): void {
       COALESCE(last_scraped, unixepoch()),
       COALESCE(last_scraped, unixepoch())
     FROM provider_manga_legacy
-    ON CONFLICT(provider, provider_id) DO UPDATE SET
-      title = excluded.title,
-      image = excluded.image,
-      status = excluded.status,
-      chapters = excluded.chapters,
-      genres = excluded.genres,
-      description = excluded.description,
-      is_active = excluded.is_active,
-      domain_changed_from = excluded.domain_changed_from,
-      last_scraped = excluded.last_scraped,
-      updated_at = excluded.updated_at
+    WHERE provider IS NOT NULL AND provider_id IS NOT NULL
   `);
 }
 
 function migrateLegacyLibraryData(dbRef: Database): void {
   if (!tableExists(dbRef, 'user_library_legacy')) {
+    return;
+  }
+
+  if (!tableExists(dbRef, 'user_library')) {
+    return;
+  }
+
+  if (!isTableEmpty(dbRef, 'user_library')) {
     return;
   }
 
@@ -250,18 +260,15 @@ function migrateLegacyLibraryData(dbRef: Database): void {
       COALESCE(added_at, unixepoch()),
       COALESCE(last_read, added_at, unixepoch())
     FROM user_library_legacy
-    ON CONFLICT(user_id, anilist_id) DO UPDATE SET
-      provider = excluded.provider,
-      provider_manga_id = excluded.provider_manga_id,
-      status = excluded.status,
-      progress = excluded.progress,
-      score = excluded.score,
-      notes = excluded.notes,
-      is_favorite = excluded.is_favorite,
-      started_at = excluded.started_at,
-      completed_at = excluded.completed_at,
-      updated_at = excluded.updated_at
+    WHERE anilist_id IS NOT NULL
   `);
+}
+
+function isTableEmpty(dbRef: Database, table: string): boolean {
+  const row = dbRef.prepare(`SELECT COUNT(*) as count FROM ${table}`).get() as
+    | { count: number }
+    | undefined;
+  return (row?.count ?? 0) === 0;
 }
 
 export function closeDatabase(): void {

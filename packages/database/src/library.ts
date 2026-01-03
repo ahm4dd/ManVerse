@@ -24,8 +24,25 @@ export interface LibraryEntryWithMedia {
 export function upsertLibraryEntry(input: LibraryEntryInput): LibraryEntryRecord {
   const db = getDatabase();
   const now = Math.floor(Date.now() / 1000);
-  const stmt = db.prepare(`
-    INSERT INTO user_library (
+  const payload = {
+    user_id: input.user_id,
+    anilist_id: input.anilist_id,
+    provider: input.provider ?? null,
+    provider_manga_id: input.provider_manga_id ?? null,
+    anilist_entry_id: input.anilist_entry_id ?? null,
+    status: input.status,
+    progress: input.progress ?? 0,
+    score: input.score ?? null,
+    notes: input.notes ?? null,
+    is_favorite: input.is_favorite ?? 0,
+    started_at: input.started_at ?? null,
+    completed_at: input.completed_at ?? null,
+    created_at: now,
+    updated_at: now,
+  };
+
+  const insert = db.prepare(`
+    INSERT OR IGNORE INTO user_library (
       user_id,
       anilist_id,
       provider,
@@ -56,36 +73,30 @@ export function upsertLibraryEntry(input: LibraryEntryInput): LibraryEntryRecord
       $created_at,
       $updated_at
     )
-    ON CONFLICT(user_id, anilist_id) DO UPDATE SET
-      provider = excluded.provider,
-      provider_manga_id = excluded.provider_manga_id,
-      anilist_entry_id = excluded.anilist_entry_id,
-      status = excluded.status,
-      progress = excluded.progress,
-      score = excluded.score,
-      notes = excluded.notes,
-      is_favorite = excluded.is_favorite,
-      started_at = excluded.started_at,
-      completed_at = excluded.completed_at,
-      updated_at = excluded.updated_at
   `);
 
-  stmt.run({
-    user_id: input.user_id,
-    anilist_id: input.anilist_id,
-    provider: input.provider ?? null,
-    provider_manga_id: input.provider_manga_id ?? null,
-    anilist_entry_id: input.anilist_entry_id ?? null,
-    status: input.status,
-    progress: input.progress ?? 0,
-    score: input.score ?? null,
-    notes: input.notes ?? null,
-    is_favorite: input.is_favorite ?? 0,
-    started_at: input.started_at ?? null,
-    completed_at: input.completed_at ?? null,
-    created_at: now,
-    updated_at: now,
+  const update = db.prepare(`
+    UPDATE user_library SET
+      provider = $provider,
+      provider_manga_id = $provider_manga_id,
+      anilist_entry_id = $anilist_entry_id,
+      status = $status,
+      progress = $progress,
+      score = $score,
+      notes = $notes,
+      is_favorite = $is_favorite,
+      started_at = $started_at,
+      completed_at = $completed_at,
+      updated_at = $updated_at
+    WHERE user_id = $user_id AND anilist_id = $anilist_id
+  `);
+
+  const transaction = db.transaction(() => {
+    insert.run(payload);
+    update.run(payload);
   });
+
+  transaction();
 
   return getLibraryEntry(input.user_id, input.anilist_id) as LibraryEntryRecord;
 }

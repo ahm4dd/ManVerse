@@ -27,8 +27,31 @@ function toJsonString(value: unknown): string | null {
 export function upsertProviderManga(input: ProviderMangaInput): ProviderMangaRecord {
   const db = getDatabase();
   const now = Math.floor(Date.now() / 1000);
-  const stmt = db.prepare(`
-    INSERT INTO provider_manga (
+  if (!input.provider || !input.provider_id) {
+    throw new Error('Provider mapping requires provider and provider_id');
+  }
+
+  const payload = {
+    provider: input.provider,
+    provider_id: input.provider_id,
+    title: input.title,
+    image: input.image ?? null,
+    status: input.status ?? null,
+    rating: input.rating ?? null,
+    chapters: toJsonString(input.chapters),
+    genres: input.genres ? JSON.stringify(input.genres) : null,
+    description: input.description ?? null,
+    author: input.author ?? null,
+    artist: input.artist ?? null,
+    serialization: input.serialization ?? null,
+    updated_on: input.updated_on ?? null,
+    last_scraped: input.last_scraped ?? now,
+    created_at: now,
+    updated_at: now,
+  };
+
+  const insert = db.prepare(`
+    INSERT OR IGNORE INTO provider_manga (
       provider,
       provider_id,
       title,
@@ -63,40 +86,32 @@ export function upsertProviderManga(input: ProviderMangaInput): ProviderMangaRec
       $created_at,
       $updated_at
     )
-    ON CONFLICT(provider, provider_id) DO UPDATE SET
-      title = excluded.title,
-      image = excluded.image,
-      status = excluded.status,
-      rating = excluded.rating,
-      chapters = excluded.chapters,
-      genres = excluded.genres,
-      description = excluded.description,
-      author = excluded.author,
-      artist = excluded.artist,
-      serialization = excluded.serialization,
-      updated_on = excluded.updated_on,
-      last_scraped = excluded.last_scraped,
-      updated_at = excluded.updated_at
   `);
 
-  stmt.run({
-    provider: input.provider,
-    provider_id: input.provider_id,
-    title: input.title,
-    image: input.image ?? null,
-    status: input.status ?? null,
-    rating: input.rating ?? null,
-    chapters: toJsonString(input.chapters),
-    genres: input.genres ? JSON.stringify(input.genres) : null,
-    description: input.description ?? null,
-    author: input.author ?? null,
-    artist: input.artist ?? null,
-    serialization: input.serialization ?? null,
-    updated_on: input.updated_on ?? null,
-    last_scraped: input.last_scraped ?? now,
-    created_at: now,
-    updated_at: now,
+  const update = db.prepare(`
+    UPDATE provider_manga SET
+      title = $title,
+      image = $image,
+      status = $status,
+      rating = $rating,
+      chapters = $chapters,
+      genres = $genres,
+      description = $description,
+      author = $author,
+      artist = $artist,
+      serialization = $serialization,
+      updated_on = $updated_on,
+      last_scraped = $last_scraped,
+      updated_at = $updated_at
+    WHERE provider = $provider AND provider_id = $provider_id
+  `);
+
+  const transaction = db.transaction(() => {
+    insert.run(payload);
+    update.run(payload);
   });
+
+  transaction();
 
   return getProviderMangaByProviderId(input.provider, input.provider_id) as ProviderMangaRecord;
 }
