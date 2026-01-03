@@ -1,17 +1,36 @@
-import { Hono } from 'hono';
-import { z } from 'zod';
+import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
 import { requireAuth } from '../middleware/auth.ts';
 import { jsonError, jsonSuccess } from '../utils/response.ts';
 import type { HonoEnv } from '../types/api.ts';
 import { AniListService } from '../services/anilist-service.ts';
-import { parseQuery } from '../utils/validation.ts';
-import { MediaListStatusSchema } from '@manverse/anilist';
+import {
+  AniListActivitySchema,
+  AniListMangaSchema,
+  AniListNotificationSchema,
+  AniListUserSchema,
+  AniListUserStatsSchema,
+  MediaListCollectionSchema,
+  MediaListEntrySchema,
+  MediaListStatusSchema,
+  SearchResultSchema,
+} from '@manverse/anilist';
 import { verify } from 'hono/jwt';
 import { getJwtSecret } from '../utils/jwt.ts';
 import type { AuthUser } from '../../../shared/types.ts';
+import { ApiErrorSchema, createApiSuccessSchema } from '../openapi/schemas.ts';
+import { openApiHook } from '../openapi/hook.ts';
 
-const anilist = new Hono<HonoEnv>();
+const anilist = new OpenAPIHono<HonoEnv>({ defaultHook: openApiHook });
 const service = new AniListService();
+
+const errorResponse = {
+  description: 'Error',
+  content: {
+    'application/json': {
+      schema: ApiErrorSchema,
+    },
+  },
+};
 
 const pageSchema = z.object({
   page: z.coerce.number().int().positive().optional(),
@@ -96,7 +115,26 @@ async function getOptionalAuth(c: Parameters<typeof anilist.get>[1]): Promise<Au
   }
 }
 
-anilist.get('/me', requireAuth, async (c) => {
+const meRoute = createRoute({
+  method: 'get',
+  path: '/me',
+  tags: ['anilist'],
+  middleware: requireAuth,
+  security: [{ BearerAuth: [] }],
+  responses: {
+    200: {
+      description: 'AniList user profile',
+      content: {
+        'application/json': {
+          schema: createApiSuccessSchema(AniListUserSchema),
+        },
+      },
+    },
+    default: errorResponse,
+  },
+});
+
+anilist.openapi(meRoute, async (c) => {
   const auth = c.get('auth');
   if (!auth?.anilistToken) {
     return jsonError(
@@ -115,8 +153,28 @@ anilist.get('/me', requireAuth, async (c) => {
   return jsonSuccess(c, user);
 });
 
-anilist.get('/search', async (c) => {
-  const { query, page, format, status, genre, country, sort } = parseQuery(c, searchSchema);
+const searchRoute = createRoute({
+  method: 'get',
+  path: '/search',
+  tags: ['anilist'],
+  request: {
+    query: searchSchema,
+  },
+  responses: {
+    200: {
+      description: 'Search results',
+      content: {
+        'application/json': {
+          schema: createApiSuccessSchema(SearchResultSchema),
+        },
+      },
+    },
+    default: errorResponse,
+  },
+});
+
+anilist.openapi(searchRoute, async (c) => {
+  const { query, page, format, status, genre, country, sort } = c.req.valid('query');
   const results = await service.searchMangaWithFilters(query || '', page || 1, {
     sort: normalizeSort(sort),
     format: normalizeFormat(format),
@@ -128,26 +186,108 @@ anilist.get('/search', async (c) => {
   return jsonSuccess(c, results);
 });
 
-anilist.get('/trending', async (c) => {
-  const { page } = parseQuery(c, pageSchema);
+const trendingRoute = createRoute({
+  method: 'get',
+  path: '/trending',
+  tags: ['anilist'],
+  request: {
+    query: pageSchema,
+  },
+  responses: {
+    200: {
+      description: 'Trending manga',
+      content: {
+        'application/json': {
+          schema: createApiSuccessSchema(SearchResultSchema),
+        },
+      },
+    },
+    default: errorResponse,
+  },
+});
+
+anilist.openapi(trendingRoute, async (c) => {
+  const { page } = c.req.valid('query');
   const results = await service.getTrending(page || 1);
   return jsonSuccess(c, results);
 });
 
-anilist.get('/popular', async (c) => {
-  const { page } = parseQuery(c, pageSchema);
+const popularRoute = createRoute({
+  method: 'get',
+  path: '/popular',
+  tags: ['anilist'],
+  request: {
+    query: pageSchema,
+  },
+  responses: {
+    200: {
+      description: 'Popular manga',
+      content: {
+        'application/json': {
+          schema: createApiSuccessSchema(SearchResultSchema),
+        },
+      },
+    },
+    default: errorResponse,
+  },
+});
+
+anilist.openapi(popularRoute, async (c) => {
+  const { page } = c.req.valid('query');
   const results = await service.getPopular(page || 1);
   return jsonSuccess(c, results);
 });
 
-anilist.get('/top-rated', async (c) => {
-  const { page } = parseQuery(c, pageSchema);
+const topRatedRoute = createRoute({
+  method: 'get',
+  path: '/top-rated',
+  tags: ['anilist'],
+  request: {
+    query: pageSchema,
+  },
+  responses: {
+    200: {
+      description: 'Top rated manga',
+      content: {
+        'application/json': {
+          schema: createApiSuccessSchema(SearchResultSchema),
+        },
+      },
+    },
+    default: errorResponse,
+  },
+});
+
+anilist.openapi(topRatedRoute, async (c) => {
+  const { page } = c.req.valid('query');
   const results = await service.getTopRated(page || 1);
   return jsonSuccess(c, results);
 });
 
-anilist.get('/media/:id', async (c) => {
-  const id = Number(c.req.param('id'));
+const mediaRoute = createRoute({
+  method: 'get',
+  path: '/media/{id}',
+  tags: ['anilist'],
+  request: {
+    params: z.object({
+      id: z.coerce.number().int(),
+    }),
+  },
+  responses: {
+    200: {
+      description: 'Media details',
+      content: {
+        'application/json': {
+          schema: createApiSuccessSchema(AniListMangaSchema),
+        },
+      },
+    },
+    default: errorResponse,
+  },
+});
+
+anilist.openapi(mediaRoute, async (c) => {
+  const { id } = c.req.valid('param');
   if (Number.isNaN(id)) {
     return jsonError(c, { code: 'INVALID_ID', message: 'Media id must be a number' }, 400);
   }
@@ -159,7 +299,31 @@ anilist.get('/media/:id', async (c) => {
   return jsonSuccess(c, media);
 });
 
-anilist.get('/library', requireAuth, async (c) => {
+const libraryRoute = createRoute({
+  method: 'get',
+  path: '/library',
+  tags: ['anilist'],
+  middleware: requireAuth,
+  security: [{ BearerAuth: [] }],
+  request: {
+    query: z.object({
+      status: MediaListStatusSchema.optional(),
+    }),
+  },
+  responses: {
+    200: {
+      description: 'AniList library',
+      content: {
+        'application/json': {
+          schema: createApiSuccessSchema(MediaListCollectionSchema),
+        },
+      },
+    },
+    default: errorResponse,
+  },
+});
+
+anilist.openapi(libraryRoute, async (c) => {
   const auth = c.get('auth');
   if (!auth?.anilistToken || auth.id === null) {
     return jsonError(
@@ -169,12 +333,31 @@ anilist.get('/library', requireAuth, async (c) => {
     );
   }
 
-  const { status } = parseQuery(c, z.object({ status: MediaListStatusSchema.optional() }));
+  const { status } = c.req.valid('query');
   const library = await service.getUserLibrary(auth.id, auth.anilistToken, status);
   return jsonSuccess(c, library);
 });
 
-anilist.get('/stats', requireAuth, async (c) => {
+const statsRoute = createRoute({
+  method: 'get',
+  path: '/stats',
+  tags: ['anilist'],
+  middleware: requireAuth,
+  security: [{ BearerAuth: [] }],
+  responses: {
+    200: {
+      description: 'AniList stats',
+      content: {
+        'application/json': {
+          schema: createApiSuccessSchema(AniListUserStatsSchema),
+        },
+      },
+    },
+    default: errorResponse,
+  },
+});
+
+anilist.openapi(statsRoute, async (c) => {
   const auth = c.get('auth');
   if (!auth?.anilistToken || auth.id === null) {
     return jsonError(
@@ -188,7 +371,26 @@ anilist.get('/stats', requireAuth, async (c) => {
   return jsonSuccess(c, stats);
 });
 
-anilist.get('/activity', requireAuth, async (c) => {
+const activityRoute = createRoute({
+  method: 'get',
+  path: '/activity',
+  tags: ['anilist'],
+  middleware: requireAuth,
+  security: [{ BearerAuth: [] }],
+  responses: {
+    200: {
+      description: 'AniList activity',
+      content: {
+        'application/json': {
+          schema: createApiSuccessSchema(z.array(AniListActivitySchema)),
+        },
+      },
+    },
+    default: errorResponse,
+  },
+});
+
+anilist.openapi(activityRoute, async (c) => {
   const auth = c.get('auth');
   if (!auth?.anilistToken || auth.id === null) {
     return jsonError(
@@ -202,7 +404,26 @@ anilist.get('/activity', requireAuth, async (c) => {
   return jsonSuccess(c, activity);
 });
 
-anilist.get('/notifications', requireAuth, async (c) => {
+const notificationsRoute = createRoute({
+  method: 'get',
+  path: '/notifications',
+  tags: ['anilist'],
+  middleware: requireAuth,
+  security: [{ BearerAuth: [] }],
+  responses: {
+    200: {
+      description: 'AniList notifications',
+      content: {
+        'application/json': {
+          schema: createApiSuccessSchema(z.array(AniListNotificationSchema)),
+        },
+      },
+    },
+    default: errorResponse,
+  },
+});
+
+anilist.openapi(notificationsRoute, async (c) => {
   const auth = c.get('auth');
   if (!auth?.anilistToken) {
     return jsonError(
@@ -216,7 +437,35 @@ anilist.get('/notifications', requireAuth, async (c) => {
   return jsonSuccess(c, notifications);
 });
 
-anilist.post('/progress', requireAuth, async (c) => {
+const progressRoute = createRoute({
+  method: 'post',
+  path: '/progress',
+  tags: ['anilist'],
+  middleware: requireAuth,
+  security: [{ BearerAuth: [] }],
+  request: {
+    body: {
+      content: {
+        'application/json': {
+          schema: updateProgressSchema,
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: 'Progress updated',
+      content: {
+        'application/json': {
+          schema: createApiSuccessSchema(MediaListEntrySchema),
+        },
+      },
+    },
+    default: errorResponse,
+  },
+});
+
+anilist.openapi(progressRoute, async (c) => {
   const auth = c.get('auth');
   if (!auth?.anilistToken) {
     return jsonError(
@@ -226,12 +475,40 @@ anilist.post('/progress', requireAuth, async (c) => {
     );
   }
 
-  const body = updateProgressSchema.parse(await c.req.json());
+  const body = c.req.valid('json');
   const result = await service.updateProgress(auth.anilistToken, body.mediaId, body.progress);
   return jsonSuccess(c, result);
 });
 
-anilist.post('/status', requireAuth, async (c) => {
+const statusRoute = createRoute({
+  method: 'post',
+  path: '/status',
+  tags: ['anilist'],
+  middleware: requireAuth,
+  security: [{ BearerAuth: [] }],
+  request: {
+    body: {
+      content: {
+        'application/json': {
+          schema: updateStatusSchema,
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: 'Status updated',
+      content: {
+        'application/json': {
+          schema: createApiSuccessSchema(MediaListEntrySchema),
+        },
+      },
+    },
+    default: errorResponse,
+  },
+});
+
+anilist.openapi(statusRoute, async (c) => {
   const auth = c.get('auth');
   if (!auth?.anilistToken) {
     return jsonError(
@@ -241,12 +518,40 @@ anilist.post('/status', requireAuth, async (c) => {
     );
   }
 
-  const body = updateStatusSchema.parse(await c.req.json());
+  const body = c.req.valid('json');
   const result = await service.updateStatus(auth.anilistToken, body.mediaId, body.status);
   return jsonSuccess(c, result);
 });
 
-anilist.post('/entry', requireAuth, async (c) => {
+const entryRoute = createRoute({
+  method: 'post',
+  path: '/entry',
+  tags: ['anilist'],
+  middleware: requireAuth,
+  security: [{ BearerAuth: [] }],
+  request: {
+    body: {
+      content: {
+        'application/json': {
+          schema: updateEntrySchema,
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: 'Entry updated',
+      content: {
+        'application/json': {
+          schema: createApiSuccessSchema(MediaListEntrySchema),
+        },
+      },
+    },
+    default: errorResponse,
+  },
+});
+
+anilist.openapi(entryRoute, async (c) => {
   const auth = c.get('auth');
   if (!auth?.anilistToken) {
     return jsonError(
@@ -256,7 +561,7 @@ anilist.post('/entry', requireAuth, async (c) => {
     );
   }
 
-  const body = updateEntrySchema.parse(await c.req.json());
+  const body = c.req.valid('json');
   const result = await service.updateEntry(auth.anilistToken, body);
   return jsonSuccess(c, result);
 });

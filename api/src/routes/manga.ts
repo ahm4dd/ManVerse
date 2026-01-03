@@ -1,7 +1,5 @@
-import { Hono } from 'hono';
-import { z } from 'zod';
+import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
 import { jsonError, jsonSuccess } from '../utils/response.ts';
-import { parseQuery } from '../utils/validation.ts';
 import { MangaService, type MangaSource } from '../services/manga-service.ts';
 import type { HonoEnv } from '../types/api.ts';
 import { requireAuth } from '../middleware/auth.ts';
@@ -16,10 +14,21 @@ import {
   setActiveMapping,
   upsertProviderManga,
 } from '@manverse/database';
+import { ApiErrorSchema, ApiSuccessUnknownSchema } from '../openapi/schemas.ts';
+import { openApiHook } from '../openapi/hook.ts';
 
-const manga = new Hono<HonoEnv>();
+const manga = new OpenAPIHono<HonoEnv>({ defaultHook: openApiHook });
 const service = new MangaService();
 const scraper = new ScraperService();
+
+const errorResponse = {
+  description: 'Error',
+  content: {
+    'application/json': {
+      schema: ApiErrorSchema,
+    },
+  },
+};
 
 const searchSchema = z.object({
   query: z.string().min(1),
@@ -58,7 +67,7 @@ const providerMapSchema = z.object({
 
 function normalizeSort(input?: string): string[] | undefined {
   if (!input || input === 'All') return undefined;
-  const normalized = input.toUpperCase().replace(/\\s+/g, '_');
+  const normalized = input.toUpperCase().replace(/\s+/g, '_');
 
   if (normalized.endsWith('_DESC') || normalized.endsWith('_ASC')) {
     return [normalized];
@@ -80,12 +89,12 @@ function normalizeSort(input?: string): string[] | undefined {
 
 function normalizeFormat(input?: string): string | undefined {
   if (!input || input === 'All') return undefined;
-  return input.toUpperCase().replace(/\\s+/g, '_');
+  return input.toUpperCase().replace(/\s+/g, '_');
 }
 
 function normalizeStatus(input?: string): string | undefined {
   if (!input || input === 'All') return undefined;
-  return input.toUpperCase().replace(/\\s+/g, '_');
+  return input.toUpperCase().replace(/\s+/g, '_');
 }
 
 function normalizeCountry(input?: string): string | undefined {
@@ -119,8 +128,28 @@ function toProviderInput(provider: string, providerId: string, details: any) {
   };
 }
 
-manga.get('/search', (c) => {
-  const { query, source, format, status, genre, country, sort } = parseQuery(c, searchSchema);
+const searchRoute = createRoute({
+  method: 'get',
+  path: '/search',
+  tags: ['manga'],
+  request: {
+    query: searchSchema,
+  },
+  responses: {
+    200: {
+      description: 'Search results',
+      content: {
+        'application/json': {
+          schema: ApiSuccessUnknownSchema,
+        },
+      },
+    },
+    default: errorResponse,
+  },
+});
+
+manga.openapi(searchRoute, (c) => {
+  const { query, source, format, status, genre, country, sort } = c.req.valid('query');
   return service
     .search(query, (source || 'anilist') as MangaSource, {
       sort: normalizeSort(sort),
@@ -142,8 +171,29 @@ manga.get('/search', (c) => {
     );
 });
 
-manga.get('/provider/mapping', (c) => {
-  const { provider, id } = parseQuery(c, providerMappingSchema);
+const providerMappingRoute = createRoute({
+  method: 'get',
+  path: '/provider/mapping',
+  tags: ['manga'],
+  request: {
+    query: providerMappingSchema,
+  },
+  responses: {
+    200: {
+      description: 'Provider mapping',
+      content: {
+        'application/json': {
+          schema: ApiSuccessUnknownSchema,
+        },
+      },
+    },
+    404: errorResponse,
+    default: errorResponse,
+  },
+});
+
+manga.openapi(providerMappingRoute, (c) => {
+  const { provider, id } = c.req.valid('query');
   const resolvedProvider = normalizeProvider(provider);
   const mapping = getActiveMappingByProviderId(resolvedProvider, id);
 
@@ -158,8 +208,28 @@ manga.get('/provider/mapping', (c) => {
   return jsonSuccess(c, mapping);
 });
 
-manga.get('/provider', (c) => {
-  const { provider, id } = parseQuery(c, providerDetailsSchema);
+const providerDetailsRoute = createRoute({
+  method: 'get',
+  path: '/provider',
+  tags: ['manga'],
+  request: {
+    query: providerDetailsSchema,
+  },
+  responses: {
+    200: {
+      description: 'Provider series details',
+      content: {
+        'application/json': {
+          schema: ApiSuccessUnknownSchema,
+        },
+      },
+    },
+    default: errorResponse,
+  },
+});
+
+manga.openapi(providerDetailsRoute, (c) => {
+  const { provider, id } = c.req.valid('query');
   const resolvedProvider = normalizeProvider(provider);
 
   return scraper
@@ -180,8 +250,30 @@ manga.get('/provider', (c) => {
     );
 });
 
-manga.get('/:id', async (c) => {
-  const id = Number(c.req.param('id'));
+const mangaDetailsRoute = createRoute({
+  method: 'get',
+  path: '/{id}',
+  tags: ['manga'],
+  request: {
+    params: z.object({
+      id: z.coerce.number().int(),
+    }),
+  },
+  responses: {
+    200: {
+      description: 'Manga details',
+      content: {
+        'application/json': {
+          schema: ApiSuccessUnknownSchema,
+        },
+      },
+    },
+    default: errorResponse,
+  },
+});
+
+manga.openapi(mangaDetailsRoute, async (c) => {
+  const { id } = c.req.valid('param');
   if (Number.isNaN(id)) {
     return jsonError(c, { code: 'INVALID_ID', message: 'Manga id must be a number' }, 400);
   }
@@ -190,17 +282,41 @@ manga.get('/:id', async (c) => {
   return jsonSuccess(c, details);
 });
 
-manga.get('/:id/chapters', (c) => {
-  const { provider, providerId } = parseQuery(c, providerChaptersSchema);
+const mangaChaptersRoute = createRoute({
+  method: 'get',
+  path: '/{id}/chapters',
+  tags: ['manga'],
+  request: {
+    params: z.object({
+      id: z.coerce.number().int(),
+    }),
+    query: providerChaptersSchema,
+  },
+  responses: {
+    200: {
+      description: 'Mapped provider chapters',
+      content: {
+        'application/json': {
+          schema: ApiSuccessUnknownSchema,
+        },
+      },
+    },
+    400: errorResponse,
+    default: errorResponse,
+  },
+});
+
+manga.openapi(mangaChaptersRoute, (c) => {
+  const { provider, providerId } = c.req.valid('query');
+  const { id } = c.req.valid('param');
   const resolvedProvider = normalizeProvider(provider);
 
-  const anilistId = Number(c.req.param('id'));
+  const anilistId = Number(id);
   if (Number.isNaN(anilistId)) {
     return jsonError(c, { code: 'INVALID_ID', message: 'Manga id must be a number' }, 400);
   }
 
-  const mapping =
-    providerId ? null : getActiveMapping(anilistId, resolvedProvider);
+  const mapping = providerId ? null : getActiveMapping(anilistId, resolvedProvider);
   const resolvedProviderId = providerId || mapping?.provider.provider_id;
 
   if (!resolvedProviderId) {
@@ -229,13 +345,47 @@ manga.get('/:id/chapters', (c) => {
     );
 });
 
-manga.post('/:id/map', requireAuth, async (c) => {
-  const anilistId = Number(c.req.param('id'));
+const mangaMapRoute = createRoute({
+  method: 'post',
+  path: '/{id}/map',
+  tags: ['manga'],
+  middleware: requireAuth,
+  security: [{ BearerAuth: [] }],
+  request: {
+    params: z.object({
+      id: z.coerce.number().int(),
+    }),
+    body: {
+      content: {
+        'application/json': {
+          schema: providerMapSchema,
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: 'Mapping created',
+      content: {
+        'application/json': {
+          schema: ApiSuccessUnknownSchema,
+        },
+      },
+    },
+    400: errorResponse,
+    404: errorResponse,
+    default: errorResponse,
+  },
+});
+
+manga.openapi(mangaMapRoute, async (c) => {
+  const { id } = c.req.valid('param');
+  const anilistId = Number(id);
   if (Number.isNaN(anilistId)) {
     return jsonError(c, { code: 'INVALID_ID', message: 'Manga id must be a number' }, 400);
   }
 
-  const body = providerMapSchema.parse(await c.req.json());
+  const body = c.req.valid('json');
   const resolvedProvider = normalizeProvider(body.provider);
 
   let providerRecord = null;
@@ -270,8 +420,31 @@ manga.post('/:id/map', requireAuth, async (c) => {
   return jsonSuccess(c, { mapping, provider: providerRecord });
 });
 
-manga.get('/:id/providers', (c) => {
-  const anilistId = Number(c.req.param('id'));
+const providersRoute = createRoute({
+  method: 'get',
+  path: '/{id}/providers',
+  tags: ['manga'],
+  request: {
+    params: z.object({
+      id: z.coerce.number().int(),
+    }),
+  },
+  responses: {
+    200: {
+      description: 'Provider mappings',
+      content: {
+        'application/json': {
+          schema: ApiSuccessUnknownSchema,
+        },
+      },
+    },
+    default: errorResponse,
+  },
+});
+
+manga.openapi(providersRoute, (c) => {
+  const { id } = c.req.valid('param');
+  const anilistId = Number(id);
   if (Number.isNaN(anilistId)) {
     return jsonError(c, { code: 'INVALID_ID', message: 'Manga id must be a number' }, 400);
   }

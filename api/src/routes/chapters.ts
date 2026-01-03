@@ -1,13 +1,22 @@
-import { Hono } from 'hono';
-import { z } from 'zod';
+import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
 import { jsonError, jsonSuccess } from '../utils/response.ts';
 import type { HonoEnv } from '../types/api.ts';
 import { ScraperService } from '../services/scraper-service.ts';
-import { parseQuery } from '../utils/validation.ts';
 import { Providers } from '@manverse/core';
+import { ApiErrorSchema, ApiSuccessUnknownSchema } from '../openapi/schemas.ts';
+import { openApiHook } from '../openapi/hook.ts';
 
-const chapters = new Hono<HonoEnv>();
+const chapters = new OpenAPIHono<HonoEnv>({ defaultHook: openApiHook });
 const scraper = new ScraperService();
+
+const errorResponse = {
+  description: 'Error',
+  content: {
+    'application/json': {
+      schema: ApiErrorSchema,
+    },
+  },
+};
 
 const querySchema = z.object({
   provider: z.string().optional(),
@@ -29,8 +38,28 @@ function decodeBase64Url(input: string): string {
   }
 }
 
-chapters.get('/image', async (c) => {
-  const { url, referer } = parseQuery(c, imageSchema);
+const imageRoute = createRoute({
+  method: 'get',
+  path: '/image',
+  tags: ['chapters'],
+  request: {
+    query: imageSchema,
+  },
+  responses: {
+    200: {
+      description: 'Image content',
+      content: {
+        'image/*': {
+          schema: z.string(),
+        },
+      },
+    },
+    default: errorResponse,
+  },
+});
+
+chapters.openapi(imageRoute, async (c) => {
+  const { url, referer } = c.req.valid('query');
   const parsed = new URL(url);
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
     return jsonError(c, { code: 'INVALID_URL', message: 'Invalid image url protocol' }, 400);
@@ -91,15 +120,38 @@ chapters.get('/image', async (c) => {
   });
 });
 
-chapters.get('/:id', (c) => {
-  const { provider, url } = parseQuery(c, querySchema);
+const chapterRoute = createRoute({
+  method: 'get',
+  path: '/{id}',
+  tags: ['chapters'],
+  request: {
+    params: z.object({
+      id: z.string(),
+    }),
+    query: querySchema,
+  },
+  responses: {
+    200: {
+      description: 'Chapter pages',
+      content: {
+        'application/json': {
+          schema: ApiSuccessUnknownSchema,
+        },
+      },
+    },
+    default: errorResponse,
+  },
+});
+
+chapters.openapi(chapterRoute, (c) => {
+  const { provider, url } = c.req.valid('query');
   const providerId =
     provider && Object.values(Providers).includes(provider as (typeof Providers)[keyof typeof Providers])
       ? (provider as (typeof Providers)[keyof typeof Providers])
       : Providers.AsuraScans;
 
-  const chapterId = c.req.param('id');
-  const resolvedUrl = url || decodeBase64Url(chapterId);
+  const { id } = c.req.valid('param');
+  const resolvedUrl = url || decodeBase64Url(id);
 
   if (!resolvedUrl) {
     return jsonError(c, { code: 'INVALID_CHAPTER', message: 'Chapter url is required' }, 400);
