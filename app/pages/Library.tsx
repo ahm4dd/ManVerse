@@ -23,7 +23,10 @@ function formatTimeAgo(timestamp?: number | null): string {
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
-  if (days < 30) return `${days}d ago`;
+  if (days < 7) return `${days}d ago`;
+  const weeks = Math.floor(days / 7);
+  if (weeks === 1) return 'last week';
+  if (days < 30) return `${weeks}w ago`;
   const months = Math.floor(days / 30);
   if (months < 12) return `${months}mo ago`;
   const years = Math.floor(months / 12);
@@ -491,43 +494,46 @@ const Library: React.FC<LibraryProps> = ({ onNavigate, user }) => {
 
                  {/* Grid View */}
                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-                    {currentListEntries.map((entry: any) => (
-                       <div 
-                          key={entry.id} 
-                          className="group relative aspect-[2/3] rounded-xl overflow-hidden bg-surfaceHighlight cursor-pointer"
-                          onClick={() => openEditModal(entry)}
-                       >
-                          <img 
-                            src={entry.media.coverImage.extraLarge || entry.media.coverImage.large || entry.media.coverImage.medium || ''} 
-                            className="w-full h-full object-cover transition-transform group-hover:scale-110 duration-500" 
-                          />
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent" />
-                          <div className="absolute inset-x-0 bottom-0 p-3 space-y-1">
-                             <h4 className="text-sm font-bold text-white line-clamp-2">
-                               {entry.media.title.english || entry.media.title.romaji}
-                             </h4>
-                              <div className="flex items-center justify-between text-xs text-gray-200">
-                               <span>Read ch {entry.progress ?? 0}</span>
-                               <span>Latest known {entry.media.chapters ?? '?'}</span>
-                              </div>
-                             <div className="text-[11px] text-gray-400 flex items-center justify-between">
-                               <span>Last read {formatTimeAgo(entry.updatedAt ?? entry.createdAt)}</span>
-                               <span>Updated {formatTimeAgo(entry.media.updatedAt ?? entry.updatedAt)}</span>
+                    {currentListEntries.map((entry: any) => {
+                       const title = entry.media.title.english || entry.media.title.romaji;
+                       const latestCh = entry.media.chapters ?? '?';
+                       const lastReadAgo = formatTimeAgo(entry.updatedAt ?? entry.createdAt);
+                       const latestUpdateAgo = formatTimeAgo(entry.media.updatedAt ?? entry.updatedAt);
+                       return (
+                          <div 
+                             key={entry.id} 
+                             className="group relative aspect-[2/3] rounded-xl overflow-hidden bg-surfaceHighlight cursor-pointer"
+                             onClick={() => openEditModal(entry)}
+                          >
+                             <img 
+                               src={entry.media.coverImage.extraLarge || entry.media.coverImage.large || entry.media.coverImage.medium || ''} 
+                               className="w-full h-full object-cover transition-transform group-hover:scale-110 duration-500" 
+                             />
+                             <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent" />
+                             <div className="absolute inset-x-0 bottom-0 p-3">
+                                <div className="rounded-lg bg-black/70 backdrop-blur-md border border-white/10 px-3 py-2 space-y-1.5">
+                                   <h4 className="text-[13px] font-bold text-white leading-snug line-clamp-2">
+                                     {title}
+                                   </h4>
+                                   <div className="flex items-center justify-between text-[11px] text-gray-200">
+                                     <span className="font-semibold text-white/90">Reading ch {entry.progress ?? 0}</span>
+                                     <span className="text-primary/90">Latest ch {latestCh}</span>
+                                   </div>
+                                   <div className="flex items-center justify-between text-[10px] text-gray-400">
+                                     <span>Last read {lastReadAgo}</span>
+                                     <span>Latest update {latestUpdateAgo}</span>
+                                   </div>
+                                </div>
                              </div>
+                             {/* Status Dot */}
+                             <div className={`absolute top-3 right-3 w-5 h-5 rounded-full ring-2 ring-black/80 shadow-lg ${
+                                entry.status === 'CURRENT' ? 'bg-green-500' :
+                                entry.status === 'PLANNING' ? 'bg-blue-500' :
+                                entry.status === 'COMPLETED' ? 'bg-purple-500' : 'bg-gray-500'
+                             }`} />
                           </div>
-                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-start justify-start p-3">
-                             <div className="text-[10px] text-gray-200 bg-white/10 px-2 py-1 rounded-full">
-                               Edit
-                             </div>
-                          </div>
-                          {/* Status Dot */}
-                          <div className={`absolute top-3 right-3 w-5 h-5 rounded-full ring-2 ring-black/80 shadow-lg ${
-                             entry.status === 'CURRENT' ? 'bg-green-500' :
-                             entry.status === 'PLANNING' ? 'bg-blue-500' :
-                             entry.status === 'COMPLETED' ? 'bg-purple-500' : 'bg-gray-500'
-                          }`} />
-                       </div>
-                    ))}
+                       );
+                    })}
                  </div>
                  {currentListEntries.length === 0 && (
                     <div className="text-center py-20 text-gray-500">
