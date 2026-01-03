@@ -336,7 +336,9 @@ export const GET_NOTIFICATIONS = gql`
           id
           type
           createdAt
-          message
+          message {
+            message
+          }
           user {
             name
             avatar {

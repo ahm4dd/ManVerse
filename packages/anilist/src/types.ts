@@ -307,11 +307,22 @@ export type AniListActivity = z.infer<typeof AniListActivitySchema>;
 
 // ---------- Notifications ----------
 
+const NotificationMessageSchema = z.preprocess(
+  (value) => {
+    if (value == null || typeof value === 'string') return value;
+    if (typeof value === 'object' && value && 'message' in value) {
+      return (value as { message?: string | null }).message ?? null;
+    }
+    return null;
+  },
+  z.string().nullable(),
+);
+
 export const AniListNotificationSchema = z.object({
   id: z.number(),
   type: z.string(),
   createdAt: z.number(),
-  message: z.string().nullable().optional(),
+  message: NotificationMessageSchema.optional(),
   user: z
     .object({
       name: z.string(),
