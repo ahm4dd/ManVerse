@@ -10,7 +10,7 @@ interface RecentReadsProps {
 }
 
 type SourceFilter = 'All' | 'AniList' | 'AsuraScans';
-type SortOrder = 'Recent' | 'Oldest';
+type SortOrder = 'Recent' | 'Oldest' | 'Tracked' | 'Local';
 
 interface CardItem {
   id: string;
@@ -44,7 +44,21 @@ const RecentReads: React.FC<RecentReadsProps> = ({ onNavigate, onBack }) => {
       const query = searchQuery.toLowerCase();
       items = items.filter((entry) => entry.seriesTitle.toLowerCase().includes(query));
     }
-    items.sort((a, b) => (sortOrder === 'Recent' ? b.timestamp - a.timestamp : a.timestamp - b.timestamp));
+    items.sort((a, b) => {
+      if (sortOrder === 'Recent') return b.timestamp - a.timestamp;
+      if (sortOrder === 'Oldest') return a.timestamp - b.timestamp;
+      const aTracked = Boolean(a.anilistId);
+      const bTracked = Boolean(b.anilistId);
+      if (sortOrder === 'Tracked') {
+        if (aTracked !== bTracked) return aTracked ? -1 : 1;
+        return b.timestamp - a.timestamp;
+      }
+      if (sortOrder === 'Local') {
+        if (aTracked !== bTracked) return aTracked ? 1 : -1;
+        return b.timestamp - a.timestamp;
+      }
+      return 0;
+    });
     return items.map((entry) => ({
       id: entry.seriesId,
       anilistId: entry.anilistId,
@@ -151,6 +165,8 @@ const RecentReads: React.FC<RecentReadsProps> = ({ onNavigate, onBack }) => {
             >
               <option value="Recent">Most Recent</option>
               <option value="Oldest">Oldest</option>
+              <option value="Tracked">Tracked First</option>
+              <option value="Local">Local First</option>
             </select>
           </div>
         </div>

@@ -235,6 +235,12 @@ const AppContent: React.FC = () => {
                   >
                     Recommendations
                   </button>
+                  <button 
+                    onClick={() => navigate('recent-reads')} 
+                    className={`text-[15px] font-bold transition-colors ${currentView === 'recent-reads' ? 'text-white' : 'text-gray-400 hover:text-white'}`}
+                  >
+                    Recent Reads
+                  </button>
                   {user && (
                     <button 
                       onClick={() => navigate('library')} 
@@ -413,6 +419,15 @@ const AppContent: React.FC = () => {
                             className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
                           >
                             Library
+                          </button>
+                          <button
+                            onClick={() => {
+                              setShowProfileMenu(false);
+                              navigate('recent-reads');
+                            }}
+                            className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
+                          >
+                            Recent Reads
                           </button>
                           <button
                             onClick={handleLogout}
