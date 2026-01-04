@@ -86,6 +86,9 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedChapterIds, setSelectedChapterIds] = useState<Set<string>>(new Set());
   const [batchDownloading, setBatchDownloading] = useState(false);
+  const [rangeStart, setRangeStart] = useState('');
+  const [rangeEnd, setRangeEnd] = useState('');
+  const [rangeMarking, setRangeMarking] = useState(false);
   const [anilistQuery, setAnilistQuery] = useState('');
   const [anilistResults, setAnilistResults] = useState<Series[]>([]);
   const [anilistManualInput, setAnilistManualInput] = useState('');
@@ -125,6 +128,9 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
       setAnilistResults([]);
       setAnilistManualInput('');
       setAnilistSearchLoading(false);
+      setRangeStart('');
+      setRangeEnd('');
+      setRangeMarking(false);
       setLinkingAniList(false);
       setLinkedAniList(null);
       setShowAniListRemap(false);
@@ -826,38 +832,7 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     setReadChapterIds(new Set(updated));
   };
 
-  const handleMarkAllRead = async () => {
-    if (!data || !activeProviderSeries) return;
-    const chapters = activeProviderSeries.chapters;
-    if (chapters.length === 0) return;
-
-    const latest = getLatestChapter(chapters);
-    const allIds = chapters.map((chapter) => chapter.id);
-    setReadChapterIds(new Set(allIds));
-
-    history.add({
-      seriesId: data.source === 'AniList' ? data.id : activeProviderSeries.id,
-      anilistId: data.source === 'AniList' ? data.id : linkedAniList?.id,
-      providerSeriesId: activeProviderSeries.id,
-      seriesTitle: data.title,
-      seriesImage: data.image,
-      chapterId: latest.id,
-      chapterNumber: latest.number,
-      chapterTitle: latest.title,
-      source: activeProviderSeries.source || 'AsuraScans',
-      readChapters: allIds,
-    });
-
-    const anilistId = data.source === 'AniList' ? data.id : linkedAniList?.id;
-    const numericProgress = parseChapterNumber(latest.number);
-    if (user && anilistId && numericProgress !== null) {
-      await anilistApi.updateProgress(parseInt(anilistId, 10), Math.floor(numericProgress));
-    }
-
-    notify('Marked all chapters as read.', 'success');
-  };
-
-  const handleMarkReadUpTo = async (chapter: any) => {
+  const handleMarkReadUpTo = async (chapter: any, messageOverride?: string) => {
     if (!data || !activeProviderSeries) return;
     const chapters = activeProviderSeries.chapters;
     if (chapters.length === 0) return;
@@ -903,7 +878,94 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
       await anilistApi.updateProgress(parseInt(anilistId, 10), Math.floor(targetProgress));
     }
 
-    notify(`Marked up to chapter ${chapter.number} as read.`, 'success');
+    notify(messageOverride ?? `Marked up to chapter ${chapter.number} as read.`, 'success');
+  };
+
+  const handleMarkReadRange = async () => {
+    if (!data || !activeProviderSeries) return;
+    if (!rangeStart || !rangeEnd) {
+      notify('Enter a start and end chapter.', 'error');
+      return;
+    }
+
+    const startValue = parseChapterNumber(rangeStart);
+    const endValue = parseChapterNumber(rangeEnd);
+    if (startValue === null || endValue === null) {
+      notify('Enter valid chapter numbers.', 'error');
+      return;
+    }
+
+    const from = Math.min(startValue, endValue);
+    const to = Math.max(startValue, endValue);
+    const chapters = activeProviderSeries.chapters;
+    const ids = chapters
+      .filter((chapter) => {
+        const num = parseChapterNumber(chapter.number);
+        return num !== null && num >= from && num <= to;
+      })
+      .map((chapter) => chapter.id);
+
+    if (ids.length === 0) {
+      notify('No chapters found in that range.', 'error');
+      return;
+    }
+
+    setRangeMarking(true);
+    try {
+      const merged = new Set(readChapterIds);
+      ids.forEach((id) => merged.add(id));
+      setReadChapterIds(new Set(merged));
+
+      const targetChapter =
+        getChapterByProgress(chapters, to) || chapters.find((chapter) => ids.includes(chapter.id));
+      const seriesId = data.source === 'AniList' ? data.id : activeProviderSeries.id;
+      const anilistId = data.source === 'AniList' ? data.id : linkedAniList?.id;
+
+      history.add({
+        seriesId,
+        anilistId,
+        providerSeriesId: activeProviderSeries.id,
+        seriesTitle: data.title,
+        seriesImage: data.image,
+        chapterId: targetChapter?.id || ids[ids.length - 1],
+        chapterNumber: targetChapter?.number || rangeEnd,
+        chapterTitle: targetChapter?.title,
+        source: activeProviderSeries.source || 'AsuraScans',
+        readChapters: Array.from(merged),
+      });
+
+      if (user && anilistId) {
+        const existingProgress = data.mediaListEntry?.progress ?? 0;
+        const updatedProgress = Math.max(existingProgress, Math.floor(to));
+        await anilistApi.updateProgress(parseInt(anilistId, 10), updatedProgress);
+      }
+
+      notify(`Marked chapters ${from} - ${to} as read.`, 'success');
+    } finally {
+      setRangeMarking(false);
+    }
+  };
+
+  const handleCatchUpToLatest = async () => {
+    if (!activeProviderSeries) return;
+    const latest = getLatestChapter(activeProviderSeries.chapters);
+    if (!latest) return;
+    await handleMarkReadUpTo(latest, 'Caught up to latest chapter.');
+  };
+
+  const handleClearReadHistory = () => {
+    if (!data || !activeProviderSeries) return;
+    const confirmed = window.confirm('Clear read history for this series?');
+    if (!confirmed) return;
+    history.clearSeries({
+      seriesId: data.source === 'AniList' ? data.id : activeProviderSeries.id,
+      anilistId: data.source === 'AniList' ? data.id : linkedAniList?.id,
+      providerSeriesId: activeProviderSeries.id,
+      title: data.title,
+    });
+    setReadChapterIds(new Set());
+    setHistoryMatch(null);
+    notify('Read history cleared.', 'success');
   };
 
   const handleDownloadChapter = async (chapter: any) => {
@@ -1214,46 +1276,52 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
             </motion.p>
 
             {/* Primary Actions Area */}
-            <motion.div variants={{ hidden: { y: 20, opacity: 0 }, visible: { y: 0, opacity: 1 } }} className="flex flex-col xl:flex-row gap-4 pt-4 items-center xl:items-start border-t border-white/5 mt-6">
+            <motion.div variants={{ hidden: { y: 20, opacity: 0 }, visible: { y: 0, opacity: 1 } }} className="flex flex-col gap-5 pt-4 items-center xl:items-start border-t border-white/5 mt-6">
+              {showChapters && resumeChapter && (
+                <div className="w-full max-w-xl">
+                  <div className="text-[11px] font-bold uppercase tracking-widest text-primary/70 mb-2">
+                    Continue Reading
+                  </div>
+                  <button
+                    onClick={() => navigateToReader(resumeChapter)}
+                    className="w-full px-7 py-4 bg-primary/90 hover:bg-primary text-onPrimary rounded-2xl shadow-lg shadow-primary/30 transition-all transform hover:scale-[1.01] active:scale-95 text-left border border-primary/40"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-xl font-black leading-tight">
+                        {historyMatch ? 'Resume' : 'Continue'}
+                      </span>
+                      <span className="text-[11px] font-semibold text-black/70 bg-black/10 px-2 py-0.5 rounded-full">
+                        Ch {resumeChapter.number}
+                      </span>
+                    </div>
+                    {historyMatch?.timestamp ? (
+                      <div className="text-xs font-semibold text-black/70 mt-1">
+                        Last read {formatTimeAgo(historyMatch.timestamp)}
+                      </div>
+                    ) : data?.mediaListEntry?.progress ? (
+                      <div className="text-xs font-semibold text-black/70 mt-1">From AniList</div>
+                    ) : null}
+                  </button>
+                </div>
+              )}
+
               <div className="flex flex-wrap justify-center xl:justify-start gap-4 w-full">
                   {showChapters ? (
-                    // Reading Actions
                     <>
-                      {resumeChapter && (
-                        <button 
-                          onClick={() => navigateToReader(resumeChapter)}
-                          className="flex-1 min-w-[160px] px-8 py-4 bg-primary/90 hover:bg-primary text-onPrimary font-bold text-lg rounded-xl shadow-lg shadow-primary/25 transition-all transform hover:scale-[1.02] active:scale-95 text-left flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2"
-                        >
-                          <span className="text-lg leading-tight">
-                            {historyMatch ? 'Resume' : 'Continue'}
-                          </span>
-                          <span className="text-sm font-semibold text-black/80">
-                            Chapter {resumeChapter.number}
-                          </span>
-                          {historyMatch?.timestamp ? (
-                            <span className="text-xs font-semibold text-black/70">
-                              {formatTimeAgo(historyMatch.timestamp)}
-                            </span>
-                          ) : data?.mediaListEntry?.progress ? (
-                            <span className="text-xs font-semibold text-black/70">AniList</span>
-                          ) : null}
-                        </button>
-                      )}
                       <button 
                         onClick={() => navigateToReader(activeProviderSeries!.chapters[activeProviderSeries!.chapters.length - 1])}
-                        className="flex-1 min-w-[160px] px-8 py-4 bg-primary hover:bg-primaryHover text-onPrimary font-bold text-lg rounded-xl shadow-lg shadow-primary/25 transition-all transform hover:scale-[1.02] active:scale-95 whitespace-nowrap"
+                        className="min-w-[160px] px-6 py-3 bg-primary hover:bg-primaryHover text-onPrimary font-bold text-base rounded-xl shadow-lg shadow-primary/25 transition-all transform hover:scale-[1.02] active:scale-95 whitespace-nowrap"
                       >
                         Read First
                       </button>
                       <button 
                         onClick={() => navigateToReader(activeProviderSeries!.chapters[0])}
-                        className="flex-1 min-w-[160px] px-8 py-4 bg-surfaceHighlight hover:bg-white/10 text-white font-bold text-lg rounded-xl border border-white/10 transition-all hover:border-white/20 whitespace-nowrap"
+                        className="min-w-[160px] px-6 py-3 bg-surfaceHighlight hover:bg-white/10 text-white font-bold text-base rounded-xl border border-white/10 transition-all hover:border-white/20 whitespace-nowrap"
                       >
                         Read Latest
                       </button>
                     </>
                   ) : (
-                    // Source Selection Dropdown
                     <div className="relative w-full md:w-auto flex-1 md:flex-none">
                         <button 
                            onClick={() => setShowProviderMenu(!showProviderMenu)}
@@ -1610,53 +1678,111 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
               {/* 1. Show Chapters if available */}
               {showChapters && (
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 mb-8">
-                    <div className="flex flex-wrap items-center gap-3">
-                      <h3 className="text-2xl font-extrabold text-white flex items-center gap-3 tracking-tight">
-                        Available Chapters
-                        <span className="text-sm font-bold text-gray-400 bg-surfaceHighlight px-2.5 py-0.5 rounded-full border border-white/5">
-                          {activeProviderSeries?.chapters.length}
-                        </span>
-                      </h3>
-                      {isAniListSource && (
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={startProviderRemap}
-                            className="px-3 py-1.5 rounded-lg bg-white/10 text-xs font-semibold text-white border border-white/10 hover:bg-white/20"
-                          >
-                            Change Provider
-                          </button>
-                          {showProviderRemap && (
+                  <div className="flex flex-col gap-4 mb-8">
+                    <div className="flex flex-wrap items-center justify-between gap-4">
+                      <div className="flex flex-wrap items-center gap-3">
+                        <h3 className="text-2xl font-extrabold text-white flex items-center gap-3 tracking-tight">
+                          Available Chapters
+                          <span className="text-sm font-bold text-gray-400 bg-surfaceHighlight px-2.5 py-0.5 rounded-full border border-white/5">
+                            {activeProviderSeries?.chapters.length}
+                          </span>
+                        </h3>
+                        {isAniListSource && (
+                          <div className="flex items-center gap-2">
                             <button
-                              onClick={cancelProviderRemap}
-                              className="px-3 py-1.5 rounded-lg bg-white/5 text-xs font-semibold text-gray-300 border border-white/10 hover:bg-white/10"
+                              onClick={startProviderRemap}
+                              className="px-3 py-1.5 rounded-lg bg-white/10 text-xs font-semibold text-white border border-white/10 hover:bg-white/20"
                             >
-                              Cancel
+                              Change Provider
                             </button>
-                          )}
+                            {showProviderRemap && (
+                              <button
+                                onClick={cancelProviderRemap}
+                                className="px-3 py-1.5 rounded-lg bg-white/5 text-xs font-semibold text-gray-300 border border-white/10 hover:bg-white/10"
+                              >
+                                Cancel
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      <div className="relative w-full sm:w-72 group ml-auto">
+                        <div className="absolute inset-y-0 left-3.5 flex items-center pointer-events-none text-gray-500 group-focus-within:text-primary transition-colors">
+                          <SearchIcon className="w-5 h-5" />
                         </div>
-                      )}
+                        <input 
+                          type="text" 
+                          placeholder="Search chapter..." 
+                          className="w-full bg-surfaceHighlight border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-sm font-medium text-white focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
+                          value={chapterSearchQuery}
+                          onChange={(e) => setChapterSearchQuery(e.target.value)}
+                        />
+                      </div>
                     </div>
-                    
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full sm:w-auto">
+
+                    <div className="flex flex-wrap items-center gap-3">
                       <button
-                        onClick={handleMarkAllRead}
-                        className="px-4 py-2.5 rounded-xl bg-white/10 text-sm font-semibold text-white border border-white/10 hover:bg-white/20"
+                        onClick={handleCatchUpToLatest}
+                        title="Marks all chapters up to the newest as read."
+                        className="px-4 py-2 rounded-lg bg-white/10 text-sm font-semibold text-white border border-white/10 hover:bg-white/20"
                       >
-                        Mark All Read
+                        Mark Latest Read
                       </button>
+                      <button
+                        onClick={handleClearReadHistory}
+                        title="Clears local read history for this series."
+                        className="px-4 py-2 rounded-lg bg-white/5 text-sm font-semibold text-gray-300 border border-white/10 hover:bg-white/10"
+                      >
+                        Clear History
+                      </button>
+                      <div className="flex flex-wrap items-center gap-2 bg-white/5 border border-white/10 rounded-lg px-2 py-1.5">
+                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Range</span>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          pattern="[0-9.]*"
+                          placeholder="1"
+                          value={rangeStart}
+                          onChange={(event) => setRangeStart(event.target.value)}
+                          className="w-16 h-8 bg-surfaceHighlight/70 border border-white/10 rounded-md px-2 text-xs font-semibold text-white focus:outline-none focus:border-primary"
+                        />
+                        <span className="text-xs text-gray-500">to</span>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          pattern="[0-9.]*"
+                          placeholder="10"
+                          value={rangeEnd}
+                          onChange={(event) => setRangeEnd(event.target.value)}
+                          className="w-16 h-8 bg-surfaceHighlight/70 border border-white/10 rounded-md px-2 text-xs font-semibold text-white focus:outline-none focus:border-primary"
+                        />
+                        <button
+                          onClick={handleMarkReadRange}
+                          disabled={rangeMarking || !rangeStart || !rangeEnd}
+                          className={`h-8 px-3 rounded-md text-[11px] font-semibold uppercase tracking-wide border transition-colors ${
+                            rangeMarking || !rangeStart || !rangeEnd
+                              ? 'bg-white/5 text-gray-500 border-white/10'
+                              : 'bg-primary/80 text-black border-primary hover:brightness-110'
+                          }`}
+                        >
+                          {rangeMarking ? 'Marking...' : 'Mark Range'}
+                        </button>
+                      </div>
                       <button
                         onClick={() => {
                           setSelectionMode((prev) => !prev);
                           setSelectedChapterIds(new Set());
                         }}
-                        className={`px-4 py-2.5 rounded-xl text-sm font-semibold border transition-colors ${
+                        title="Select chapters to download in a batch."
+                        className={`px-4 py-2 rounded-lg text-sm font-semibold border transition-colors ${
                           selectionMode
                             ? 'bg-primary text-black border-primary'
                             : 'bg-white/10 text-white border-white/10 hover:bg-white/20'
                         }`}
                       >
-                        {selectionMode ? 'Selecting' : 'Select'}
+                        {selectionMode
+                          ? `Selecting (${selectedChapterIds.size})`
+                          : 'Select Chapters'}
                       </button>
                       {selectionMode && (
                         <>
@@ -1681,20 +1807,6 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
                           </button>
                         </>
                       )}
-
-                      {/* Chapter Search Bar */}
-                      <div className="relative w-full sm:w-72 group">
-                        <div className="absolute inset-y-0 left-3.5 flex items-center pointer-events-none text-gray-500 group-focus-within:text-primary transition-colors">
-                          <SearchIcon className="w-5 h-5" />
-                        </div>
-                        <input 
-                          type="text" 
-                          placeholder="Search chapter..." 
-                          className="w-full bg-surfaceHighlight border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-sm font-medium text-white focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
-                          value={chapterSearchQuery}
-                          onChange={(e) => setChapterSearchQuery(e.target.value)}
-                        />
-                      </div>
                     </div>
                   </div>
                   
@@ -1736,8 +1848,12 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
                                 selectionMode && isSelected
                                   ? 'bg-primary/10 border-primary/50 ring-1 ring-primary/40'
                                   : isDownloaded
-                                    ? 'bg-primary/5 hover:bg-primary/10 border-primary/30'
-                                    : 'bg-surface hover:bg-surfaceHighlight border-white/5 hover:border-white/10'
+                                    ? `bg-primary/5 hover:bg-primary/10 border-primary/30 ${
+                                        isRead ? 'ring-1 ring-emerald-400/40' : ''
+                                      }`
+                                    : isRead
+                                      ? 'bg-emerald-500/10 border-emerald-500/30'
+                                      : 'bg-surface hover:bg-surfaceHighlight border-white/5 hover:border-white/10'
                               }`}
                               whileHover={{ x: 5 }}
                             >
@@ -1752,12 +1868,12 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
                                     }`}
                                   />
                                 )}
-                              <h4 className={`font-bold text-[15px] transition-colors truncate ${isRead ? 'text-gray-500' : 'text-gray-200 group-hover:text-primary'}`}>
+                              <h4 className={`font-bold text-[15px] transition-colors truncate ${isRead ? 'text-emerald-100' : 'text-gray-200 group-hover:text-primary'}`}>
                                 {chapter.title.toLowerCase().includes('chapter') || chapter.title.toLowerCase().includes('episode') 
                                   ? chapter.title 
                                   : `Chapter ${chapter.number}${chapter.title ? ` - ${chapter.title}` : ''}`}
                                 {isRead && (
-                                  <span className="ml-2 text-[9px] uppercase tracking-wider text-gray-500">Read</span>
+                                  <span className="ml-2 text-[9px] uppercase tracking-wider text-emerald-300">Read</span>
                                 )}
                                 {isDownloaded && (
                                   <span className="ml-2 text-[9px] uppercase tracking-wider text-primary/80">Downloaded</span>

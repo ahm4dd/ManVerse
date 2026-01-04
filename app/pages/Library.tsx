@@ -179,6 +179,8 @@ const Library: React.FC<LibraryProps> = ({ onNavigate, user }) => {
   
   // Edit Modal State
   const [editingEntry, setEditingEntry] = useState<{entry: any, media: any} | null>(null);
+  const [localProgress, setLocalProgress] = useState<Record<number, number>>({});
+  const [progressUpdating, setProgressUpdating] = useState<Record<number, boolean>>({});
 
   // Search & Filter
   const [searchQuery, setSearchQuery] = useState('');
@@ -373,6 +375,55 @@ const Library: React.FC<LibraryProps> = ({ onNavigate, user }) => {
      });
   };
 
+  const getProgressValue = (entry: any) => {
+    const mediaId = entry.media.id;
+    return localProgress[mediaId] ?? entry.progress ?? 0;
+  };
+
+  const updateProgressValue = async (entry: any, nextProgress: number) => {
+    const mediaId = entry.media.id;
+    const maxChapters = typeof entry.media.chapters === 'number' ? entry.media.chapters : Infinity;
+    const clamped = Math.max(0, Math.min(nextProgress, maxChapters));
+
+    setLocalProgress((prev) => ({ ...prev, [mediaId]: clamped }));
+    setProgressUpdating((prev) => ({ ...prev, [mediaId]: true }));
+
+    const success = await anilistApi.updateProgress(mediaId, clamped);
+    setProgressUpdating((prev) => ({ ...prev, [mediaId]: false }));
+
+    if (success) {
+      setFullLibrary((prev: any) => {
+        if (!prev?.lists) return prev;
+        const updatedLists = prev.lists.map((list: any) => ({
+          ...list,
+          entries: list.entries.map((item: any) => {
+            if (item.media.id !== mediaId) return item;
+            return {
+              ...item,
+              progress: clamped,
+              updatedAt: Math.floor(Date.now() / 1000),
+            };
+          }),
+        }));
+        return { ...prev, lists: updatedLists };
+      });
+    } else {
+      setLocalProgress((prev) => {
+        const next = { ...prev };
+        delete next[mediaId];
+        return next;
+      });
+    }
+  };
+
+  const handleQuickProgress = (entry: any, delta: number) => {
+    const current = getProgressValue(entry);
+    const next = current + delta;
+    if (next < 0) return;
+    if (progressUpdating[entry.media.id]) return;
+    void updateProgressValue(entry, next);
+  };
+
   if (!user) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center">
@@ -529,6 +580,10 @@ const Library: React.FC<LibraryProps> = ({ onNavigate, user }) => {
                        const latestCh = entry.media.status === 'FINISHED' ? entry.media.chapters : null;
                        const lastReadAgo = formatTimeAgo(entry.updatedAt ?? entry.createdAt);
                        const latestUpdateAgo = formatTimeAgo(entry.media.updatedAt ?? entry.updatedAt);
+                       const progressValue = getProgressValue(entry);
+                       const maxChapters =
+                         typeof entry.media.chapters === 'number' ? entry.media.chapters : null;
+                       const isUpdating = progressUpdating[entry.media.id] === true;
                        return (
                           <div 
                              key={entry.id} 
@@ -568,7 +623,41 @@ const Library: React.FC<LibraryProps> = ({ onNavigate, user }) => {
                                    <div className="grid grid-cols-2 gap-2 text-[11px] text-gray-200">
                                      <div className="flex flex-col gap-1">
                                        <span className="text-[10px] uppercase tracking-wide text-gray-400">Reading</span>
-                                       <span className="font-semibold text-white/90">Ch {entry.progress ?? 0}</span>
+                                       <div className="flex items-center gap-2">
+                                         <span className="font-semibold text-white/90">Ch {progressValue}</span>
+                                         <div className="flex items-center gap-1">
+                                           <button
+                                             onClick={(event) => {
+                                               event.stopPropagation();
+                                               handleQuickProgress(entry, -1);
+                                             }}
+                                             disabled={isUpdating || progressValue <= 0}
+                                             className={`h-6 w-6 rounded-full text-[12px] font-bold border transition-colors ${
+                                               isUpdating || progressValue <= 0
+                                                 ? 'border-white/10 text-gray-600'
+                                                 : 'border-white/15 text-white/80 hover:text-white hover:border-white/30'
+                                             }`}
+                                             aria-label="Decrease progress"
+                                           >
+                                             -
+                                           </button>
+                                           <button
+                                             onClick={(event) => {
+                                               event.stopPropagation();
+                                               handleQuickProgress(entry, 1);
+                                             }}
+                                             disabled={isUpdating || (maxChapters !== null && progressValue >= maxChapters)}
+                                             className={`h-6 w-6 rounded-full text-[12px] font-bold border transition-colors ${
+                                               isUpdating || (maxChapters !== null && progressValue >= maxChapters)
+                                                 ? 'border-white/10 text-gray-600'
+                                                 : 'border-white/15 text-white/80 hover:text-white hover:border-white/30'
+                                             }`}
+                                             aria-label="Increase progress"
+                                           >
+                                             +
+                                           </button>
+                                         </div>
+                                       </div>
                                      </div>
                                      <div className="flex flex-col gap-1 text-right">
                                        <span className="text-[10px] uppercase tracking-wide text-gray-400">Latest</span>

@@ -206,5 +206,12 @@ export const history = {
 
   clear: () => {
     localStorage.removeItem(HISTORY_KEY);
+  },
+
+  clearSeries: (match: HistoryMatch) => {
+    if (typeof window === 'undefined') return;
+    const current = history.get();
+    const updated = current.filter((entry) => !matchesEntry(entry, match));
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
   }
 };
