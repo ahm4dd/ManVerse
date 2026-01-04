@@ -80,6 +80,9 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
   const [manualProviderUrl, setManualProviderUrl] = useState('');
   const [historyMatch, setHistoryMatch] = useState<HistoryItem | null>(null);
   const [readChapterIds, setReadChapterIds] = useState<Set<string>>(new Set());
+  const [downloadedChapterIds, setDownloadedChapterIds] = useState<Set<string>>(new Set());
+  const [downloadedChaptersByNumber, setDownloadedChaptersByNumber] = useState<Record<string, number>>({});
+  const [queuedChapterIds, setQueuedChapterIds] = useState<Set<string>>(new Set());
   const [anilistQuery, setAnilistQuery] = useState('');
   const [anilistResults, setAnilistResults] = useState<Series[]>([]);
   const [anilistManualInput, setAnilistManualInput] = useState('');
@@ -234,6 +237,39 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     );
     setReadChapterIds(readIds);
   }, [data, activeProviderSeries]);
+
+  const refreshDownloadedChapters = async (providerMangaId?: number) => {
+    if (!providerMangaId) {
+      setDownloadedChapterIds(new Set());
+      setDownloadedChaptersByNumber({});
+      return;
+    }
+    try {
+      const chapters = await api.listDownloadedChapters(providerMangaId);
+      const downloadedIds = new Set<string>();
+      const byNumber: Record<string, number> = {};
+      chapters.forEach((chapter) => {
+        byNumber[chapter.chapterNumber] = chapter.id;
+      });
+      if (activeProviderSeries?.chapters) {
+        activeProviderSeries.chapters.forEach((chapter) => {
+          if (byNumber[chapter.number]) {
+            downloadedIds.add(chapter.id);
+          }
+        });
+      }
+      setDownloadedChapterIds(downloadedIds);
+      setDownloadedChaptersByNumber(byNumber);
+    } catch (error) {
+      console.warn('Failed to load downloaded chapters', error);
+      setDownloadedChapterIds(new Set());
+      setDownloadedChaptersByNumber({});
+    }
+  };
+
+  useEffect(() => {
+    refreshDownloadedChapters(activeProviderSeries?.providerMangaId);
+  }, [activeProviderSeries?.providerMangaId, activeProviderSeries?.chapters?.length]);
 
   const normalizeAsuraInput = (input: string) => {
     const trimmed = input.trim();
@@ -858,6 +894,53 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     }
 
     notify(`Marked up to chapter ${chapter.number} as read.`, 'success');
+  };
+
+  const handleDownloadChapter = async (chapter: any) => {
+    if (!activeProviderSeries) return;
+    setQueuedChapterIds((prev) => new Set(prev).add(chapter.id));
+    try {
+      const job = await api.queueDownload({
+        providerSeriesId: activeProviderSeries.id,
+        chapterId: chapter.id,
+        chapterUrl: chapter.url,
+        chapterNumber: chapter.number,
+        chapterTitle: chapter.title,
+        seriesTitle: activeProviderSeries.title,
+        seriesImage: activeProviderSeries.image,
+        seriesStatus: activeProviderSeries.status,
+        seriesRating: activeProviderSeries.rating,
+        seriesChapters: activeProviderSeries.chapters?.length
+          ? String(activeProviderSeries.chapters.length)
+          : undefined,
+      });
+      if (job.status === 'completed' || job.status === 'queued') {
+        await refreshDownloadedChapters(activeProviderSeries.providerMangaId);
+      }
+      notify(
+        job.status === 'completed'
+          ? `Chapter ${chapter.number} is already downloaded.`
+          : `Chapter ${chapter.number} added to downloads.`,
+        'success',
+      );
+    } catch (error) {
+      notify(
+        error instanceof Error ? error.message : 'Failed to queue download',
+        'error',
+      );
+    } finally {
+      setQueuedChapterIds((prev) => {
+        const next = new Set(prev);
+        next.delete(chapter.id);
+        return next;
+      });
+    }
+  };
+
+  const handleOpenDownload = (chapterNumber: string) => {
+    const downloadId = downloadedChaptersByNumber[chapterNumber];
+    if (!downloadId) return;
+    window.open(api.getDownloadFileUrl(downloadId), '_blank', 'noopener');
   };
 
   const handleStatusUpdate = async (status: string) => {
@@ -1495,7 +1578,11 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
                   {filteredChapters.length > 0 ? (
                     <>
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                        {filteredChapters.slice(0, visibleChapters).map((chapter, idx) => (
+                        {filteredChapters.slice(0, visibleChapters).map((chapter, idx) => {
+                          const isRead = readChapterIds.has(chapter.id);
+                          const isDownloaded = downloadedChapterIds.has(chapter.id);
+                          const isQueued = queuedChapterIds.has(chapter.id);
+                          return (
                           <motion.div
                             initial={{ opacity: 0, y: 10 }}
                             animate={{ opacity: 1, y: 0 }}
@@ -1515,11 +1602,11 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
                             whileHover={{ x: 5 }}
                           >
                             <div className="flex-1 min-w-0 pr-4">
-                              <h4 className={`font-bold text-[15px] transition-colors truncate ${readChapterIds.has(chapter.id) ? 'text-gray-500' : 'text-gray-200 group-hover:text-primary'}`}>
+                              <h4 className={`font-bold text-[15px] transition-colors truncate ${isRead ? 'text-gray-500' : 'text-gray-200 group-hover:text-primary'}`}>
                                 {chapter.title.toLowerCase().includes('chapter') || chapter.title.toLowerCase().includes('episode') 
                                   ? chapter.title 
                                   : `Chapter ${chapter.number}${chapter.title ? ` - ${chapter.title}` : ''}`}
-                                {readChapterIds.has(chapter.id) && (
+                                {isRead && (
                                   <span className="ml-2 text-[9px] uppercase tracking-wider text-gray-500">Read</span>
                                 )}
                               </h4>
@@ -1532,12 +1619,12 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
                                   handleToggleChapterRead(chapter);
                                 }}
                                 className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide border transition-colors ${
-                                  readChapterIds.has(chapter.id)
+                                  isRead
                                     ? 'border-emerald-400/40 text-emerald-300 bg-emerald-500/10'
                                     : 'border-white/10 text-gray-400 hover:text-white hover:border-white/20'
                                 }`}
                               >
-                                {readChapterIds.has(chapter.id) ? 'Read' : 'Mark'}
+                                {isRead ? 'Read' : 'Mark'}
                               </button>
                               <button
                                 onClick={(e) => {
@@ -1549,10 +1636,33 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
                               >
                                 Up to
                               </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (isDownloaded) {
+                                    handleOpenDownload(chapter.number);
+                                    return;
+                                  }
+                                  if (!isQueued) {
+                                    void handleDownloadChapter(chapter);
+                                  }
+                                }}
+                                title={isDownloaded ? 'Open downloaded file' : 'Download for offline reading'}
+                                className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide border transition-colors ${
+                                  isDownloaded
+                                    ? 'border-primary/60 text-primary bg-primary/10'
+                                    : isQueued
+                                      ? 'border-white/10 text-gray-500 bg-white/5'
+                                      : 'border-white/10 text-gray-400 hover:text-white hover:border-white/20'
+                                }`}
+                              >
+                                {isDownloaded ? 'Open' : isQueued ? 'Queued' : 'Download'}
+                              </button>
                               <ChevronLeft className="w-5 h-5 text-gray-600 group-hover:text-primary rotate-180 transition-colors" />
                             </div>
                           </motion.div>
-                        ))}
+                        );
+                        })}
                       </div>
                       
                       {visibleChapters < filteredChapters.length && !chapterSearchQuery && (

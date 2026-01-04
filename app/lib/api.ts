@@ -4,6 +4,55 @@ import { API_URL, apiRequest } from './api-client';
 
 export type Source = 'AniList' | 'AsuraScans';
 
+export type DownloadJobStatus = 'queued' | 'downloading' | 'completed' | 'failed' | 'canceled';
+
+export interface DownloadJob {
+  id: string;
+  provider: string;
+  providerSeriesId: string;
+  providerMangaId?: number;
+  chapterId?: string;
+  chapterUrl?: string;
+  chapterNumber: string;
+  chapterTitle?: string;
+  seriesTitle?: string;
+  seriesImage?: string;
+  status: DownloadJobStatus;
+  progress?: {
+    total: number;
+    current: number;
+    currentFile?: string;
+  };
+  attempts: number;
+  maxAttempts: number;
+  error?: string;
+  filePath?: string;
+  fileSize?: number;
+  downloadId?: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface DownloadedSeries {
+  providerMangaId: number;
+  provider: string;
+  providerSeriesId: string;
+  title: string;
+  image: string | null;
+  chaptersDownloaded: number;
+  totalSize: number;
+  lastDownloaded: number | null;
+}
+
+export interface DownloadedChapter {
+  id: number;
+  providerMangaId: number;
+  chapterNumber: string;
+  filePath: string;
+  fileSize: number | null;
+  downloadedAt: number;
+}
+
 const PROVIDER_CACHE_KEY = 'manverse_provider_cache_v1';
 const MAPPED_CACHE_KEY = 'manverse_provider_mapped_cache_v1';
 const MAX_PROVIDER_CACHE = 20;
@@ -289,5 +338,55 @@ export const api = {
     mappedProviderCache.delete(`AsuraScans:${anilistId}`);
     persistCacheToSession(MAPPED_CACHE_KEY, mappedProviderCache);
     return response;
+  },
+
+  queueDownload: async (payload: {
+    providerSeriesId: string;
+    chapterId?: string;
+    chapterUrl?: string;
+    chapterNumber: string;
+    chapterTitle?: string;
+    seriesTitle?: string;
+    seriesImage?: string;
+    seriesStatus?: string;
+    seriesRating?: string;
+    seriesChapters?: string;
+    force?: boolean;
+    seriesBudgetMb?: number;
+  }): Promise<DownloadJob> => {
+    return apiRequest<DownloadJob>('/api/downloads', {
+      method: 'POST',
+      body: JSON.stringify({
+        provider: 'AsuraScans',
+        ...payload,
+      }),
+    });
+  },
+
+  listDownloads: async (): Promise<DownloadJob[]> => {
+    const response = await apiRequest<{ jobs: DownloadJob[] }>('/api/downloads');
+    return response.jobs;
+  },
+
+  getDownloadStatus: async (id: string): Promise<DownloadJob> => {
+    return apiRequest<DownloadJob>(`/api/downloads/${id}`);
+  },
+
+  cancelDownload: async (id: string): Promise<DownloadJob> => {
+    return apiRequest<DownloadJob>(`/api/downloads/${id}`, {
+      method: 'DELETE',
+    });
+  },
+
+  listOfflineLibrary: async (): Promise<DownloadedSeries[]> => {
+    return apiRequest<DownloadedSeries[]>('/api/downloads/library');
+  },
+
+  listDownloadedChapters: async (providerMangaId: number): Promise<DownloadedChapter[]> => {
+    return apiRequest<DownloadedChapter[]>(`/api/downloads/series/${providerMangaId}`);
+  },
+
+  getDownloadFileUrl: (downloadId: number): string => {
+    return `${API_URL}/api/downloads/${downloadId}/file`;
   },
 };
