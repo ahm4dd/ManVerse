@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
 import { jsonError, jsonSuccess } from '../utils/response.ts';
-import { requireAuth } from '../middleware/auth.ts';
+import { requireAuth, requireAuthOrQuery } from '../middleware/auth.ts';
 import type { HonoEnv } from '../types/api.ts';
 import {
   ApiErrorSchema,
@@ -153,11 +153,14 @@ const fileRoute = createRoute({
   method: 'get',
   path: '/{id}/file',
   tags: ['downloads'],
-  middleware: requireAuth,
+  middleware: requireAuthOrQuery,
   security: [{ BearerAuth: [] }],
   request: {
     params: z.object({
       id: z.string(),
+    }),
+    query: z.object({
+      token: z.string().optional(),
     }),
   },
   responses: {

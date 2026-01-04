@@ -31,6 +31,8 @@ const DEFAULT_DOWNLOAD_PATH = (() => {
 const DEFAULT_CONCURRENCY = Number.parseInt(Bun.env.DOWNLOAD_CONCURRENCY ?? '1', 10) || 1;
 const DEFAULT_IMAGE_CONCURRENCY =
   Number.parseInt(Bun.env.DOWNLOAD_IMAGE_CONCURRENCY ?? '5', 10) || 5;
+const DEFAULT_JOB_INTERVAL_MS =
+  Number.parseInt(Bun.env.DOWNLOAD_JOB_INTERVAL_MS ?? '1500', 10) || 1500;
 const DEFAULT_RETRY_LIMIT = Number.parseInt(Bun.env.DOWNLOAD_RETRY_LIMIT ?? '2', 10) || 2;
 const DEFAULT_SERIES_BUDGET_MB =
   Number.parseInt(Bun.env.DOWNLOAD_SERIES_BUDGET_MB ?? '1024', 10) || 1024;
@@ -112,6 +114,7 @@ export class DownloadService {
   private active = 0;
   private scraper = new ScraperService();
   private downloader = new PDFDownloader(new FileSystemDownloader(), new PDFKitGenerator());
+  private providerLastStart = new Map<Provider, number>();
 
   static getInstance(): DownloadService {
     if (!DownloadService.instance) {
@@ -278,6 +281,7 @@ export class DownloadService {
 
       job.attempts += 1;
       try {
+        await this.waitForProviderWindow(job.provider);
         const chapterPages = await this.scraper.getChapterImages(job.chapterUrl, job.provider);
         const output = await this.downloadToPdf(job, chapterPages);
         if (job.cancelRequested) {
@@ -309,6 +313,16 @@ export class DownloadService {
         }
       }
     }
+  }
+
+  private async waitForProviderWindow(provider: Provider): Promise<void> {
+    const lastStart = this.providerLastStart.get(provider) ?? 0;
+    const now = Date.now();
+    const elapsed = now - lastStart;
+    if (elapsed < DEFAULT_JOB_INTERVAL_MS) {
+      await new Promise((resolve) => setTimeout(resolve, DEFAULT_JOB_INTERVAL_MS - elapsed));
+    }
+    this.providerLastStart.set(provider, Date.now());
   }
 
   private async downloadToPdf(

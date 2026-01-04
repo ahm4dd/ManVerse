@@ -103,11 +103,13 @@ const RecentReads: React.FC<RecentReadsProps> = ({ onNavigate, onBack }) => {
         seriesId: anilistId || item.id,
         anilistId,
         providerSeriesId: providerDetails.id,
+        providerMangaId: providerDetails.providerMangaId,
         chapterNumber: !isNaN(chapterNum) ? chapterNum : undefined,
         chapters: providerDetails.chapters,
         seriesTitle: item.title,
         seriesImage: item.image,
         source: providerDetails.source || item.source,
+        seriesStatus: providerDetails.status,
       });
     } catch (e) {
       console.warn('Failed to open recent read item', e);

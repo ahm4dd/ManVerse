@@ -12,12 +12,14 @@ interface ReaderProps {
     seriesId: string;
     anilistId?: string;
     providerSeriesId?: string;
+    providerMangaId?: number;
     chapterNumber?: number;
     chapters?: Chapter[];
     // Passed for history context
     seriesTitle?: string;
     seriesImage?: string; 
     source?: 'AniList' | 'AsuraScans';
+    seriesStatus?: string;
   };
   onBack: () => void;
   onNavigate: (view: string, data?: any) => void;
@@ -39,6 +41,10 @@ const Reader: React.FC<ReaderProps> = ({ data: readerData, onBack, onNavigate })
   const [resolvedImage, setResolvedImage] = useState<string | undefined>(readerData.seriesImage);
   const [resolvedSource, setResolvedSource] = useState<'AniList' | 'AsuraScans' | undefined>(
     readerData.source,
+  );
+  const [resolvedStatus, setResolvedStatus] = useState<string | undefined>(readerData.seriesStatus);
+  const [resolvedProviderMangaId, setResolvedProviderMangaId] = useState<number | undefined>(
+    readerData.providerMangaId,
   );
   
   // Controls Visibility State
@@ -62,6 +68,22 @@ const Reader: React.FC<ReaderProps> = ({ data: readerData, onBack, onNavigate })
     return '0px';
   });
 
+  const [prefetchEnabled, setPrefetchEnabled] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('reader_prefetch_enabled') !== 'false';
+    }
+    return true;
+  });
+
+  const [prefetchCount, setPrefetchCount] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      const raw = localStorage.getItem('reader_prefetch_count');
+      const parsed = raw ? Number.parseInt(raw, 10) : 2;
+      return Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, 5) : 2;
+    }
+    return 2;
+  });
+
   // Save Settings
   useEffect(() => {
     localStorage.setItem('reader_maxWidth', maxWidth);
@@ -70,6 +92,14 @@ const Reader: React.FC<ReaderProps> = ({ data: readerData, onBack, onNavigate })
   useEffect(() => {
     localStorage.setItem('reader_pageGap', pageGap);
   }, [pageGap]);
+
+  useEffect(() => {
+    localStorage.setItem('reader_prefetch_enabled', String(prefetchEnabled));
+  }, [prefetchEnabled]);
+
+  useEffect(() => {
+    localStorage.setItem('reader_prefetch_count', String(prefetchCount));
+  }, [prefetchCount]);
 
   // Chapter Menu State
   const [chapterSearchQuery, setChapterSearchQuery] = useState('');
@@ -89,6 +119,7 @@ const Reader: React.FC<ReaderProps> = ({ data: readerData, onBack, onNavigate })
   const shouldScrollRef = useRef<number | null>(null);
   const lastSeriesIdRef = useRef(readerData.seriesId);
   const activeChapterRef = useRef<HTMLButtonElement | null>(null);
+  const prefetchedChaptersRef = useRef<Record<string, number>>({});
 
   // Calculate Navigation
   const currentChapterIndex =
@@ -100,6 +131,34 @@ const Reader: React.FC<ReaderProps> = ({ data: readerData, onBack, onNavigate })
     anilistId: readerData.anilistId,
     providerSeriesId: readerData.providerSeriesId,
     title: resolvedTitle,
+  };
+  const PREFETCH_HISTORY_KEY = 'reader_prefetch_history_v1';
+  const PREFETCH_WINDOW_MS = 24 * 60 * 60 * 1000;
+  const ACTIVE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+  const providerSeriesId =
+    readerData.providerSeriesId ||
+    (!/^\d+$/.test(readerData.seriesId) ? readerData.seriesId : undefined);
+
+  const isSeriesFinished = (status?: string) =>
+    status ? /complete|finished|ended/i.test(status) : false;
+
+  const savePrefetchHistory = () => {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(PREFETCH_HISTORY_KEY, JSON.stringify(prefetchedChaptersRef.current));
+    } catch {
+      // Ignore storage errors
+    }
+  };
+
+  const wasPrefetchedRecently = (chapterId: string) => {
+    const last = prefetchedChaptersRef.current[chapterId] ?? 0;
+    return Date.now() - last < PREFETCH_WINDOW_MS;
+  };
+
+  const markPrefetched = (chapterId: string) => {
+    prefetchedChaptersRef.current[chapterId] = Date.now();
+    savePrefetchHistory();
   };
   
   const nextChapter = currentChapterIndex > 0 ? chapterList[currentChapterIndex - 1] : null;
@@ -115,19 +174,35 @@ const Reader: React.FC<ReaderProps> = ({ data: readerData, onBack, onNavigate })
       setResolvedTitle(readerData.seriesTitle);
       setResolvedImage(readerData.seriesImage);
       setResolvedSource(readerData.source);
+      setResolvedStatus(readerData.seriesStatus);
+      setResolvedProviderMangaId(readerData.providerMangaId);
       return;
     }
 
     if (readerData.seriesTitle) setResolvedTitle(readerData.seriesTitle);
     if (readerData.seriesImage) setResolvedImage(readerData.seriesImage);
     if (readerData.source) setResolvedSource(readerData.source);
+    if (readerData.seriesStatus) setResolvedStatus(readerData.seriesStatus);
+    if (readerData.providerMangaId) setResolvedProviderMangaId(readerData.providerMangaId);
   }, [
     readerData.seriesId,
     readerData.chapters,
     readerData.seriesTitle,
     readerData.seriesImage,
     readerData.source,
+    readerData.seriesStatus,
+    readerData.providerMangaId,
   ]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = localStorage.getItem(PREFETCH_HISTORY_KEY);
+      prefetchedChaptersRef.current = raw ? (JSON.parse(raw) as Record<string, number>) : {};
+    } catch {
+      prefetchedChaptersRef.current = {};
+    }
+  }, []);
 
   useEffect(() => {
     if (chapterList.length > 0) return;
@@ -152,6 +227,8 @@ const Reader: React.FC<ReaderProps> = ({ data: readerData, onBack, onNavigate })
           setResolvedTitle((prev) => prev || details.title);
           setResolvedImage((prev) => prev || details.image);
           setResolvedSource((prev) => prev || details.source);
+          setResolvedStatus((prev) => prev || details.status);
+          setResolvedProviderMangaId((prev) => prev || details.providerMangaId);
         }
       } catch (e) {
         console.warn('Failed to hydrate chapters for reader', e);
@@ -282,6 +359,63 @@ const Reader: React.FC<ReaderProps> = ({ data: readerData, onBack, onNavigate })
     saveProgress(false);
   }, [currentPage, saveProgress]);
 
+  useEffect(() => {
+    if (!prefetchEnabled) return;
+    if (!providerSeriesId) return;
+    if (chapterList.length === 0) return;
+    if (currentChapterIndex <= 0) return;
+    if (isSeriesFinished(resolvedStatus)) return;
+
+    const lastReadAt = history.getItem(historyMatch)?.timestamp ?? 0;
+    if (lastReadAt && Date.now() - lastReadAt > ACTIVE_WINDOW_MS) {
+      return;
+    }
+
+    const candidates: Chapter[] = [];
+    for (let i = 1; i <= prefetchCount; i += 1) {
+      const next = chapterList[currentChapterIndex - i];
+      if (!next) continue;
+      if (readChapters.has(next.id)) continue;
+      if (wasPrefetchedRecently(next.id)) continue;
+      candidates.push(next);
+    }
+
+    if (candidates.length === 0) return;
+
+    const prefetch = async () => {
+      for (const chapter of candidates) {
+        try {
+          await api.queueDownload({
+            providerSeriesId,
+            chapterId: chapter.id,
+            chapterUrl: chapter.url,
+            chapterNumber: chapter.number,
+            chapterTitle: chapter.title,
+            seriesTitle: resolvedTitle,
+            seriesImage: resolvedImage,
+            seriesStatus: resolvedStatus,
+            seriesChapters: chapterList.length ? String(chapterList.length) : undefined,
+          });
+          markPrefetched(chapter.id);
+        } catch (error) {
+          console.warn('Prefetch failed', error);
+        }
+      }
+    };
+
+    void prefetch();
+  }, [
+    prefetchEnabled,
+    prefetchCount,
+    chapterList,
+    currentChapterIndex,
+    readChapters,
+    providerSeriesId,
+    resolvedStatus,
+    resolvedTitle,
+    resolvedImage,
+  ]);
+
   // Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -391,6 +525,8 @@ const Reader: React.FC<ReaderProps> = ({ data: readerData, onBack, onNavigate })
       seriesTitle: resolvedTitle ?? readerData.seriesTitle,
       seriesImage: resolvedImage ?? readerData.seriesImage,
       source: resolvedSource ?? readerData.source,
+      seriesStatus: resolvedStatus ?? readerData.seriesStatus,
+      providerMangaId: resolvedProviderMangaId ?? readerData.providerMangaId,
       chapterId: chapter.id,
       chapterNumber: !isNaN(chapterNum) ? chapterNum : undefined
     });
@@ -516,6 +652,37 @@ const Reader: React.FC<ReaderProps> = ({ data: readerData, onBack, onNavigate })
                              </button>
                           ))}
                        </div>
+                     </div>
+                     <div>
+                       <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">Smart Prefetch</label>
+                       <div className="flex items-center justify-between gap-2">
+                         <button
+                           onClick={() => setPrefetchEnabled((prev) => !prev)}
+                           className={`px-3 py-2 rounded-lg text-xs font-bold border transition-colors ${
+                             prefetchEnabled
+                               ? 'bg-primary text-white border-primary'
+                               : 'bg-surfaceHighlight text-gray-400 border-white/10 hover:text-white'
+                           }`}
+                         >
+                           {prefetchEnabled ? 'On' : 'Off'}
+                         </button>
+                         <div className="flex bg-surfaceHighlight rounded-lg p-1 border border-white/5 flex-1">
+                           {[1, 2, 3, 5].map((count) => (
+                             <button
+                               key={count}
+                               onClick={() => setPrefetchCount(count)}
+                               className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${
+                                 prefetchCount === count ? 'bg-primary text-white shadow-sm' : 'text-gray-400 hover:text-white'
+                               }`}
+                             >
+                               {count}
+                             </button>
+                           ))}
+                         </div>
+                       </div>
+                       <p className="mt-2 text-[10px] text-gray-500">
+                         Downloads the next N chapters when you are actively reading.
+                       </p>
                      </div>
                      <div className="pt-2 border-t border-white/5 text-[10px] text-gray-500 text-center">
                         Pro tip: Use 'N' and 'P' keys

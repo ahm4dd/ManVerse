@@ -765,11 +765,13 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
       seriesId: seriesId, // Back navigation ID
       anilistId: isAniListSource ? data?.id : linkedAnilistId,
       providerSeriesId: activeProviderSeries.id,
+      providerMangaId: activeProviderSeries.providerMangaId,
       chapterNumber: !isNaN(chapterNum) ? chapterNum : undefined,
       chapters: activeProviderSeries.chapters, // Pass the full chapter list for navigation
       seriesTitle: data?.title,
       seriesImage: data?.image,
-      source: activeProviderSeries.source || 'AsuraScans'
+      source: activeProviderSeries.source || 'AsuraScans',
+      seriesStatus: activeProviderSeries.status,
     });
   };
 

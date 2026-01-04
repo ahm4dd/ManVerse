@@ -1,6 +1,6 @@
 import { Series, SeriesDetails, ChapterPage } from '../types';
 import { anilistApi, SearchFilters } from './anilist';
-import { API_URL, apiRequest } from './api-client';
+import { API_URL, apiRequest, getStoredToken } from './api-client';
 
 export type Source = 'AniList' | 'AsuraScans';
 
@@ -387,6 +387,11 @@ export const api = {
   },
 
   getDownloadFileUrl: (downloadId: number): string => {
-    return `${API_URL}/api/downloads/${downloadId}/file`;
+    const token = getStoredToken();
+    const url = new URL(`${API_URL}/api/downloads/${downloadId}/file`);
+    if (token) {
+      url.searchParams.set('token', token);
+    }
+    return url.toString();
   },
 };
