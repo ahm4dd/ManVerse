@@ -361,9 +361,70 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     }
   };
 
+  const buildProviderSearchTerms = () => {
+    if (!data) return [];
+    const rawTerms = [
+      data.title,
+      data.titles?.romaji,
+      data.titles?.english,
+      data.titles?.native,
+      ...(data.synonyms ?? []),
+    ]
+      .filter(Boolean)
+      .map((term) => term?.trim())
+      .filter((term) => term && term.length >= 3) as string[];
+
+    const unique: string[] = [];
+    const seen = new Set<string>();
+    for (const term of rawTerms) {
+      const key = term.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      unique.push(term);
+    }
+    return unique.slice(0, 6);
+  };
+
+  const searchProviderWithFallback = async (providerId: string, queries: string[]) => {
+    if (!data) return;
+    if (providerId !== 'AsuraScans') return;
+
+    setProviderLoading(true);
+    setProviderResults(null);
+    setShowProviderMenu(false);
+    setSelectedProvider(providerId);
+
+    try {
+      for (const query of queries) {
+        const results = await api.searchSeries(query, 'AsuraScans');
+        if (results.length > 0) {
+          setProviderResults(results);
+          if (results.length === 1) {
+            handleSelectProviderSeries(results[0].id);
+            notify(`Found match using "${query}".`, 'success');
+          } else if (query !== queries[0]) {
+            notify(`Found matches using "${query}".`, 'success');
+          }
+          return;
+        }
+      }
+      notify(`No matches found on ${providerId}.`, 'warning');
+    } catch (e) {
+      console.error(e);
+      notify('Failed to search provider.', 'error');
+    } finally {
+      setProviderLoading(false);
+    }
+  };
+
   const handleSearchOnProvider = async (providerId: string) => {
     if (!data) return;
-    await searchProvider(providerId, data.title);
+    const terms = buildProviderSearchTerms();
+    if (terms.length <= 1) {
+      await searchProvider(providerId, data.title);
+      return;
+    }
+    await searchProviderWithFallback(providerId, terms);
   };
 
   const handleSelectProviderSeries = async (id: string) => {
