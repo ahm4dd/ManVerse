@@ -13,7 +13,7 @@ interface ReaderProps {
     anilistId?: string;
     providerSeriesId?: string;
     chapterNumber?: number;
-    chapters: Chapter[];
+    chapters?: Chapter[];
     // Passed for history context
     seriesTitle?: string;
     seriesImage?: string; 
@@ -34,6 +34,12 @@ const GearIcon = ({ className }: { className?: string }) => (
 const Reader: React.FC<ReaderProps> = ({ data: readerData, onBack, onNavigate }) => {
   const [pages, setPages] = useState<ChapterPage[]>([]);
   const [loading, setLoading] = useState(true);
+  const [chapterList, setChapterList] = useState<Chapter[]>(readerData.chapters ?? []);
+  const [resolvedTitle, setResolvedTitle] = useState<string | undefined>(readerData.seriesTitle);
+  const [resolvedImage, setResolvedImage] = useState<string | undefined>(readerData.seriesImage);
+  const [resolvedSource, setResolvedSource] = useState<'AniList' | 'AsuraScans' | undefined>(
+    readerData.source,
+  );
   
   // Controls Visibility State
   const [controlsVisible, setControlsVisible] = useState(true);
@@ -81,22 +87,82 @@ const Reader: React.FC<ReaderProps> = ({ data: readerData, onBack, onNavigate })
   // FIX: Using ReturnType<typeof setTimeout> instead of NodeJS.Timeout for compatibility
   const syncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const shouldScrollRef = useRef<number | null>(null);
+  const lastSeriesIdRef = useRef(readerData.seriesId);
+  const activeChapterRef = useRef<HTMLButtonElement | null>(null);
 
   // Calculate Navigation
-  const currentChapterIndex = readerData.chapters ? readerData.chapters.findIndex(c => c.id === readerData.chapterId) : -1;
-  const currentChapter = currentChapterIndex !== -1 ? readerData.chapters[currentChapterIndex] : null;
+  const currentChapterIndex =
+    chapterList.length > 0 ? chapterList.findIndex((c) => c.id === readerData.chapterId) : -1;
+  const currentChapter = currentChapterIndex !== -1 ? chapterList[currentChapterIndex] : null;
   const historyKey = readerData.anilistId ?? readerData.seriesId;
   const historyMatch = {
     seriesId: historyKey,
     anilistId: readerData.anilistId,
     providerSeriesId: readerData.providerSeriesId,
-    title: readerData.seriesTitle,
+    title: resolvedTitle,
   };
   
-  const nextChapter = currentChapterIndex > 0 ? readerData.chapters[currentChapterIndex - 1] : null;
-  const prevChapter = currentChapterIndex !== -1 && currentChapterIndex < readerData.chapters.length - 1 
-    ? readerData.chapters[currentChapterIndex + 1] 
+  const nextChapter = currentChapterIndex > 0 ? chapterList[currentChapterIndex - 1] : null;
+  const prevChapter = currentChapterIndex !== -1 && currentChapterIndex < chapterList.length - 1 
+    ? chapterList[currentChapterIndex + 1] 
     : null;
+
+  useEffect(() => {
+    setChapterList(readerData.chapters ?? []);
+
+    if (readerData.seriesId !== lastSeriesIdRef.current) {
+      lastSeriesIdRef.current = readerData.seriesId;
+      setResolvedTitle(readerData.seriesTitle);
+      setResolvedImage(readerData.seriesImage);
+      setResolvedSource(readerData.source);
+      return;
+    }
+
+    if (readerData.seriesTitle) setResolvedTitle(readerData.seriesTitle);
+    if (readerData.seriesImage) setResolvedImage(readerData.seriesImage);
+    if (readerData.source) setResolvedSource(readerData.source);
+  }, [
+    readerData.seriesId,
+    readerData.chapters,
+    readerData.seriesTitle,
+    readerData.seriesImage,
+    readerData.source,
+  ]);
+
+  useEffect(() => {
+    if (chapterList.length > 0) return;
+    let cancelled = false;
+
+    const loadChapters = async () => {
+      try {
+        let details = null;
+        if (readerData.providerSeriesId) {
+          details = await api.getSeriesDetails(readerData.providerSeriesId, 'AsuraScans');
+        } else if (readerData.anilistId) {
+          details = await api.getMappedProviderDetails(readerData.anilistId, 'AsuraScans');
+        } else if (readerData.seriesId) {
+          const isAniListId = /^\d+$/.test(readerData.seriesId);
+          details = isAniListId
+            ? await api.getMappedProviderDetails(readerData.seriesId, 'AsuraScans')
+            : await api.getSeriesDetails(readerData.seriesId, 'AsuraScans');
+        }
+
+        if (!cancelled && details) {
+          setChapterList(details.chapters || []);
+          setResolvedTitle((prev) => prev || details.title);
+          setResolvedImage((prev) => prev || details.image);
+          setResolvedSource((prev) => prev || details.source);
+        }
+      } catch (e) {
+        console.warn('Failed to hydrate chapters for reader', e);
+      }
+    };
+
+    void loadChapters();
+    return () => {
+      cancelled = true;
+    };
+  }, [chapterList.length, readerData.providerSeriesId, readerData.anilistId, readerData.seriesId]);
 
   // Initial Load and Resume Position
   useEffect(() => {
@@ -155,17 +221,17 @@ const Reader: React.FC<ReaderProps> = ({ data: readerData, onBack, onNavigate })
     if (!currentChapter || loading) return;
 
     // 1. Always Save to Local Storage (Instant)
-    if (readerData.seriesTitle) {
+    if (resolvedTitle) {
       history.add({
         seriesId: historyKey,
         anilistId: readerData.anilistId,
         providerSeriesId: readerData.providerSeriesId,
-        seriesTitle: readerData.seriesTitle,
-        seriesImage: readerData.seriesImage || '',
+        seriesTitle: resolvedTitle,
+        seriesImage: resolvedImage || '',
         chapterId: readerData.chapterId,
         chapterNumber: currentChapter.number,
         chapterTitle: currentChapter.title,
-        source: readerData.source || 'AsuraScans',
+        source: resolvedSource || 'AsuraScans',
         page: currentPage
       });
 
@@ -237,10 +303,19 @@ const Reader: React.FC<ReaderProps> = ({ data: readerData, onBack, onNavigate })
   useEffect(() => {
     if (showChapterList) {
       setChapterSearchQuery('');
-      setVisibleChapterCount(50);
+      const nextCount = Math.max(50, currentChapterIndex + 10);
+      setVisibleChapterCount(nextCount);
       setShowSettings(false);
     }
-  }, [showChapterList]);
+  }, [showChapterList, currentChapterIndex]);
+
+  useEffect(() => {
+    if (!showChapterList) return;
+    const timeout = window.setTimeout(() => {
+      activeChapterRef.current?.scrollIntoView({ block: 'center' });
+    }, 0);
+    return () => window.clearTimeout(timeout);
+  }, [showChapterList, visibleChapterCount, currentChapterIndex]);
 
   // Scroll Visibility Logic
   useEffect(() => {
@@ -312,6 +387,10 @@ const Reader: React.FC<ReaderProps> = ({ data: readerData, onBack, onNavigate })
     setShowChapterList(false);
     onNavigate('reader', {
       ...readerData,
+      chapters: chapterList,
+      seriesTitle: resolvedTitle ?? readerData.seriesTitle,
+      seriesImage: resolvedImage ?? readerData.seriesImage,
+      source: resolvedSource ?? readerData.source,
       chapterId: chapter.id,
       chapterNumber: !isNaN(chapterNum) ? chapterNum : undefined
     });
@@ -326,13 +405,13 @@ const Reader: React.FC<ReaderProps> = ({ data: readerData, onBack, onNavigate })
   };
 
   const filteredChapters = useMemo(() => {
-    if (!chapterSearchQuery) return readerData.chapters;
+    if (!chapterSearchQuery) return chapterList;
     const lowerQuery = chapterSearchQuery.toLowerCase();
-    return readerData.chapters.filter(ch => 
+    return chapterList.filter((ch) => 
       ch.number.toLowerCase().includes(lowerQuery) || 
       ch.title.toLowerCase().includes(lowerQuery)
     );
-  }, [readerData.chapters, chapterSearchQuery]);
+  }, [chapterList, chapterSearchQuery]);
 
   const chaptersToRender = filteredChapters.slice(0, visibleChapterCount);
 
@@ -467,6 +546,11 @@ const Reader: React.FC<ReaderProps> = ({ data: readerData, onBack, onNavigate })
             </button>
 
             <div className="relative flex-1 max-w-xs">
+              <div className="mb-2 text-center text-[11px] uppercase tracking-wider text-gray-500">
+                {currentChapter
+                  ? `Current: Ch ${currentChapter.number} of ${chapterList.length}`
+                  : 'Current: --'}
+              </div>
               <button 
                 onClick={() => { setShowChapterList(!showChapterList); setShowSettings(false); }}
                 className="w-full flex items-center justify-center gap-2 bg-surfaceHighlight hover:bg-white/10 border border-white/10 text-white font-medium py-3 px-4 rounded-xl transition-all active:scale-95"
@@ -513,22 +597,30 @@ const Reader: React.FC<ReaderProps> = ({ data: readerData, onBack, onNavigate })
                         {chaptersToRender.length > 0 ? (
                           chaptersToRender.map((ch) => {
                             const isRead = readChapters.has(ch.id);
+                            const isCurrent = ch.id === readerData.chapterId;
                             return (
                               <button
                                 key={ch.id}
+                                ref={isCurrent ? activeChapterRef : undefined}
                                 onClick={() => handleNavigateChapter(ch)}
                                 className={`w-full text-left px-4 py-3 text-sm hover:bg-white/5 transition-colors border-l-2 ${
-                                  ch.id === readerData.chapterId 
-                                    ? 'border-primary text-primary bg-primary/5 font-medium' 
+                                  isCurrent
+                                    ? 'border-primary text-primary bg-primary/10 font-semibold'
                                     : 'border-transparent text-gray-300'
                                 }`}
                               >
                                 <div className="flex justify-between items-baseline">
                                   <span className={isRead ? 'opacity-50' : ''}>
                                     Chapter {ch.number}
-                                    {isRead && <span className="ml-2 text-[9px] uppercase tracking-wider text-gray-500">Read</span>}
+                                    {isRead && (
+                                      <span className="ml-2 text-[9px] uppercase tracking-wider text-gray-500">
+                                        Read
+                                      </span>
+                                    )}
                                   </span>
-                                  <span className="text-[10px] text-gray-600 ml-2">{ch.date}</span>
+                                  <span className="text-[10px] text-gray-600 ml-2">
+                                    {isCurrent ? 'Current' : ch.date}
+                                  </span>
                                 </div>
                               </button>
                             );

@@ -4,6 +4,46 @@ import { API_URL, apiRequest } from './api-client';
 
 export type Source = 'AniList' | 'AsuraScans';
 
+const PROVIDER_CACHE_KEY = 'manverse_provider_cache_v1';
+const MAPPED_CACHE_KEY = 'manverse_provider_mapped_cache_v1';
+const MAX_PROVIDER_CACHE = 20;
+const providerDetailsCache = new Map<string, SeriesDetails>();
+const mappedProviderCache = new Map<string, SeriesDetails>();
+
+function loadCacheFromSession(key: string) {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = sessionStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as Record<string, SeriesDetails>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function persistCacheToSession(key: string, cache: Map<string, SeriesDetails>) {
+  if (typeof window === 'undefined') return;
+  try {
+    const entries = Array.from(cache.entries()).slice(-MAX_PROVIDER_CACHE);
+    const payload = Object.fromEntries(entries);
+    sessionStorage.setItem(key, JSON.stringify(payload));
+  } catch {
+    // Ignore persistence failures (storage quota, etc)
+  }
+}
+
+function initCache() {
+  const provider = loadCacheFromSession(PROVIDER_CACHE_KEY);
+  Object.entries(provider).forEach(([id, details]) => {
+    providerDetailsCache.set(id, details);
+  });
+  const mapped = loadCacheFromSession(MAPPED_CACHE_KEY);
+  Object.entries(mapped).forEach(([id, details]) => {
+    mappedProviderCache.set(id, details);
+  });
+}
+
+initCache();
+
 type ProviderSearchResult = {
   currentPage: number;
   hasNextPage: boolean;
@@ -162,10 +202,18 @@ export const api = {
       return await anilistApi.getDetails(parseInt(id));
     }
 
+    const cached = providerDetailsCache.get(id);
+    if (cached) {
+      return cached;
+    }
+
     const details = await apiRequest<ProviderSeriesDetails>(
       `/api/manga/provider?provider=AsuraScans&id=${encodeURIComponent(id)}`,
     );
-    return formatSeriesDetails(details);
+    const formatted = formatSeriesDetails(details);
+    providerDetailsCache.set(id, formatted);
+    persistCacheToSession(PROVIDER_CACHE_KEY, providerDetailsCache);
+    return formatted;
   },
 
   getChapterImages: async (chapterId: string): Promise<ChapterPage[]> => {
@@ -194,10 +242,18 @@ export const api = {
   },
 
   getMappedProviderDetails: async (anilistId: string, provider: Source = 'AsuraScans'): Promise<SeriesDetails> => {
+    const cacheKey = `${provider}:${anilistId}`;
+    const cached = mappedProviderCache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
     const details = await apiRequest<ProviderSeriesDetails>(
       `/api/manga/${anilistId}/chapters?provider=${encodeURIComponent(provider)}`,
     );
-    return formatSeriesDetails(details);
+    const formatted = formatSeriesDetails(details);
+    mappedProviderCache.set(cacheKey, formatted);
+    persistCacheToSession(MAPPED_CACHE_KEY, mappedProviderCache);
+    return formatted;
   },
 
   mapProviderSeries: async (
@@ -226,9 +282,12 @@ export const api = {
     if (typeof providerMangaId === 'number' && Number.isFinite(providerMangaId)) {
       payload.providerMangaId = providerMangaId;
     }
-    return apiRequest(`/api/manga/${anilistId}/map`, {
+    const response = await apiRequest(`/api/manga/${anilistId}/map`, {
       method: 'POST',
       body: JSON.stringify(payload),
     });
+    mappedProviderCache.delete(`AsuraScans:${anilistId}`);
+    persistCacheToSession(MAPPED_CACHE_KEY, mappedProviderCache);
+    return response;
   },
 };

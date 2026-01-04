@@ -645,6 +645,21 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     return ids;
   };
 
+  const getChapterOrder = (chapters: SeriesDetails['chapters']) => {
+    let previous: number | null = null;
+    for (const chapter of chapters) {
+      const num = parseChapterNumber(chapter.number);
+      if (num === null) continue;
+      if (previous === null) {
+        previous = num;
+        continue;
+      }
+      if (num < previous) return 'desc';
+      if (num > previous) return 'asc';
+    }
+    return 'desc';
+  };
+
   const getLocalProgress = (providerId?: string) => {
     if (!providerId) return null;
     const match = history.getItem({ providerSeriesId: providerId, title: data?.title });
@@ -794,6 +809,55 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     }
 
     notify('Marked all chapters as read.', 'success');
+  };
+
+  const handleMarkReadUpTo = async (chapter: any) => {
+    if (!data || !activeProviderSeries) return;
+    const chapters = activeProviderSeries.chapters;
+    if (chapters.length === 0) return;
+
+    const targetProgress = parseChapterNumber(chapter.number);
+    let ids: string[] = [];
+
+    if (targetProgress !== null) {
+      ids = getReadIdsForProgress(chapters, targetProgress);
+    } else {
+      const index = chapters.findIndex((item) => item.id === chapter.id);
+      if (index >= 0) {
+        const order = getChapterOrder(chapters);
+        ids = order === 'desc'
+          ? chapters.slice(index).map((item) => item.id)
+          : chapters.slice(0, index + 1).map((item) => item.id);
+      }
+    }
+
+    if (ids.length === 0) {
+      ids = [chapter.id];
+    }
+
+    setReadChapterIds(new Set(ids));
+
+    const seriesId = data.source === 'AniList' ? data.id : activeProviderSeries.id;
+    const anilistId = data.source === 'AniList' ? data.id : linkedAniList?.id;
+
+    history.add({
+      seriesId,
+      anilistId,
+      providerSeriesId: activeProviderSeries.id,
+      seriesTitle: data.title,
+      seriesImage: data.image,
+      chapterId: chapter.id,
+      chapterNumber: chapter.number,
+      chapterTitle: chapter.title,
+      source: activeProviderSeries.source || 'AsuraScans',
+      readChapters: ids,
+    });
+
+    if (user && anilistId && targetProgress !== null) {
+      await anilistApi.updateProgress(parseInt(anilistId, 10), Math.floor(targetProgress));
+    }
+
+    notify(`Marked up to chapter ${chapter.number} as read.`, 'success');
   };
 
   const handleStatusUpdate = async (status: string) => {
@@ -1474,6 +1538,16 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
                                 }`}
                               >
                                 {readChapterIds.has(chapter.id) ? 'Read' : 'Mark'}
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleMarkReadUpTo(chapter);
+                                }}
+                                title="Mark this and previous chapters as read"
+                                className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide border border-primary/30 text-primary/80 hover:text-primary hover:border-primary/60 transition-colors"
+                              >
+                                Up to
                               </button>
                               <ChevronLeft className="w-5 h-5 text-gray-600 group-hover:text-primary rotate-180 transition-colors" />
                             </div>
