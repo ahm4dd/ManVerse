@@ -285,6 +285,12 @@ const Home: React.FC<HomeProps> = ({
     }
   };
 
+  const handleInfoClick = (item?: ContinueItem) => {
+    if (!item) return;
+    const anilistId = item.anilistId || (item.source === 'AniList' ? item.id : undefined);
+    onNavigate('details', anilistId || item.id);
+  };
+
   // Determine which list to show based on search or tab
   const getBaseSeriesList = () => {
     if (isDiscoveryMode) return searchResults;
@@ -351,7 +357,8 @@ const Home: React.FC<HomeProps> = ({
                           <div key={item.id} className="w-[280px] sm:w-[320px] aspect-video flex-shrink-0">
                               <HistoryCard 
                                  item={item} 
-                                 onClick={handleContinueClick}
+                                 onResume={handleContinueClick}
+                                 onInfo={handleInfoClick}
                               />
                           </div>
                         ))}
@@ -397,7 +404,8 @@ const Home: React.FC<HomeProps> = ({
                           <div key={item.id} className="w-[280px] sm:w-[320px] aspect-video flex-shrink-0">
                               <HistoryCard 
                                  item={item} 
-                                 onClick={handleContinueClick}
+                                 onResume={handleContinueClick}
+                                 onInfo={handleInfoClick}
                               />
                           </div>
                         ))}

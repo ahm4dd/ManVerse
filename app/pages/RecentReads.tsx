@@ -73,7 +73,7 @@ const RecentReads: React.FC<RecentReadsProps> = ({ onNavigate, onBack }) => {
     }));
   }, [entries, searchQuery, sourceFilter, sortOrder]);
 
-  const handleOpen = async (item?: CardItem) => {
+  const handleResume = async (item?: CardItem) => {
     if (!item) return;
     const anilistId = item.anilistId || (/^\d+$/.test(item.id) ? item.id : undefined);
 
@@ -113,6 +113,12 @@ const RecentReads: React.FC<RecentReadsProps> = ({ onNavigate, onBack }) => {
       console.warn('Failed to open recent read item', e);
       onNavigate('details', anilistId || item.id);
     }
+  };
+
+  const handleInfo = (item?: CardItem) => {
+    if (!item) return;
+    const anilistId = item.anilistId || (/^\d+$/.test(item.id) ? item.id : undefined);
+    onNavigate('details', anilistId || item.id);
   };
 
   return (
@@ -179,7 +185,7 @@ const RecentReads: React.FC<RecentReadsProps> = ({ onNavigate, onBack }) => {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
             {cards.map((item) => (
               <div key={`${item.id}-${item.chapterId ?? 'latest'}`} className="aspect-video">
-                <HistoryCard item={item} onClick={handleOpen} />
+                <HistoryCard item={item} onResume={handleResume} onInfo={handleInfo} />
               </div>
             ))}
           </div>

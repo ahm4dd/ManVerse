@@ -16,6 +16,8 @@ interface HistoryItem {
 interface HistoryCardProps {
   item?: HistoryItem;
   onClick?: (item?: HistoryItem) => void;
+  onResume?: (item?: HistoryItem) => void;
+  onInfo?: (item?: HistoryItem) => void;
   onRemove?: (id: string) => void;
   isViewMore?: boolean;
   viewLabel?: string;
@@ -24,6 +26,8 @@ interface HistoryCardProps {
 const HistoryCard: React.FC<HistoryCardProps> = ({
   item,
   onClick,
+  onResume,
+  onInfo,
   onRemove,
   isViewMore = false,
   viewLabel,
@@ -50,7 +54,7 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
     <motion.div 
       layout
       className="relative group cursor-pointer overflow-hidden rounded-xl border border-white/5 bg-surfaceHighlight shadow-lg w-full h-full aspect-video"
-      onClick={() => onClick && onClick(item)}
+      onClick={() => (onInfo || onClick)?.(item)}
       whileHover={{ scale: 1.01 }}
       transition={{ type: 'spring', stiffness: 300, damping: 20 }}
     >
@@ -101,6 +105,32 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
             {item.progressSource === 'Local' ? 'Synced' : 'Tracked'}
           </span>
         </div>
+
+        {/* Actions */}
+        {(onResume || onInfo || onClick) && (
+          <div className="flex items-center gap-2 mb-3">
+            {(onResume || onClick) && (
+              <button
+                onClick={(event) => {
+                  event.stopPropagation();
+                  (onResume || onClick)?.(item);
+                }}
+                className="px-3 py-1.5 rounded-full bg-primary text-black text-[11px] font-extrabold uppercase tracking-wide shadow-sm hover:brightness-110"
+              >
+                Resume {String(item.chapterNumber).toLowerCase().includes('chapter') ? item.chapterNumber : `Ch ${item.chapterNumber}`}
+              </button>
+            )}
+            <button
+              onClick={(event) => {
+                event.stopPropagation();
+                (onInfo || onClick)?.(item);
+              }}
+              className="px-3 py-1.5 rounded-full bg-white/10 text-white text-[11px] font-bold uppercase tracking-wide border border-white/10 hover:bg-white/20"
+            >
+              Info
+            </button>
+          </div>
+        )}
 
         {/* Progress Bar */}
         <div className="w-full h-1 bg-white/20 rounded-full overflow-hidden">
