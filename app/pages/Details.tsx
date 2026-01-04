@@ -48,6 +48,20 @@ const parseAniListId = (input: string) => {
   return null;
 };
 
+type ReconcileChoice = 'higher' | 'provider' | 'anilist' | 'none';
+
+type ReconcileContext = {
+  swapType: 'anilist' | 'provider';
+  anilistId: string;
+  anilistTitle?: string;
+  anilistImage?: string;
+  providerId: string;
+  providerMangaId?: number;
+  providerDetails?: SeriesDetails | null;
+  localProgress: number | null;
+  remoteProgress: number | null;
+};
+
 const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user }) => {
   const [data, setData] = useState<SeriesDetails | null>(null);
   const [loading, setLoading] = useState(true);
@@ -74,6 +88,10 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
   const [linkedAniList, setLinkedAniList] = useState<{ id: string; title: string; image?: string } | null>(null);
   const [showAniListRemap, setShowAniListRemap] = useState(false);
   const [showProviderRemap, setShowProviderRemap] = useState(false);
+  const [previousProviderSeries, setPreviousProviderSeries] = useState<SeriesDetails | null>(null);
+  const [reconcileContext, setReconcileContext] = useState<ReconcileContext | null>(null);
+  const [reconcileChoice, setReconcileChoice] = useState<ReconcileChoice>('higher');
+  const [reconcileLoading, setReconcileLoading] = useState(false);
 
   // Chapter Search State
   const [chapterSearchQuery, setChapterSearchQuery] = useState('');
@@ -105,6 +123,10 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
       setLinkedAniList(null);
       setShowAniListRemap(false);
       setShowProviderRemap(false);
+      setPreviousProviderSeries(null);
+      setReconcileContext(null);
+      setReconcileChoice('higher');
+      setReconcileLoading(false);
       try {
         // Determine source based on ID format (Numeric = AniList, String = Provider)
         const source = /^\d+$/.test(seriesId) ? 'AniList' : 'AsuraScans';
@@ -266,7 +288,30 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
       const details = await api.getSeriesDetails(normalizedId, 'AsuraScans');
       setActiveProviderSeries(details);
       setProviderResults(null); // Clear list to show chapters
-      setShowProviderRemap(false);
+
+      const isProviderSwap =
+        data?.source === 'AniList' &&
+        previousProviderSeries &&
+        previousProviderSeries.id !== details.id;
+
+      if (user && data?.source === 'AniList' && isProviderSwap) {
+        const localProgress = getLocalProgress(previousProviderSeries?.id ?? details.id);
+        const remoteProgress = data.mediaListEntry?.progress ?? null;
+        setReconcileChoice('higher');
+        setReconcileContext({
+          swapType: 'provider',
+          anilistId: data.id,
+          anilistTitle: data.title,
+          anilistImage: data.image,
+          providerId: normalizedId,
+          providerMangaId: details.providerMangaId,
+          providerDetails: details,
+          localProgress,
+          remoteProgress,
+        });
+        setProviderLoading(false);
+        return;
+      }
 
       if (user && data?.source === 'AniList') {
         try {
@@ -300,6 +345,8 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
           ) {
             await anilistApi.updateProgress(parseInt(data.id, 10), Math.floor(localProgress));
           }
+          setShowProviderRemap(false);
+          setPreviousProviderSeries(null);
         } catch (e) {
           console.warn('Failed to persist provider mapping', e);
         }
@@ -361,6 +408,25 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
 
     if (!normalizedProviderId) {
       notify('Provider series is missing. Load a provider series first.', 'warning');
+      return;
+    }
+
+    const isAniListSwap = linkedAniList && linkedAniList.id !== anilistId;
+    if (isAniListSwap) {
+      const localProgress = getLocalProgress(normalizedProviderId);
+      const remoteProgress = await resolveRemoteProgress(anilistId);
+      setReconcileChoice('higher');
+      setReconcileContext({
+        swapType: 'anilist',
+        anilistId,
+        anilistTitle: series?.title,
+        anilistImage: series?.image,
+        providerId: normalizedProviderId,
+        providerMangaId: activeProviderSeries?.providerMangaId,
+        providerDetails: activeProviderSeries,
+        localProgress,
+        remoteProgress,
+      });
       return;
     }
 
@@ -431,6 +497,111 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     await handleLinkAniList(anilistId);
   };
 
+  const closeReconcile = () => {
+    if (reconcileContext?.swapType === 'provider' && previousProviderSeries) {
+      setActiveProviderSeries(previousProviderSeries);
+    }
+    setReconcileContext(null);
+    setReconcileLoading(false);
+  };
+
+  const applyReconcile = async (choiceOverride?: ReconcileChoice) => {
+    if (!reconcileContext || !data) return;
+    const choice = choiceOverride ?? reconcileChoice;
+    setReconcileLoading(true);
+
+    try {
+      const mappingDetails = reconcileContext.providerDetails
+        ? {
+            title: reconcileContext.providerDetails.title,
+            image: reconcileContext.providerDetails.image,
+            status: reconcileContext.providerDetails.status,
+            rating: reconcileContext.providerDetails.rating,
+          }
+        : {
+            title: data.title,
+            image: data.image,
+            status: data.status,
+            rating: data.rating,
+          };
+
+      await api.mapProviderSeries(
+        reconcileContext.anilistId,
+        reconcileContext.providerId,
+        mappingDetails,
+        reconcileContext.providerMangaId,
+      );
+
+      history.attachAnilistId({
+        providerSeriesId: reconcileContext.providerId,
+        title: data.title,
+        anilistId: reconcileContext.anilistId,
+      });
+
+      if (reconcileContext.swapType === 'anilist') {
+        if (reconcileContext.anilistTitle || reconcileContext.anilistImage) {
+          setLinkedAniList({
+            id: reconcileContext.anilistId,
+            title: reconcileContext.anilistTitle ?? data.title,
+            image: reconcileContext.anilistImage,
+          });
+        } else {
+          const details = await anilistApi.getDetails(parseInt(reconcileContext.anilistId, 10));
+          setLinkedAniList({
+            id: details.id,
+            title: details.title,
+            image: details.image,
+          });
+        }
+        setShowAniListRemap(false);
+      } else {
+        setShowProviderRemap(false);
+        setPreviousProviderSeries(null);
+      }
+
+      const localValue = reconcileContext.localProgress ?? 0;
+      const remoteValue = reconcileContext.remoteProgress ?? 0;
+      let resolvedChoice = choice;
+      if (choice === 'higher') {
+        resolvedChoice = localValue >= remoteValue ? 'provider' : 'anilist';
+      }
+
+      if (resolvedChoice === 'provider' && localValue > 0) {
+        await anilistApi.updateProgress(parseInt(reconcileContext.anilistId, 10), Math.floor(localValue));
+      }
+
+      if (resolvedChoice === 'anilist' && remoteValue > 0 && reconcileContext.providerDetails) {
+        const targetChapter =
+          getChapterByProgress(reconcileContext.providerDetails.chapters, remoteValue) ||
+          getLatestChapter(reconcileContext.providerDetails.chapters);
+        const readIds = getReadIdsForProgress(reconcileContext.providerDetails.chapters, remoteValue);
+
+        history.add({
+          seriesId: reconcileContext.anilistId,
+          anilistId: reconcileContext.anilistId,
+          providerSeriesId: reconcileContext.providerId,
+          seriesTitle: data.title,
+          seriesImage: data.image,
+          chapterId: targetChapter.id,
+          chapterNumber: targetChapter.number,
+          chapterTitle: targetChapter.title,
+          source: reconcileContext.providerDetails.source || 'AsuraScans',
+          readChapters: readIds,
+        });
+
+        setReadChapterIds(new Set(readIds));
+      }
+
+      notify('Mapping updated.', 'success');
+    } catch (error) {
+      console.error(error);
+      notify('Failed to update mapping.', 'error');
+    } finally {
+      setReconcileLoading(false);
+      setReconcileContext(null);
+    }
+  };
+
   const parseChapterNumber = (value: string) => {
     const parsed = parseFloat(value.replace(/[^0-9.]/g, ''));
     return Number.isNaN(parsed) ? null : parsed;
@@ -449,8 +620,58 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     return best;
   };
 
+  const getChapterByProgress = (chapters: SeriesDetails['chapters'], progress: number) => {
+    let best: SeriesDetails['chapters'][number] | null = null;
+    let bestNum = -Infinity;
+    for (const chapter of chapters) {
+      const num = parseChapterNumber(chapter.number);
+      if (num === null || num > progress) continue;
+      if (num >= bestNum) {
+        bestNum = num;
+        best = chapter;
+      }
+    }
+    return best;
+  };
+
+  const getReadIdsForProgress = (chapters: SeriesDetails['chapters'], progress: number) => {
+    const ids: string[] = [];
+    for (const chapter of chapters) {
+      const num = parseChapterNumber(chapter.number);
+      if (num !== null && num <= progress) {
+        ids.push(chapter.id);
+      }
+    }
+    return ids;
+  };
+
+  const getLocalProgress = (providerId?: string) => {
+    if (!providerId) return null;
+    const match = history.getItem({ providerSeriesId: providerId, title: data?.title });
+    if (!match) return null;
+    const parsed = parseChapterNumber(match.chapterNumber);
+    return parsed;
+  };
+
+  const resolveRemoteProgress = async (anilistId: string) => {
+    if (!user) return null;
+    if (data?.source === 'AniList' && data.id === anilistId) {
+      return data.mediaListEntry?.progress ?? null;
+    }
+    try {
+      const details = await anilistApi.getDetails(parseInt(anilistId, 10));
+      return details.mediaListEntry?.progress ?? null;
+    } catch (error) {
+      console.warn('Failed to fetch AniList progress for remap:', error);
+      return null;
+    }
+  };
+
   const startProviderRemap = () => {
     if (!data) return;
+    if (activeProviderSeries) {
+      setPreviousProviderSeries(activeProviderSeries);
+    }
     setShowProviderRemap(true);
     setProviderResults([]);
     setManualQuery('');
@@ -459,6 +680,10 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
   };
 
   const cancelProviderRemap = () => {
+    if (previousProviderSeries) {
+      setActiveProviderSeries(previousProviderSeries);
+    }
+    setPreviousProviderSeries(null);
     setShowProviderRemap(false);
     setProviderResults(null);
     setManualQuery('');
@@ -765,8 +990,11 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
                           onClick={() => navigateToReader(resumeChapter)}
                           className="flex-1 min-w-[160px] px-8 py-4 bg-primary/90 hover:bg-primary text-onPrimary font-bold text-lg rounded-xl shadow-lg shadow-primary/25 transition-all transform hover:scale-[1.02] active:scale-95 text-left flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2"
                         >
-                          <span className="truncate">
-                            {historyMatch ? 'Resume' : 'Continue'} Ch {resumeChapter.number}
+                          <span className="text-lg leading-tight">
+                            {historyMatch ? 'Resume' : 'Continue'}
+                          </span>
+                          <span className="text-sm font-semibold text-black/80">
+                            Chapter {resumeChapter.number}
                           </span>
                           {historyMatch?.timestamp ? (
                             <span className="text-xs font-semibold text-black/70">
@@ -1297,6 +1525,86 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
 
         </div>
       </div>
+
+      {reconcileContext && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={closeReconcile} />
+
+          <motion.div
+            initial={{ opacity: 0, scale: 0.96 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.96 }}
+            className="relative w-full max-w-lg bg-[#151515] rounded-xl shadow-2xl border border-white/10 overflow-hidden"
+          >
+            <div className="p-6 border-b border-white/10">
+              <h3 className="text-xl font-bold text-white">
+                {reconcileContext.swapType === 'anilist' ? 'Change AniList Link' : 'Change Provider'}
+              </h3>
+              <p className="text-sm text-gray-400 mt-1">
+                Choose how progress should be reconciled after this mapping change.
+              </p>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="rounded-lg border border-white/10 bg-black/30 p-4">
+                  <div className="text-xs text-gray-500 font-semibold uppercase">Provider</div>
+                  <div className="text-lg font-bold text-white mt-1">
+                    {reconcileContext.localProgress && reconcileContext.localProgress > 0
+                      ? `Ch ${reconcileContext.localProgress}`
+                      : '—'}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-white/10 bg-black/30 p-4">
+                  <div className="text-xs text-gray-500 font-semibold uppercase">AniList</div>
+                  <div className="text-lg font-bold text-white mt-1">
+                    {reconcileContext.remoteProgress && reconcileContext.remoteProgress > 0
+                      ? `Ch ${reconcileContext.remoteProgress}`
+                      : '—'}
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                {([
+                  { id: 'higher', label: 'Use higher progress (recommended)' },
+                  { id: 'provider', label: 'Keep provider progress and sync AniList' },
+                  { id: 'anilist', label: 'Use AniList progress and update local history' },
+                  { id: 'none', label: 'Don’t sync now' },
+                ] as Array<{ id: ReconcileChoice; label: string }>).map((option) => (
+                  <button
+                    key={option.id}
+                    onClick={() => setReconcileChoice(option.id)}
+                    className={`w-full text-left px-4 py-3 rounded-lg border transition-colors text-sm font-semibold ${
+                      reconcileChoice === option.id
+                        ? 'border-primary bg-primary/10 text-white'
+                        : 'border-white/10 bg-white/5 text-gray-300 hover:bg-white/10'
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="p-5 border-t border-white/10 flex items-center justify-end gap-3">
+              <button
+                onClick={closeReconcile}
+                className="px-4 py-2 rounded-lg text-sm font-semibold text-gray-300 hover:text-white hover:bg-white/5"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => applyReconcile()}
+                disabled={reconcileLoading}
+                className="px-5 py-2 rounded-lg text-sm font-bold bg-primary text-onPrimary hover:bg-primaryHover disabled:opacity-60"
+              >
+                {reconcileLoading ? 'Updating...' : 'Apply Mapping'}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 };
