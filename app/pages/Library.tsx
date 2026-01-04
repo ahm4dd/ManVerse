@@ -503,7 +503,7 @@ const Library: React.FC<LibraryProps> = ({ onNavigate, user }) => {
                           <div 
                              key={entry.id} 
                              className="group relative aspect-[2/3] rounded-xl overflow-hidden bg-surfaceHighlight cursor-pointer"
-                             onClick={() => openEditModal(entry)}
+                             onClick={() => onNavigate('details', entry.media.id.toString())}
                           >
                              <img 
                                src={entry.media.coverImage.extraLarge || entry.media.coverImage.large || entry.media.coverImage.medium || ''} 
@@ -515,6 +515,26 @@ const Library: React.FC<LibraryProps> = ({ onNavigate, user }) => {
                                    <h4 className="text-[13px] font-bold text-white leading-snug line-clamp-2">
                                      {title}
                                    </h4>
+                                   <div className="flex items-center gap-2">
+                                     <button
+                                       onClick={(event) => {
+                                         event.stopPropagation();
+                                         openEditModal(entry);
+                                       }}
+                                       className="px-3 py-1.5 rounded-full bg-primary text-black text-[11px] font-extrabold uppercase tracking-wide shadow-sm hover:brightness-110"
+                                     >
+                                       Edit
+                                     </button>
+                                     <button
+                                       onClick={(event) => {
+                                         event.stopPropagation();
+                                         onNavigate('details', entry.media.id.toString());
+                                       }}
+                                       className="px-3 py-1.5 rounded-full bg-white/10 text-white text-[11px] font-bold uppercase tracking-wide border border-white/10 hover:bg-white/20"
+                                     >
+                                       Info
+                                     </button>
+                                   </div>
                                    <div className="grid grid-cols-2 gap-2 text-[11px] text-gray-200">
                                      <div className="flex flex-col gap-1">
                                        <span className="text-[10px] uppercase tracking-wide text-gray-400">Reading</span>
