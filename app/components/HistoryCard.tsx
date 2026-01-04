@@ -116,14 +116,26 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
 
         {/* Actions */}
         {(onResume || onInfo || onClick) && (
-          <div className="flex items-center gap-2 mb-3 w-full">
+          <div className="flex items-center gap-2 mb-3 w-full flex-wrap">
+            {(onResume || onClick) && (
+              <button
+                onClick={(event) => {
+                  event.stopPropagation();
+                  if (disableClick) return;
+                  (onResume || onClick)?.(item);
+                }}
+                className="px-3 py-1.5 rounded-full bg-primary text-black text-[11px] font-extrabold uppercase tracking-wide shadow-sm hover:brightness-110 flex-1 min-w-0 truncate"
+              >
+                Resume {String(item.chapterNumber).toLowerCase().includes('chapter') ? item.chapterNumber : `Ch ${item.chapterNumber}`}
+              </button>
+            )}
             <button
               onClick={(event) => {
                 event.stopPropagation();
                 if (disableClick) return;
                 (onInfo || onClick)?.(item);
               }}
-              className="px-3 py-1.5 rounded-full bg-white/10 text-white text-[11px] font-bold uppercase tracking-wide border border-white/10 hover:bg-white/20"
+              className="px-3 py-1.5 rounded-full bg-white/10 text-white text-[11px] font-bold uppercase tracking-wide border border-white/10 hover:bg-white/20 flex-shrink-0"
             >
               Info
             </button>
@@ -136,23 +148,12 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
         </div>
       </div>
 
-      {(onResume || onClick) && (
-        <button
-          onClick={(event) => {
-            event.stopPropagation();
-            if (disableClick) return;
-            (onResume || onClick)?.(item);
-          }}
-          className="absolute top-3 right-3 px-3 py-1.5 rounded-full bg-primary text-black text-[11px] font-extrabold uppercase tracking-wide shadow-sm hover:brightness-110 z-20"
-        >
-          Resume {String(item.chapterNumber).toLowerCase().includes('chapter') ? item.chapterNumber : `Ch ${item.chapterNumber}`}
-        </button>
-      )}
-      
       {/* Hover Play Icon */}
-       <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none z-0">
-          <div className="w-14 h-14 rounded-full bg-primary/90 backdrop-blur-sm border border-white/20 flex items-center justify-center text-black shadow-xl transform scale-75 group-hover:scale-100 transition-transform">
-             <ChevronRight className="w-7 h-7 ml-1" />
+       <div
+         className={`absolute top-3 ${onRemove ? 'right-12' : 'right-3'} opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none z-0`}
+       >
+          <div className="w-12 h-12 rounded-full bg-primary/90 backdrop-blur-sm border border-white/20 flex items-center justify-center text-black shadow-xl transform scale-75 group-hover:scale-100 transition-transform">
+             <ChevronRight className="w-6 h-6 ml-0.5" />
           </div>
        </div>
     </motion.div>
