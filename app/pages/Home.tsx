@@ -60,6 +60,15 @@ const Home: React.FC<HomeProps> = ({
   const recentHistoryRef = useRef<HTMLDivElement>(null);
   const [continueHistoryWidth, setContinueHistoryWidth] = useState(0);
   const [recentHistoryWidth, setRecentHistoryWidth] = useState(0);
+  const [suppressContinueClick, setSuppressContinueClick] = useState(false);
+  const [suppressRecentClick, setSuppressRecentClick] = useState(false);
+  const continueClickTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const recentClickTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prefetchCacheRef = useRef<Record<string, number>>({});
+
+  const PREFETCH_CACHE_KEY = 'manverse_smart_prefetch_v1';
+  const PREFETCH_TTL_MS = 12 * 60 * 60 * 1000;
+  const ACTIVE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
   // Check if filters are active (dirty)
   const isFiltersDirty = 
@@ -83,6 +92,60 @@ const Home: React.FC<HomeProps> = ({
     loadContinueReading();
   }, [user]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = sessionStorage.getItem(PREFETCH_CACHE_KEY);
+      prefetchCacheRef.current = raw ? (JSON.parse(raw) as Record<string, number>) : {};
+    } catch {
+      prefetchCacheRef.current = {};
+    }
+  }, []);
+
+  useEffect(() => {
+    if (continueReading.length === 0 || isDiscoveryMode) return;
+
+    const now = Date.now();
+    const freshItems = continueReading.filter((item) => now - item.timestamp <= ACTIVE_WINDOW_MS);
+    const sorted = freshItems.sort((a, b) => b.timestamp - a.timestamp).slice(0, 2);
+
+    const shouldPrefetch = (key: string) => {
+      const last = prefetchCacheRef.current[key] ?? 0;
+      return now - last > PREFETCH_TTL_MS;
+    };
+
+    const markPrefetched = (key: string) => {
+      prefetchCacheRef.current[key] = Date.now();
+      try {
+        sessionStorage.setItem(PREFETCH_CACHE_KEY, JSON.stringify(prefetchCacheRef.current));
+      } catch {
+        // Ignore storage issues
+      }
+    };
+
+    const warmCache = async () => {
+      for (const item of sorted) {
+        const key = item.anilistId ? `anilist:${item.anilistId}` : `provider:${item.providerSeriesId || item.id}`;
+        if (!shouldPrefetch(key)) continue;
+
+        try {
+          if (item.providerSeriesId) {
+            await api.getSeriesDetails(item.providerSeriesId, 'AsuraScans');
+          } else if (item.anilistId) {
+            await api.getMappedProviderDetails(item.anilistId, 'AsuraScans');
+          } else if (item.source === 'AsuraScans') {
+            await api.getSeriesDetails(item.id, 'AsuraScans');
+          }
+          markPrefetched(key);
+        } catch (error) {
+          console.warn('Prefetch warmup failed', error);
+        }
+      }
+    };
+
+    void warmCache();
+  }, [continueReading, isDiscoveryMode]);
+
   // Update drag constraints when history changes
   useEffect(() => {
      if (continueHistoryRef.current) {
@@ -95,6 +158,33 @@ const Home: React.FC<HomeProps> = ({
         setRecentHistoryWidth(recentHistoryRef.current.scrollWidth - recentHistoryRef.current.offsetWidth);
      }
   }, [recentReads]);
+
+  useEffect(() => {
+    return () => {
+      if (continueClickTimeout.current) clearTimeout(continueClickTimeout.current);
+      if (recentClickTimeout.current) clearTimeout(recentClickTimeout.current);
+    };
+  }, []);
+
+  const handleContinueDragStart = () => {
+    if (continueClickTimeout.current) clearTimeout(continueClickTimeout.current);
+    setSuppressContinueClick(true);
+  };
+
+  const handleContinueDragEnd = () => {
+    if (continueClickTimeout.current) clearTimeout(continueClickTimeout.current);
+    continueClickTimeout.current = setTimeout(() => setSuppressContinueClick(false), 180);
+  };
+
+  const handleRecentDragStart = () => {
+    if (recentClickTimeout.current) clearTimeout(recentClickTimeout.current);
+    setSuppressRecentClick(true);
+  };
+
+  const handleRecentDragEnd = () => {
+    if (recentClickTimeout.current) clearTimeout(recentClickTimeout.current);
+    recentClickTimeout.current = setTimeout(() => setSuppressRecentClick(false), 180);
+  };
 
   // Trigger global search when global props change (Debounced)
   useEffect(() => {
@@ -273,16 +363,24 @@ const Home: React.FC<HomeProps> = ({
         seriesId: anilistId || item.id,
         anilistId: anilistId,
         providerSeriesId: providerDetails.id,
+        providerMangaId: providerDetails.providerMangaId,
         chapterNumber: !isNaN(Number(chapterNum)) ? chapterNum : undefined,
         chapters: providerDetails.chapters,
         seriesTitle: item.title,
         seriesImage: item.image,
-        source: providerDetails.source || item.source
+        source: providerDetails.source || item.source,
+        seriesStatus: providerDetails.status,
       });
     } catch (e) {
       console.warn('Failed to resume reading, falling back to details', e);
       onNavigate('details', anilistId || item.id);
     }
+  };
+
+  const handleInfoClick = (item?: ContinueItem) => {
+    if (!item) return;
+    const anilistId = item.anilistId || (item.source === 'AniList' ? item.id : undefined);
+    onNavigate('details', anilistId || item.id);
   };
 
   // Determine which list to show based on search or tab
@@ -345,13 +443,17 @@ const Home: React.FC<HomeProps> = ({
                      <motion.div 
                        drag="x"
                        dragConstraints={{ right: 0, left: -continueHistoryWidth }}
+                       onDragStart={handleContinueDragStart}
+                       onDragEnd={handleContinueDragEnd}
                        className="flex gap-5 w-max py-2" 
                      >
                         {continueReading.map((item) => (
                           <div key={item.id} className="w-[280px] sm:w-[320px] aspect-video flex-shrink-0">
                               <HistoryCard 
                                  item={item} 
-                                 onClick={handleContinueClick}
+                                 onResume={handleContinueClick}
+                                 onInfo={handleInfoClick}
+                                 disableClick={suppressContinueClick}
                               />
                           </div>
                         ))}
@@ -360,6 +462,7 @@ const Home: React.FC<HomeProps> = ({
                              isViewMore={true}
                              viewLabel="View Library"
                              onClick={() => onNavigate('library')}
+                             disableClick={suppressContinueClick}
                            />
                         </div>
                      </motion.div>
@@ -391,13 +494,17 @@ const Home: React.FC<HomeProps> = ({
                      <motion.div 
                        drag="x"
                        dragConstraints={{ right: 0, left: -recentHistoryWidth }}
+                       onDragStart={handleRecentDragStart}
+                       onDragEnd={handleRecentDragEnd}
                        className="flex gap-5 w-max py-2" 
                      >
                         {recentReads.map((item) => (
                           <div key={item.id} className="w-[280px] sm:w-[320px] aspect-video flex-shrink-0">
                               <HistoryCard 
                                  item={item} 
-                                 onClick={handleContinueClick}
+                                 onResume={handleContinueClick}
+                                 onInfo={handleInfoClick}
+                                 disableClick={suppressRecentClick}
                               />
                           </div>
                         ))}
@@ -406,6 +513,7 @@ const Home: React.FC<HomeProps> = ({
                              isViewMore={true}
                              viewLabel="View Recent Reads"
                              onClick={() => onNavigate('recent-reads')}
+                             disableClick={suppressRecentClick}
                            />
                         </div>
                      </motion.div>

@@ -14,6 +14,8 @@
     "@manverse/anilist": "workspace:*",
     "@manverse/core": "workspace:*",
     "@manverse/database": "workspace:*",
+    "@manverse/downloader": "workspace:*",
+    "@manverse/pdf": "workspace:*",
     "@manverse/scrapers": "workspace:*",
     "@scalar/hono-api-reference": "^0.9.30",
     "hono": "^4.6.0",

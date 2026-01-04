@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { anilistApi } from '../lib/anilist';
+import { api, type DownloadedSeries } from '../lib/api';
 import { history } from '../lib/history';
 import { SearchIcon, StarIcon, FilterIcon, XIcon } from '../components/Icons';
 import ActivityHeatmap from '../components/ActivityHeatmap';
@@ -31,6 +32,13 @@ function formatTimeAgo(timestamp?: number | null): string {
   if (months < 12) return `${months}mo ago`;
   const years = Math.floor(months / 12);
   return `${years}y ago`;
+}
+
+function formatBytes(bytes: number): string {
+  if (!bytes || bytes <= 0) return '0 MB';
+  const mb = bytes / (1024 * 1024);
+  if (mb < 1024) return `${mb.toFixed(1)} MB`;
+  return `${(mb / 1024).toFixed(2)} GB`;
 }
 
 function buildActivityHistoryFromEntries(entries: any[]) {
@@ -163,11 +171,16 @@ const Library: React.FC<LibraryProps> = ({ onNavigate, user }) => {
   const [loading, setLoading] = useState(true);
   
   // Tabs
-  const [activeTab, setActiveTab] = useState<'Overview' | 'Manga List' | 'Stats'>('Overview');
+  const [activeTab, setActiveTab] = useState<'Overview' | 'Manga List' | 'Stats' | 'Offline'>('Overview');
   const [listFilter, setListFilter] = useState('Reading'); // For Manga List tab
+
+  const [offlineSeries, setOfflineSeries] = useState<DownloadedSeries[]>([]);
+  const [offlineLoading, setOfflineLoading] = useState(false);
   
   // Edit Modal State
   const [editingEntry, setEditingEntry] = useState<{entry: any, media: any} | null>(null);
+  const [localProgress, setLocalProgress] = useState<Record<number, number>>({});
+  const [progressUpdating, setProgressUpdating] = useState<Record<number, boolean>>({});
 
   // Search & Filter
   const [searchQuery, setSearchQuery] = useState('');
@@ -205,9 +218,28 @@ const Library: React.FC<LibraryProps> = ({ onNavigate, user }) => {
       setLoading(false);
   };
 
+  const loadOfflineLibrary = async () => {
+    setOfflineLoading(true);
+    try {
+      const data = await api.listOfflineLibrary();
+      setOfflineSeries(data);
+    } catch (error) {
+      console.warn('Failed to load offline library', error);
+      setOfflineSeries([]);
+    } finally {
+      setOfflineLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadData();
   }, [user]);
+
+  useEffect(() => {
+    if (activeTab === 'Offline') {
+      void loadOfflineLibrary();
+    }
+  }, [activeTab]);
 
   const flattenedEntries = useMemo(() => {
      if (!fullLibrary?.lists) return [];
@@ -343,6 +375,55 @@ const Library: React.FC<LibraryProps> = ({ onNavigate, user }) => {
      });
   };
 
+  const getProgressValue = (entry: any) => {
+    const mediaId = entry.media.id;
+    return localProgress[mediaId] ?? entry.progress ?? 0;
+  };
+
+  const updateProgressValue = async (entry: any, nextProgress: number) => {
+    const mediaId = entry.media.id;
+    const maxChapters = typeof entry.media.chapters === 'number' ? entry.media.chapters : Infinity;
+    const clamped = Math.max(0, Math.min(nextProgress, maxChapters));
+
+    setLocalProgress((prev) => ({ ...prev, [mediaId]: clamped }));
+    setProgressUpdating((prev) => ({ ...prev, [mediaId]: true }));
+
+    const success = await anilistApi.updateProgress(mediaId, clamped);
+    setProgressUpdating((prev) => ({ ...prev, [mediaId]: false }));
+
+    if (success) {
+      setFullLibrary((prev: any) => {
+        if (!prev?.lists) return prev;
+        const updatedLists = prev.lists.map((list: any) => ({
+          ...list,
+          entries: list.entries.map((item: any) => {
+            if (item.media.id !== mediaId) return item;
+            return {
+              ...item,
+              progress: clamped,
+              updatedAt: Math.floor(Date.now() / 1000),
+            };
+          }),
+        }));
+        return { ...prev, lists: updatedLists };
+      });
+    } else {
+      setLocalProgress((prev) => {
+        const next = { ...prev };
+        delete next[mediaId];
+        return next;
+      });
+    }
+  };
+
+  const handleQuickProgress = (entry: any, delta: number) => {
+    const current = getProgressValue(entry);
+    const next = current + delta;
+    if (next < 0) return;
+    if (progressUpdating[entry.media.id]) return;
+    void updateProgressValue(entry, next);
+  };
+
   if (!user) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center">
@@ -386,7 +467,7 @@ const Library: React.FC<LibraryProps> = ({ onNavigate, user }) => {
       {/* 2. Navigation Tabs */}
       <div className="bg-surface/80 backdrop-blur sticky top-16 z-30 border-b border-white/5 px-4 md:px-8">
          <div className="flex gap-8">
-            {['Overview', 'Manga List', 'Stats'].map(tab => (
+            {['Overview', 'Manga List', 'Stats', 'Offline'].map(tab => (
                <button 
                  key={tab}
                  onClick={() => setActiveTab(tab as any)}
@@ -499,11 +580,15 @@ const Library: React.FC<LibraryProps> = ({ onNavigate, user }) => {
                        const latestCh = entry.media.status === 'FINISHED' ? entry.media.chapters : null;
                        const lastReadAgo = formatTimeAgo(entry.updatedAt ?? entry.createdAt);
                        const latestUpdateAgo = formatTimeAgo(entry.media.updatedAt ?? entry.updatedAt);
+                       const progressValue = getProgressValue(entry);
+                       const maxChapters =
+                         typeof entry.media.chapters === 'number' ? entry.media.chapters : null;
+                       const isUpdating = progressUpdating[entry.media.id] === true;
                        return (
                           <div 
                              key={entry.id} 
                              className="group relative aspect-[2/3] rounded-xl overflow-hidden bg-surfaceHighlight cursor-pointer"
-                             onClick={() => openEditModal(entry)}
+                             onClick={() => onNavigate('details', entry.media.id.toString())}
                           >
                              <img 
                                src={entry.media.coverImage.extraLarge || entry.media.coverImage.large || entry.media.coverImage.medium || ''} 
@@ -515,10 +600,64 @@ const Library: React.FC<LibraryProps> = ({ onNavigate, user }) => {
                                    <h4 className="text-[13px] font-bold text-white leading-snug line-clamp-2">
                                      {title}
                                    </h4>
+                                   <div className="flex items-center gap-2">
+                                     <button
+                                       onClick={(event) => {
+                                         event.stopPropagation();
+                                         openEditModal(entry);
+                                       }}
+                                       className="px-3 py-1.5 rounded-full bg-primary text-black text-[11px] font-extrabold uppercase tracking-wide shadow-sm hover:brightness-110"
+                                     >
+                                       Edit
+                                     </button>
+                                     <button
+                                       onClick={(event) => {
+                                         event.stopPropagation();
+                                         onNavigate('details', entry.media.id.toString());
+                                       }}
+                                       className="px-3 py-1.5 rounded-full bg-white/10 text-white text-[11px] font-bold uppercase tracking-wide border border-white/10 hover:bg-white/20"
+                                     >
+                                       Info
+                                     </button>
+                                   </div>
                                    <div className="grid grid-cols-2 gap-2 text-[11px] text-gray-200">
                                      <div className="flex flex-col gap-1">
                                        <span className="text-[10px] uppercase tracking-wide text-gray-400">Reading</span>
-                                       <span className="font-semibold text-white/90">Ch {entry.progress ?? 0}</span>
+                                       <div className="flex items-center gap-2">
+                                         <span className="font-semibold text-white/90">Ch {progressValue}</span>
+                                         <div className="flex items-center gap-1">
+                                           <button
+                                             onClick={(event) => {
+                                               event.stopPropagation();
+                                               handleQuickProgress(entry, -1);
+                                             }}
+                                             disabled={isUpdating || progressValue <= 0}
+                                             className={`h-6 w-6 rounded-full text-[12px] font-bold border transition-colors ${
+                                               isUpdating || progressValue <= 0
+                                                 ? 'border-white/10 text-gray-600'
+                                                 : 'border-white/15 text-white/80 hover:text-white hover:border-white/30'
+                                             }`}
+                                             aria-label="Decrease progress"
+                                           >
+                                             -
+                                           </button>
+                                           <button
+                                             onClick={(event) => {
+                                               event.stopPropagation();
+                                               handleQuickProgress(entry, 1);
+                                             }}
+                                             disabled={isUpdating || (maxChapters !== null && progressValue >= maxChapters)}
+                                             className={`h-6 w-6 rounded-full text-[12px] font-bold border transition-colors ${
+                                               isUpdating || (maxChapters !== null && progressValue >= maxChapters)
+                                                 ? 'border-white/10 text-gray-600'
+                                                 : 'border-white/15 text-white/80 hover:text-white hover:border-white/30'
+                                             }`}
+                                             aria-label="Increase progress"
+                                           >
+                                             +
+                                           </button>
+                                         </div>
+                                       </div>
                                      </div>
                                      <div className="flex flex-col gap-1 text-right">
                                        <span className="text-[10px] uppercase tracking-wide text-gray-400">Latest</span>
@@ -549,6 +688,70 @@ const Library: React.FC<LibraryProps> = ({ onNavigate, user }) => {
                     </div>
                  )}
                </div>
+            </motion.div>
+         )}
+
+         {/* --- OFFLINE TAB --- */}
+         {activeTab === 'Offline' && (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
+               <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+                  <div>
+                     <h3 className="text-2xl font-extrabold text-white">Offline Library</h3>
+                     <p className="text-sm text-gray-400">Downloaded chapters available for offline reading.</p>
+                  </div>
+                  <div className="text-xs text-gray-500">
+                     {offlineSeries.length} series
+                  </div>
+               </div>
+
+               {offlineLoading ? (
+                  <div className="py-16 text-center text-gray-400">
+                     Loading downloads...
+                  </div>
+               ) : offlineSeries.length > 0 ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                     {offlineSeries.map((series) => (
+                        <div
+                           key={`${series.provider}-${series.providerMangaId}`}
+                           onClick={() => onNavigate('details', series.providerSeriesId)}
+                           className="group relative aspect-[2/3] rounded-xl overflow-hidden bg-surfaceHighlight cursor-pointer"
+                        >
+                           <img
+                             src={series.image || ''}
+                             className="w-full h-full object-cover transition-transform group-hover:scale-110 duration-500"
+                           />
+                           <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent" />
+                           <div className="absolute top-3 left-3 px-2.5 py-1 rounded-full bg-primary/90 text-black text-[10px] font-bold uppercase tracking-wider shadow-lg">
+                             Downloaded
+                           </div>
+                           <div className="absolute inset-x-0 bottom-0 p-3">
+                              <div className="rounded-lg bg-black/70 backdrop-blur-md border border-white/10 px-3 py-2.5 space-y-2">
+                                 <h4 className="text-[13px] font-bold text-white leading-snug line-clamp-2">
+                                   {series.title}
+                                 </h4>
+                                 <div className="grid grid-cols-2 gap-2 text-[11px] text-gray-200">
+                                   <div className="flex flex-col gap-1">
+                                     <span className="text-[10px] uppercase tracking-wide text-gray-400">Chapters</span>
+                                     <span className="font-semibold text-white/90">{series.chaptersDownloaded}</span>
+                                   </div>
+                                   <div className="flex flex-col gap-1 text-right">
+                                     <span className="text-[10px] uppercase tracking-wide text-gray-400">Size</span>
+                                     <span className="text-primary/90">{formatBytes(series.totalSize)}</span>
+                                   </div>
+                                 </div>
+                                 <div className="text-[10px] text-gray-400">
+                                   Last downloaded {formatTimeAgo(series.lastDownloaded)}
+                                 </div>
+                              </div>
+                           </div>
+                        </div>
+                     ))}
+                  </div>
+               ) : (
+                  <div className="py-16 text-center text-gray-500">
+                     No downloads yet. Download chapters from a series to see them here.
+                  </div>
+               )}
             </motion.div>
          )}
 

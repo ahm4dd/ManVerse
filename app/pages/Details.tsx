@@ -39,6 +39,40 @@ const formatTimeAgo = (timestamp?: number) => {
   return `${years}y ago`;
 };
 
+const formatEnumLabel = (value?: string | null) => {
+  if (!value) return 'Unknown';
+  return value
+    .toLowerCase()
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (match) => match.toUpperCase());
+};
+
+const formatCountryLabel = (code?: string | null) => {
+  if (!code) return '';
+  const map: Record<string, string> = {
+    JP: 'Japan',
+    KR: 'South Korea',
+    CN: 'China',
+    TW: 'Taiwan',
+    US: 'United States',
+  };
+  return map[code] ?? code;
+};
+
+const formatFuzzyDate = (date?: { year?: number | null; month?: number | null; day?: number | null } | null) => {
+  if (!date || !date.year) return 'N/A';
+  const month = date.month ? `${date.month}`.padStart(2, '0') : null;
+  const day = date.day ? `${date.day}`.padStart(2, '0') : null;
+  if (month && day) return `${date.year}-${month}-${day}`;
+  if (month) return `${date.year}-${month}`;
+  return `${date.year}`;
+};
+
+const formatNumber = (value?: number | null) => {
+  if (value === null || value === undefined) return 'N/A';
+  return value.toLocaleString();
+};
+
 const parseAniListId = (input: string) => {
   const trimmed = input.trim();
   if (!trimmed) return null;
@@ -48,13 +82,27 @@ const parseAniListId = (input: string) => {
   return null;
 };
 
+type ReconcileChoice = 'higher' | 'provider' | 'anilist' | 'none';
+
+type ReconcileContext = {
+  swapType: 'anilist' | 'provider';
+  anilistId: string;
+  anilistTitle?: string;
+  anilistImage?: string;
+  providerId: string;
+  providerMangaId?: number;
+  providerDetails?: SeriesDetails | null;
+  localProgress: number | null;
+  remoteProgress: number | null;
+};
+
 const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user }) => {
   const [data, setData] = useState<SeriesDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const { notify } = useNotification();
   
   // View State
-  const [activeTab, setActiveTab] = useState<'Chapters' | 'Recommendations'>('Chapters');
+  const [activeTab, setActiveTab] = useState<'Chapters' | 'Info' | 'Recommendations'>('Chapters');
 
   // Provider Reading State
   const [providerLoading, setProviderLoading] = useState(false);
@@ -66,12 +114,27 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
   const [manualProviderUrl, setManualProviderUrl] = useState('');
   const [historyMatch, setHistoryMatch] = useState<HistoryItem | null>(null);
   const [readChapterIds, setReadChapterIds] = useState<Set<string>>(new Set());
+  const [downloadedChapterIds, setDownloadedChapterIds] = useState<Set<string>>(new Set());
+  const [downloadedChaptersByNumber, setDownloadedChaptersByNumber] = useState<Record<string, number>>({});
+  const [queuedChapterIds, setQueuedChapterIds] = useState<Set<string>>(new Set());
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedChapterIds, setSelectedChapterIds] = useState<Set<string>>(new Set());
+  const [batchDownloading, setBatchDownloading] = useState(false);
+  const [rangeStart, setRangeStart] = useState('');
+  const [rangeEnd, setRangeEnd] = useState('');
+  const [rangeMarking, setRangeMarking] = useState(false);
   const [anilistQuery, setAnilistQuery] = useState('');
   const [anilistResults, setAnilistResults] = useState<Series[]>([]);
   const [anilistManualInput, setAnilistManualInput] = useState('');
   const [anilistSearchLoading, setAnilistSearchLoading] = useState(false);
   const [linkingAniList, setLinkingAniList] = useState(false);
   const [linkedAniList, setLinkedAniList] = useState<{ id: string; title: string; image?: string } | null>(null);
+  const [showAniListRemap, setShowAniListRemap] = useState(false);
+  const [showProviderRemap, setShowProviderRemap] = useState(false);
+  const [previousProviderSeries, setPreviousProviderSeries] = useState<SeriesDetails | null>(null);
+  const [reconcileContext, setReconcileContext] = useState<ReconcileContext | null>(null);
+  const [reconcileChoice, setReconcileChoice] = useState<ReconcileChoice>('higher');
+  const [reconcileLoading, setReconcileLoading] = useState(false);
 
   // Chapter Search State
   const [chapterSearchQuery, setChapterSearchQuery] = useState('');
@@ -87,6 +150,7 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
   useEffect(() => {
     const load = async () => {
       setLoading(true);
+      setActiveTab('Chapters');
       setActiveProviderSeries(null);
       setProviderResults(null);
       setProviderLoading(false);
@@ -99,8 +163,17 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
       setAnilistResults([]);
       setAnilistManualInput('');
       setAnilistSearchLoading(false);
+      setRangeStart('');
+      setRangeEnd('');
+      setRangeMarking(false);
       setLinkingAniList(false);
       setLinkedAniList(null);
+      setShowAniListRemap(false);
+      setShowProviderRemap(false);
+      setPreviousProviderSeries(null);
+      setReconcileContext(null);
+      setReconcileChoice('higher');
+      setReconcileLoading(false);
       try {
         // Determine source based on ID format (Numeric = AniList, String = Provider)
         const source = /^\d+$/.test(seriesId) ? 'AniList' : 'AsuraScans';
@@ -193,7 +266,8 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     }
     setHistoryMatch(match);
 
-    const providerIdFallback =
+      const providerIdFallback =
+      activeProviderSeries?.id ||
       match?.providerSeriesId ||
       (match && !/^\d+$/.test(match.seriesId) ? match.seriesId : undefined) ||
       (data.source === 'AsuraScans' ? data.id : undefined);
@@ -207,6 +281,44 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     );
     setReadChapterIds(readIds);
   }, [data, activeProviderSeries]);
+
+  const refreshDownloadedChapters = async (providerMangaId?: number) => {
+    if (!providerMangaId) {
+      setDownloadedChapterIds(new Set());
+      setDownloadedChaptersByNumber({});
+      return;
+    }
+    try {
+      const chapters = await api.listDownloadedChapters(providerMangaId);
+      const downloadedIds = new Set<string>();
+      const byNumber: Record<string, number> = {};
+      chapters.forEach((chapter) => {
+        byNumber[chapter.chapterNumber] = chapter.id;
+      });
+      if (activeProviderSeries?.chapters) {
+        activeProviderSeries.chapters.forEach((chapter) => {
+          if (byNumber[chapter.number]) {
+            downloadedIds.add(chapter.id);
+          }
+        });
+      }
+      setDownloadedChapterIds(downloadedIds);
+      setDownloadedChaptersByNumber(byNumber);
+    } catch (error) {
+      console.warn('Failed to load downloaded chapters', error);
+      setDownloadedChapterIds(new Set());
+      setDownloadedChaptersByNumber({});
+    }
+  };
+
+  useEffect(() => {
+    refreshDownloadedChapters(activeProviderSeries?.providerMangaId);
+  }, [activeProviderSeries?.providerMangaId, activeProviderSeries?.chapters?.length]);
+
+  useEffect(() => {
+    setSelectionMode(false);
+    setSelectedChapterIds(new Set());
+  }, [activeProviderSeries?.id]);
 
   const normalizeAsuraInput = (input: string) => {
     const trimmed = input.trim();
@@ -256,19 +368,70 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
 
   const handleSelectProviderSeries = async (id: string) => {
     setProviderLoading(true);
+    const normalizedId = normalizeAsuraInput(id);
     try {
-      const details = await api.getSeriesDetails(id, 'AsuraScans');
+      const details = await api.getSeriesDetails(normalizedId, 'AsuraScans');
       setActiveProviderSeries(details);
       setProviderResults(null); // Clear list to show chapters
 
+      const isProviderSwap =
+        data?.source === 'AniList' &&
+        previousProviderSeries &&
+        previousProviderSeries.id !== details.id;
+
+      if (user && data?.source === 'AniList' && isProviderSwap) {
+        const localProgress = getLocalProgress(previousProviderSeries?.id ?? details.id);
+        const remoteProgress = data.mediaListEntry?.progress ?? null;
+        setReconcileChoice('higher');
+        setReconcileContext({
+          swapType: 'provider',
+          anilistId: data.id,
+          anilistTitle: data.title,
+          anilistImage: data.image,
+          providerId: normalizedId,
+          providerMangaId: details.providerMangaId,
+          providerDetails: details,
+          localProgress,
+          remoteProgress,
+        });
+        setProviderLoading(false);
+        return;
+      }
+
       if (user && data?.source === 'AniList') {
         try {
-          await api.mapProviderSeries(data.id, id, {
-            title: details.title,
-            image: details.image,
-            status: details.status,
-            rating: details.rating,
+          await api.mapProviderSeries(
+            data.id,
+            normalizedId,
+            {
+              title: details.title,
+              image: details.image,
+              status: details.status,
+              rating: details.rating,
+            },
+            details.providerMangaId,
+          );
+          history.attachAnilistId({
+            providerSeriesId: normalizedId,
+            title: data.title,
+            anilistId: data.id,
           });
+
+          const localMatch = history.getItem({ providerSeriesId: normalizedId, title: data.title });
+          const localProgressRaw = localMatch?.chapterNumber;
+          const localProgress = localProgressRaw
+            ? parseFloat(localProgressRaw.replace(/[^0-9.]/g, ''))
+            : NaN;
+          const remoteProgress = data.mediaListEntry?.progress ?? 0;
+          if (
+            !Number.isNaN(localProgress) &&
+            localProgress > 0 &&
+            localProgress > remoteProgress
+          ) {
+            await anilistApi.updateProgress(parseInt(data.id, 10), Math.floor(localProgress));
+          }
+          setShowProviderRemap(false);
+          setPreviousProviderSeries(null);
         } catch (e) {
           console.warn('Failed to persist provider mapping', e);
         }
@@ -325,18 +488,49 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     if (!data) return;
 
     const providerId = activeProviderSeries?.id || data.id;
+    const normalizedProviderId =
+      data.source === 'AsuraScans' ? normalizeAsuraInput(providerId) : providerId;
+
+    if (!normalizedProviderId) {
+      notify('Provider series is missing. Load a provider series first.', 'warning');
+      return;
+    }
+
+    const isAniListSwap = linkedAniList && linkedAniList.id !== anilistId;
+    if (isAniListSwap) {
+      const localProgress = getLocalProgress(normalizedProviderId);
+      const remoteProgress = await resolveRemoteProgress(anilistId);
+      setReconcileChoice('higher');
+      setReconcileContext({
+        swapType: 'anilist',
+        anilistId,
+        anilistTitle: series?.title,
+        anilistImage: series?.image,
+        providerId: normalizedProviderId,
+        providerMangaId: activeProviderSeries?.providerMangaId,
+        providerDetails: activeProviderSeries,
+        localProgress,
+        remoteProgress,
+      });
+      return;
+    }
 
     setLinkingAniList(true);
     try {
-      await api.mapProviderSeries(anilistId, providerId, {
-        title: data.title,
-        image: data.image,
-        status: data.status,
-        rating: data.rating,
-      });
+      await api.mapProviderSeries(
+        anilistId,
+        normalizedProviderId,
+        {
+          title: data.title,
+          image: data.image,
+          status: data.status,
+          rating: data.rating,
+        },
+        activeProviderSeries?.providerMangaId,
+      );
 
       history.attachAnilistId({
-        providerSeriesId: providerId,
+        providerSeriesId: normalizedProviderId,
         title: data.title,
         anilistId,
       });
@@ -357,6 +551,20 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
       }
 
       notify('Linked to AniList successfully.', 'success');
+      const localProgressRaw = historyMatch?.chapterNumber;
+      const localProgress = localProgressRaw
+        ? parseFloat(localProgressRaw.replace(/[^0-9.]/g, ''))
+        : NaN;
+      const remoteProgress = data.mediaListEntry?.progress ?? 0;
+      if (
+        user &&
+        !Number.isNaN(localProgress) &&
+        localProgress > 0 &&
+        localProgress > remoteProgress
+      ) {
+        await anilistApi.updateProgress(parseInt(anilistId, 10), Math.floor(localProgress));
+      }
+      setShowAniListRemap(false);
     } catch (e) {
       console.error(e);
       notify('Failed to link AniList entry.', 'error');
@@ -374,12 +582,221 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     await handleLinkAniList(anilistId);
   };
 
+  const closeReconcile = () => {
+    if (reconcileContext?.swapType === 'provider' && previousProviderSeries) {
+      setActiveProviderSeries(previousProviderSeries);
+    }
+    setReconcileContext(null);
+    setReconcileLoading(false);
+  };
+
+  const applyReconcile = async (choiceOverride?: ReconcileChoice) => {
+    if (!reconcileContext || !data) return;
+    const choice = choiceOverride ?? reconcileChoice;
+    setReconcileLoading(true);
+
+    try {
+      const mappingDetails = reconcileContext.providerDetails
+        ? {
+            title: reconcileContext.providerDetails.title,
+            image: reconcileContext.providerDetails.image,
+            status: reconcileContext.providerDetails.status,
+            rating: reconcileContext.providerDetails.rating,
+          }
+        : {
+            title: data.title,
+            image: data.image,
+            status: data.status,
+            rating: data.rating,
+          };
+
+      await api.mapProviderSeries(
+        reconcileContext.anilistId,
+        reconcileContext.providerId,
+        mappingDetails,
+        reconcileContext.providerMangaId,
+      );
+
+      history.attachAnilistId({
+        providerSeriesId: reconcileContext.providerId,
+        title: data.title,
+        anilistId: reconcileContext.anilistId,
+      });
+
+      if (reconcileContext.swapType === 'anilist') {
+        if (reconcileContext.anilistTitle || reconcileContext.anilistImage) {
+          setLinkedAniList({
+            id: reconcileContext.anilistId,
+            title: reconcileContext.anilistTitle ?? data.title,
+            image: reconcileContext.anilistImage,
+          });
+        } else {
+          const details = await anilistApi.getDetails(parseInt(reconcileContext.anilistId, 10));
+          setLinkedAniList({
+            id: details.id,
+            title: details.title,
+            image: details.image,
+          });
+        }
+        setShowAniListRemap(false);
+      } else {
+        setShowProviderRemap(false);
+        setPreviousProviderSeries(null);
+      }
+
+      const localValue = reconcileContext.localProgress ?? 0;
+      const remoteValue = reconcileContext.remoteProgress ?? 0;
+      let resolvedChoice = choice;
+      if (choice === 'higher') {
+        resolvedChoice = localValue >= remoteValue ? 'provider' : 'anilist';
+      }
+
+      if (resolvedChoice === 'provider' && localValue > 0) {
+        await anilistApi.updateProgress(parseInt(reconcileContext.anilistId, 10), Math.floor(localValue));
+      }
+
+      if (resolvedChoice === 'anilist' && remoteValue > 0 && reconcileContext.providerDetails) {
+        const targetChapter =
+          getChapterByProgress(reconcileContext.providerDetails.chapters, remoteValue) ||
+          getLatestChapter(reconcileContext.providerDetails.chapters);
+        const readIds = getReadIdsForProgress(reconcileContext.providerDetails.chapters, remoteValue);
+
+        history.add({
+          seriesId: reconcileContext.anilistId,
+          anilistId: reconcileContext.anilistId,
+          providerSeriesId: reconcileContext.providerId,
+          seriesTitle: data.title,
+          seriesImage: data.image,
+          chapterId: targetChapter.id,
+          chapterNumber: targetChapter.number,
+          chapterTitle: targetChapter.title,
+          source: reconcileContext.providerDetails.source || 'AsuraScans',
+          readChapters: readIds,
+        });
+
+        setReadChapterIds(new Set(readIds));
+      }
+
+      notify('Mapping updated.', 'success');
+    } catch (error) {
+      console.error(error);
+      notify('Failed to update mapping.', 'error');
+    } finally {
+      setReconcileLoading(false);
+      setReconcileContext(null);
+    }
+  };
+
+  const parseChapterNumber = (value: string) => {
+    const parsed = parseFloat(value.replace(/[^0-9.]/g, ''));
+    return Number.isNaN(parsed) ? null : parsed;
+  };
+
+  const getLatestChapter = (chapters: SeriesDetails['chapters']) => {
+    let best = chapters[0];
+    let bestNum = best ? parseChapterNumber(best.number) ?? -Infinity : -Infinity;
+    for (const chapter of chapters) {
+      const num = parseChapterNumber(chapter.number);
+      if (num !== null && num > bestNum) {
+        best = chapter;
+        bestNum = num;
+      }
+    }
+    return best;
+  };
+
+  const getChapterByProgress = (chapters: SeriesDetails['chapters'], progress: number) => {
+    let best: SeriesDetails['chapters'][number] | null = null;
+    let bestNum = -Infinity;
+    for (const chapter of chapters) {
+      const num = parseChapterNumber(chapter.number);
+      if (num === null || num > progress) continue;
+      if (num >= bestNum) {
+        bestNum = num;
+        best = chapter;
+      }
+    }
+    return best;
+  };
+
+  const getReadIdsForProgress = (chapters: SeriesDetails['chapters'], progress: number) => {
+    const ids: string[] = [];
+    for (const chapter of chapters) {
+      const num = parseChapterNumber(chapter.number);
+      if (num !== null && num <= progress) {
+        ids.push(chapter.id);
+      }
+    }
+    return ids;
+  };
+
+  const getChapterOrder = (chapters: SeriesDetails['chapters']) => {
+    let previous: number | null = null;
+    for (const chapter of chapters) {
+      const num = parseChapterNumber(chapter.number);
+      if (num === null) continue;
+      if (previous === null) {
+        previous = num;
+        continue;
+      }
+      if (num < previous) return 'desc';
+      if (num > previous) return 'asc';
+    }
+    return 'desc';
+  };
+
+  const getLocalProgress = (providerId?: string) => {
+    if (!providerId) return null;
+    const match = history.getItem({ providerSeriesId: providerId, title: data?.title });
+    if (!match) return null;
+    const parsed = parseChapterNumber(match.chapterNumber);
+    return parsed;
+  };
+
+  const resolveRemoteProgress = async (anilistId: string) => {
+    if (!user) return null;
+    if (data?.source === 'AniList' && data.id === anilistId) {
+      return data.mediaListEntry?.progress ?? null;
+    }
+    try {
+      const details = await anilistApi.getDetails(parseInt(anilistId, 10));
+      return details.mediaListEntry?.progress ?? null;
+    } catch (error) {
+      console.warn('Failed to fetch AniList progress for remap:', error);
+      return null;
+    }
+  };
+
+  const startProviderRemap = () => {
+    if (!data) return;
+    if (activeProviderSeries) {
+      setPreviousProviderSeries(activeProviderSeries);
+    }
+    setShowProviderRemap(true);
+    setProviderResults([]);
+    setManualQuery('');
+    setManualProviderUrl('');
+    setShowProviderMenu(false);
+  };
+
+  const cancelProviderRemap = () => {
+    if (previousProviderSeries) {
+      setActiveProviderSeries(previousProviderSeries);
+    }
+    setPreviousProviderSeries(null);
+    setShowProviderRemap(false);
+    setProviderResults(null);
+    setManualQuery('');
+    setManualProviderUrl('');
+  };
+
   const navigateToReader = (chapter: any) => {
     if (!activeProviderSeries) return;
 
     // We preserve the main view seriesId for back navigation.
     // We pass the AniList ID if the main view was from AniList.
     const isAniListSource = data?.source === 'AniList';
+    const linkedAnilistId = !isAniListSource ? linkedAniList?.id : undefined;
     
     // Attempt to parse chapter number
     const chapterNum = parseFloat(chapter.number.replace(/[^0-9.]/g, ''));
@@ -387,13 +804,15 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     onNavigate('reader', {
       chapterId: chapter.id,
       seriesId: seriesId, // Back navigation ID
-      anilistId: isAniListSource ? data?.id : undefined,
+      anilistId: isAniListSource ? data?.id : linkedAnilistId,
       providerSeriesId: activeProviderSeries.id,
+      providerMangaId: activeProviderSeries.providerMangaId,
       chapterNumber: !isNaN(chapterNum) ? chapterNum : undefined,
       chapters: activeProviderSeries.chapters, // Pass the full chapter list for navigation
       seriesTitle: data?.title,
       seriesImage: data?.image,
-      source: activeProviderSeries.source || 'AsuraScans'
+      source: activeProviderSeries.source || 'AsuraScans',
+      seriesStatus: activeProviderSeries.status,
     });
   };
 
@@ -436,7 +855,7 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     if (!data || !activeProviderSeries) return;
     const updated = history.toggleRead({
       seriesId: data.source === 'AniList' ? data.id : activeProviderSeries.id,
-      anilistId: data.source === 'AniList' ? data.id : undefined,
+      anilistId: data.source === 'AniList' ? data.id : linkedAniList?.id,
       providerSeriesId: activeProviderSeries.id,
       seriesTitle: data.title,
       seriesImage: data.image,
@@ -446,6 +865,266 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
       source: activeProviderSeries.source || 'AsuraScans',
     });
     setReadChapterIds(new Set(updated));
+  };
+
+  const handleMarkReadUpTo = async (chapter: any, messageOverride?: string) => {
+    if (!data || !activeProviderSeries) return;
+    const chapters = activeProviderSeries.chapters;
+    if (chapters.length === 0) return;
+
+    const targetProgress = parseChapterNumber(chapter.number);
+    let ids: string[] = [];
+
+    if (targetProgress !== null) {
+      ids = getReadIdsForProgress(chapters, targetProgress);
+    } else {
+      const index = chapters.findIndex((item) => item.id === chapter.id);
+      if (index >= 0) {
+        const order = getChapterOrder(chapters);
+        ids = order === 'desc'
+          ? chapters.slice(index).map((item) => item.id)
+          : chapters.slice(0, index + 1).map((item) => item.id);
+      }
+    }
+
+    if (ids.length === 0) {
+      ids = [chapter.id];
+    }
+
+    setReadChapterIds(new Set(ids));
+
+    const seriesId = data.source === 'AniList' ? data.id : activeProviderSeries.id;
+    const anilistId = data.source === 'AniList' ? data.id : linkedAniList?.id;
+
+    history.add({
+      seriesId,
+      anilistId,
+      providerSeriesId: activeProviderSeries.id,
+      seriesTitle: data.title,
+      seriesImage: data.image,
+      chapterId: chapter.id,
+      chapterNumber: chapter.number,
+      chapterTitle: chapter.title,
+      source: activeProviderSeries.source || 'AsuraScans',
+      readChapters: ids,
+    });
+
+    if (user && anilistId && targetProgress !== null) {
+      await anilistApi.updateProgress(parseInt(anilistId, 10), Math.floor(targetProgress));
+    }
+
+    notify(messageOverride ?? `Marked up to chapter ${chapter.number} as read.`, 'success');
+  };
+
+  const handleMarkReadRange = async () => {
+    if (!data || !activeProviderSeries) return;
+    if (!rangeStart || !rangeEnd) {
+      notify('Enter a start and end chapter.', 'error');
+      return;
+    }
+
+    const startValue = parseChapterNumber(rangeStart);
+    const endValue = parseChapterNumber(rangeEnd);
+    if (startValue === null || endValue === null) {
+      notify('Enter valid chapter numbers.', 'error');
+      return;
+    }
+
+    const from = Math.min(startValue, endValue);
+    const to = Math.max(startValue, endValue);
+    const chapters = activeProviderSeries.chapters;
+    const ids = chapters
+      .filter((chapter) => {
+        const num = parseChapterNumber(chapter.number);
+        return num !== null && num >= from && num <= to;
+      })
+      .map((chapter) => chapter.id);
+
+    if (ids.length === 0) {
+      notify('No chapters found in that range.', 'error');
+      return;
+    }
+
+    setRangeMarking(true);
+    try {
+      const merged = new Set(readChapterIds);
+      ids.forEach((id) => merged.add(id));
+      setReadChapterIds(new Set(merged));
+
+      const targetChapter =
+        getChapterByProgress(chapters, to) || chapters.find((chapter) => ids.includes(chapter.id));
+      const seriesId = data.source === 'AniList' ? data.id : activeProviderSeries.id;
+      const anilistId = data.source === 'AniList' ? data.id : linkedAniList?.id;
+
+      history.add({
+        seriesId,
+        anilistId,
+        providerSeriesId: activeProviderSeries.id,
+        seriesTitle: data.title,
+        seriesImage: data.image,
+        chapterId: targetChapter?.id || ids[ids.length - 1],
+        chapterNumber: targetChapter?.number || rangeEnd,
+        chapterTitle: targetChapter?.title,
+        source: activeProviderSeries.source || 'AsuraScans',
+        readChapters: Array.from(merged),
+      });
+
+      if (user && anilistId) {
+        const existingProgress = data.mediaListEntry?.progress ?? 0;
+        const updatedProgress = Math.max(existingProgress, Math.floor(to));
+        await anilistApi.updateProgress(parseInt(anilistId, 10), updatedProgress);
+      }
+
+      notify(`Marked chapters ${from} - ${to} as read.`, 'success');
+    } finally {
+      setRangeMarking(false);
+    }
+  };
+
+  const handleCatchUpToLatest = async () => {
+    if (!activeProviderSeries) return;
+    const latest = getLatestChapter(activeProviderSeries.chapters);
+    if (!latest) return;
+    await handleMarkReadUpTo(latest, 'Caught up to latest chapter.');
+  };
+
+  const handleClearReadHistory = () => {
+    if (!data || !activeProviderSeries) return;
+    const confirmed = window.confirm('Clear read history for this series?');
+    if (!confirmed) return;
+    history.clearSeries({
+      seriesId: data.source === 'AniList' ? data.id : activeProviderSeries.id,
+      anilistId: data.source === 'AniList' ? data.id : linkedAniList?.id,
+      providerSeriesId: activeProviderSeries.id,
+      title: data.title,
+    });
+    setReadChapterIds(new Set());
+    setHistoryMatch(null);
+    notify('Read history cleared.', 'success');
+  };
+
+  const handleDownloadChapter = async (chapter: any) => {
+    if (!activeProviderSeries) return;
+    setQueuedChapterIds((prev) => new Set(prev).add(chapter.id));
+    try {
+      const job = await api.queueDownload({
+        providerSeriesId: activeProviderSeries.id,
+        chapterId: chapter.id,
+        chapterUrl: chapter.url,
+        chapterNumber: chapter.number,
+        chapterTitle: chapter.title,
+        seriesTitle: activeProviderSeries.title,
+        seriesImage: activeProviderSeries.image,
+        seriesStatus: activeProviderSeries.status,
+        seriesRating: activeProviderSeries.rating,
+        seriesChapters: activeProviderSeries.chapters?.length
+          ? String(activeProviderSeries.chapters.length)
+          : undefined,
+      });
+      if (job.status === 'completed' || job.status === 'queued') {
+        await refreshDownloadedChapters(activeProviderSeries.providerMangaId);
+      }
+      notify(
+        job.status === 'completed'
+          ? `Chapter ${chapter.number} is already downloaded.`
+          : `Chapter ${chapter.number} added to downloads.`,
+        'success',
+      );
+    } catch (error) {
+      notify(
+        error instanceof Error ? error.message : 'Failed to queue download',
+        'error',
+      );
+    } finally {
+      setQueuedChapterIds((prev) => {
+        const next = new Set(prev);
+        next.delete(chapter.id);
+        return next;
+      });
+    }
+  };
+
+  const handleOpenDownload = (chapterNumber: string) => {
+    const downloadId = downloadedChaptersByNumber[chapterNumber];
+    if (!downloadId) return;
+    window.open(api.getDownloadFileUrl(downloadId), '_blank', 'noopener');
+  };
+
+  const toggleChapterSelection = (chapterId: string) => {
+    setSelectedChapterIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(chapterId)) {
+        next.delete(chapterId);
+      } else {
+        next.add(chapterId);
+      }
+      return next;
+    });
+  };
+
+  const handleBatchDownload = async () => {
+    if (!activeProviderSeries || batchDownloading) return;
+    const selectedChapters = activeProviderSeries.chapters.filter((chapter) =>
+      selectedChapterIds.has(chapter.id),
+    );
+    if (selectedChapters.length === 0) {
+      notify('Select chapters to download.', 'error');
+      return;
+    }
+
+    setBatchDownloading(true);
+    let queued = 0;
+    let skipped = 0;
+    let failed = 0;
+
+    for (const chapter of selectedChapters) {
+      if (downloadedChapterIds.has(chapter.id) || queuedChapterIds.has(chapter.id)) {
+        skipped += 1;
+        continue;
+      }
+
+      setQueuedChapterIds((prev) => new Set(prev).add(chapter.id));
+      try {
+        await api.queueDownload({
+          providerSeriesId: activeProviderSeries.id,
+          chapterId: chapter.id,
+          chapterUrl: chapter.url,
+          chapterNumber: chapter.number,
+          chapterTitle: chapter.title,
+          seriesTitle: activeProviderSeries.title,
+          seriesImage: activeProviderSeries.image,
+          seriesStatus: activeProviderSeries.status,
+          seriesRating: activeProviderSeries.rating,
+          seriesChapters: activeProviderSeries.chapters?.length
+            ? String(activeProviderSeries.chapters.length)
+            : undefined,
+        });
+        queued += 1;
+      } catch (error) {
+        failed += 1;
+      } finally {
+        setQueuedChapterIds((prev) => {
+          const next = new Set(prev);
+          next.delete(chapter.id);
+          return next;
+        });
+      }
+    }
+
+    await refreshDownloadedChapters(activeProviderSeries.providerMangaId);
+    setBatchDownloading(false);
+    setSelectedChapterIds(new Set());
+    setSelectionMode(false);
+
+    if (queued > 0) {
+      notify(`Queued ${queued} chapters for download.`, 'success');
+    }
+    if (skipped > 0) {
+      notify(`${skipped} chapters already queued or downloaded.`, 'info');
+    }
+    if (failed > 0) {
+      notify(`Failed to queue ${failed} chapters.`, 'error');
+    }
   };
 
   const handleStatusUpdate = async (status: string) => {
@@ -531,8 +1210,30 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
   }
 
   const isAniListSource = data.source === 'AniList';
+  const countryLabel = formatCountryLabel(data.countryOfOrigin);
+  const formatLabel = data.format ? formatEnumLabel(data.format) : 'Unknown';
+  const formatDisplay = countryLabel ? `${formatLabel} (${countryLabel})` : formatLabel;
+  const sourceLabel = data.sourceMaterial ? formatEnumLabel(data.sourceMaterial) : 'Unknown';
+  const statusLabel = formatEnumLabel(data.status);
+  const startDateLabel = formatFuzzyDate(data.startDate ?? null);
+  const averageScoreLabel = data.averageScore !== null && data.averageScore !== undefined ? `${data.averageScore}%` : '—';
+  const meanScoreLabel = data.meanScore !== null && data.meanScore !== undefined ? `${data.meanScore}%` : '—';
+  const popularityLabel = formatNumber(data.popularity);
+  const favouritesLabel = formatNumber(data.favourites);
+  const rankings = (data.rankings ?? []).filter((rank) => rank.allTime).slice(0, 2);
+  const displayTags = (data.tags ?? [])
+    .filter((tag) => !tag.isMediaSpoiler)
+    .sort((a, b) => b.rank - a.rank);
+  const topCharacters = (data.characters ?? []).slice(0, 6);
+  const topStaff = (data.staffMembers ?? []).slice(0, 6);
+  const scoreDistribution = (data.scoreDistribution ?? []).slice().sort((a, b) => a.score - b.score);
+  const statusDistribution = data.statusDistribution ?? [];
+  const statusTotal = statusDistribution.reduce((sum, item) => sum + item.amount, 0);
+  const scoreMax = scoreDistribution.reduce((max, item) => Math.max(max, item.amount), 0);
   const showChapters = activeProviderSeries && activeProviderSeries.chapters.length > 0;
   const hasRecommendations = data.recommendations && data.recommendations.length > 0;
+  const showProviderSelection = providerResults !== null && (!showChapters || showProviderRemap);
+  const providerList = providerResults ?? [];
 
   const STATUS_LABELS: Record<string, string> = {
       'CURRENT': 'Reading',
@@ -630,41 +1331,52 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
             </motion.p>
 
             {/* Primary Actions Area */}
-            <motion.div variants={{ hidden: { y: 20, opacity: 0 }, visible: { y: 0, opacity: 1 } }} className="flex flex-col xl:flex-row gap-4 pt-4 items-center xl:items-start border-t border-white/5 mt-6">
+            <motion.div variants={{ hidden: { y: 20, opacity: 0 }, visible: { y: 0, opacity: 1 } }} className="flex flex-col gap-5 pt-4 items-center xl:items-start border-t border-white/5 mt-6">
+              {showChapters && resumeChapter && (
+                <div className="w-full max-w-xl">
+                  <div className="text-[11px] font-bold uppercase tracking-widest text-primary/70 mb-2">
+                    Continue Reading
+                  </div>
+                  <button
+                    onClick={() => navigateToReader(resumeChapter)}
+                    className="w-full px-7 py-4 bg-primary/90 hover:bg-primary text-onPrimary rounded-2xl shadow-lg shadow-primary/30 transition-all transform hover:scale-[1.01] active:scale-95 text-left border border-primary/40"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-xl font-black leading-tight">
+                        {historyMatch ? 'Resume' : 'Continue'}
+                      </span>
+                      <span className="text-[11px] font-semibold text-black/70 bg-black/10 px-2 py-0.5 rounded-full">
+                        Ch {resumeChapter.number}
+                      </span>
+                    </div>
+                    {historyMatch?.timestamp ? (
+                      <div className="text-xs font-semibold text-black/70 mt-1">
+                        Last read {formatTimeAgo(historyMatch.timestamp)}
+                      </div>
+                    ) : data?.mediaListEntry?.progress ? (
+                      <div className="text-xs font-semibold text-black/70 mt-1">From AniList</div>
+                    ) : null}
+                  </button>
+                </div>
+              )}
+
               <div className="flex flex-wrap justify-center xl:justify-start gap-4 w-full">
                   {showChapters ? (
-                    // Reading Actions
                     <>
-                      {resumeChapter && (
-                        <button 
-                          onClick={() => navigateToReader(resumeChapter)}
-                          className="flex-1 min-w-[160px] px-8 py-4 bg-primary/90 hover:bg-primary text-onPrimary font-bold text-lg rounded-xl shadow-lg shadow-primary/25 transition-all transform hover:scale-[1.02] active:scale-95 whitespace-nowrap"
-                        >
-                          {historyMatch ? 'Resume' : 'Continue'} Ch {resumeChapter.number}
-                          {historyMatch?.timestamp ? (
-                            <span className="ml-2 text-xs font-semibold text-black/70">
-                              {formatTimeAgo(historyMatch.timestamp)}
-                            </span>
-                          ) : data?.mediaListEntry?.progress ? (
-                            <span className="ml-2 text-xs font-semibold text-black/70">AniList</span>
-                          ) : null}
-                        </button>
-                      )}
                       <button 
                         onClick={() => navigateToReader(activeProviderSeries!.chapters[activeProviderSeries!.chapters.length - 1])}
-                        className="flex-1 min-w-[160px] px-8 py-4 bg-primary hover:bg-primaryHover text-onPrimary font-bold text-lg rounded-xl shadow-lg shadow-primary/25 transition-all transform hover:scale-[1.02] active:scale-95 whitespace-nowrap"
+                        className="min-w-[160px] px-6 py-3 bg-primary hover:bg-primaryHover text-onPrimary font-bold text-base rounded-xl shadow-lg shadow-primary/25 transition-all transform hover:scale-[1.02] active:scale-95 whitespace-nowrap"
                       >
                         Read First
                       </button>
                       <button 
                         onClick={() => navigateToReader(activeProviderSeries!.chapters[0])}
-                        className="flex-1 min-w-[160px] px-8 py-4 bg-surfaceHighlight hover:bg-white/10 text-white font-bold text-lg rounded-xl border border-white/10 transition-all hover:border-white/20 whitespace-nowrap"
+                        className="min-w-[160px] px-6 py-3 bg-surfaceHighlight hover:bg-white/10 text-white font-bold text-base rounded-xl border border-white/10 transition-all hover:border-white/20 whitespace-nowrap"
                       >
                         Read Latest
                       </button>
                     </>
                   ) : (
-                    // Source Selection Dropdown
                     <div className="relative w-full md:w-auto flex-1 md:flex-none">
                         <button 
                            onClick={() => setShowProviderMenu(!showProviderMenu)}
@@ -758,16 +1470,24 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
                     </p>
                   </div>
                   {linkedAniList && (
-                    <button
-                      onClick={() => onNavigate('details', linkedAniList.id)}
-                      className="px-4 py-2 rounded-xl bg-white/10 text-white text-sm font-semibold border border-white/10 hover:bg-white/20"
-                    >
-                      Open AniList
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => onNavigate('details', linkedAniList.id)}
+                        className="px-4 py-2 rounded-xl bg-white/10 text-white text-sm font-semibold border border-white/10 hover:bg-white/20"
+                      >
+                        Open AniList
+                      </button>
+                      <button
+                        onClick={() => setShowAniListRemap((prev) => !prev)}
+                        className="px-4 py-2 rounded-xl bg-white/5 text-white text-sm font-semibold border border-white/10 hover:bg-white/15"
+                      >
+                        {showAniListRemap ? 'Cancel' : 'Change Link'}
+                      </button>
+                    </div>
                   )}
                 </div>
 
-                {linkedAniList ? (
+                {linkedAniList && (
                   <div className="flex items-center gap-4 rounded-xl bg-black/30 border border-white/10 p-4">
                     {linkedAniList.image && (
                       <img
@@ -779,9 +1499,16 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
                     <div>
                       <div className="text-sm font-bold text-white">{linkedAniList.title}</div>
                       <div className="text-xs text-green-400 font-semibold mt-1">Linked</div>
+                      {showAniListRemap && (
+                        <div className="text-[11px] text-yellow-300 mt-1">
+                          Remapping will replace the current link.
+                        </div>
+                      )}
                     </div>
                   </div>
-                ) : (
+                )}
+
+                {(!linkedAniList || showAniListRemap) && (
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                     <div className="rounded-xl border border-white/10 bg-black/30 p-4 space-y-3">
                       <div>
@@ -860,6 +1587,7 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
                 )}
               </motion.div>
             )}
+
           </motion.div>
         </div>
 
@@ -871,6 +1599,14 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
            >
              Chapters
            </button>
+           {isAniListSource && (
+             <button 
+               onClick={() => setActiveTab('Info')}
+               className={`pb-4 text-lg font-bold transition-all border-b-2 ${activeTab === 'Info' ? 'border-primary text-white' : 'border-transparent text-gray-400 hover:text-white'}`}
+             >
+               Info
+             </button>
+           )}
            {hasRecommendations && (
              <button 
                onClick={() => setActiveTab('Recommendations')}
@@ -916,108 +1652,27 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
                 </div>
               )}
 
-              {/* 1. Show Chapters if available */}
-              {showChapters && (
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 mb-8">
-                    <h3 className="text-2xl font-extrabold text-white flex items-center gap-3 tracking-tight">
-                      Available Chapters
-                      <span className="text-sm font-bold text-gray-400 bg-surfaceHighlight px-2.5 py-0.5 rounded-full border border-white/5">
-                        {activeProviderSeries?.chapters.length}
-                      </span>
-                    </h3>
-                    
-                    {/* Chapter Search Bar */}
-                    <div className="relative w-full sm:w-72 group">
-                      <div className="absolute inset-y-0 left-3.5 flex items-center pointer-events-none text-gray-500 group-focus-within:text-primary transition-colors">
-                        <SearchIcon className="w-5 h-5" />
-                      </div>
-                      <input 
-                        type="text" 
-                        placeholder="Search chapter..." 
-                        className="w-full bg-surfaceHighlight border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-sm font-medium text-white focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
-                        value={chapterSearchQuery}
-                        onChange={(e) => setChapterSearchQuery(e.target.value)}
-                      />
-                    </div>
-                  </div>
-                  
-                  {filteredChapters.length > 0 ? (
-                    <>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                        {filteredChapters.slice(0, visibleChapters).map((chapter, idx) => (
-                          <motion.button
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: idx < 20 ? idx * 0.03 : 0 }}
-                            key={chapter.id}
-                            onClick={() => navigateToReader(chapter)}
-                            className="flex items-center justify-between p-4 rounded-xl bg-surface hover:bg-surfaceHighlight border border-white/5 hover:border-white/10 transition-all group text-left"
-                            whileHover={{ x: 5 }}
-                          >
-                            <div className="flex-1 min-w-0 pr-4">
-                              <h4 className={`font-bold text-[15px] transition-colors truncate ${readChapterIds.has(chapter.id) ? 'text-gray-500' : 'text-gray-200 group-hover:text-primary'}`}>
-                                {chapter.title.toLowerCase().includes('chapter') || chapter.title.toLowerCase().includes('episode') 
-                                  ? chapter.title 
-                                  : `Chapter ${chapter.number}${chapter.title ? ` - ${chapter.title}` : ''}`}
-                                {readChapterIds.has(chapter.id) && (
-                                  <span className="ml-2 text-[9px] uppercase tracking-wider text-gray-500">Read</span>
-                                )}
-                              </h4>
-                              <p className="text-xs font-medium text-gray-500 mt-1.5">{chapter.date}</p>
-                            </div>
-                            <div className="flex items-center gap-2 flex-shrink-0">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleToggleChapterRead(chapter);
-                                }}
-                                className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide border transition-colors ${
-                                  readChapterIds.has(chapter.id)
-                                    ? 'border-emerald-400/40 text-emerald-300 bg-emerald-500/10'
-                                    : 'border-white/10 text-gray-400 hover:text-white hover:border-white/20'
-                                }`}
-                              >
-                                {readChapterIds.has(chapter.id) ? 'Read' : 'Mark'}
-                              </button>
-                              <ChevronLeft className="w-5 h-5 text-gray-600 group-hover:text-primary rotate-180 transition-colors" />
-                            </div>
-                          </motion.button>
-                        ))}
-                      </div>
-                      
-                      {visibleChapters < filteredChapters.length && !chapterSearchQuery && (
-                        <div className="mt-10 flex justify-center">
-                           <button 
-                             onClick={handleLoadMore}
-                             className="px-8 py-3 bg-surfaceHighlight hover:bg-white/10 border border-white/10 rounded-full text-sm font-bold transition-colors"
-                           >
-                             Load More Chapters
-                           </button>
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    <div className="py-16 text-center text-gray-500">
-                      <p className="text-lg">No chapters found matching "{chapterSearchQuery}"</p>
-                    </div>
-                  )}
-                </motion.div>
-              )}
-
-              {/* 2. Show Provider Search Results (Manual Matching) */}
-              {providerResults && !showChapters && (
+              {/* Provider Search Results / Remap */}
+              {showProviderSelection && (
                 <div className="animate-fade-in">
-                  <h3 className="text-2xl font-extrabold text-white mb-3">Select Series from {selectedProvider}</h3>
-                  <p className="text-gray-400 mb-8 font-medium">We found multiple matches. Please select the correct one to load chapters.</p>
+                  <h3 className="text-2xl font-extrabold text-white mb-3">
+                    {showProviderRemap ? 'Remap Provider Series' : `Select Series from ${selectedProvider}`}
+                  </h3>
+                  <p className="text-gray-400 mb-8 font-medium">
+                    {showProviderRemap
+                      ? 'Search for the correct provider series to replace the current mapping.'
+                      : 'We found multiple matches. Please select the correct one to load chapters.'}
+                  </p>
                   
-                  {providerResults.length === 0 ? (
+                  {providerList.length === 0 ? (
                      <div className="p-10 rounded-2xl bg-surfaceHighlight/30 text-center text-gray-400 border border-dashed border-white/10 font-medium">
-                        No matching series found on {selectedProvider} for "{data.title}".
+                        {showProviderRemap
+                          ? 'Start a new search or paste the provider URL below.'
+                          : `No matching series found on ${selectedProvider} for "${data.title}".`}
                      </div>
                   ) : (
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
-                      {providerResults.map((res) => (
+                      {providerList.map((res) => (
                         <div 
                           key={res.id} 
                           onClick={() => handleSelectProviderSeries(res.id)}
@@ -1036,7 +1691,7 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
                     </div>
                   )}
 
-                  {providerResults.length === 0 && (
+                  {providerList.length === 0 && (
                     <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
                       <div className="p-5 rounded-2xl bg-surfaceHighlight/30 border border-white/10">
                         <h4 className="text-sm font-bold text-white mb-2">Search with a different name</h4>
@@ -1084,6 +1739,285 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
                 </div>
               )}
 
+              {/* 1. Show Chapters if available */}
+              {showChapters && (
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                  <div className="flex flex-col gap-4 mb-8">
+                    <div className="flex flex-wrap items-center justify-between gap-4">
+                      <div className="flex flex-wrap items-center gap-3">
+                        <h3 className="text-2xl font-extrabold text-white flex items-center gap-3 tracking-tight">
+                          Available Chapters
+                          <span className="text-sm font-bold text-gray-400 bg-surfaceHighlight px-2.5 py-0.5 rounded-full border border-white/5">
+                            {activeProviderSeries?.chapters.length}
+                          </span>
+                        </h3>
+                        {isAniListSource && (
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={startProviderRemap}
+                              className="px-3 py-1.5 rounded-lg bg-white/10 text-xs font-semibold text-white border border-white/10 hover:bg-white/20"
+                            >
+                              Change Provider
+                            </button>
+                            {showProviderRemap && (
+                              <button
+                                onClick={cancelProviderRemap}
+                                className="px-3 py-1.5 rounded-lg bg-white/5 text-xs font-semibold text-gray-300 border border-white/10 hover:bg-white/10"
+                              >
+                                Cancel
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      <div className="relative w-full sm:w-72 group ml-auto">
+                        <div className="absolute inset-y-0 left-3.5 flex items-center pointer-events-none text-gray-500 group-focus-within:text-primary transition-colors">
+                          <SearchIcon className="w-5 h-5" />
+                        </div>
+                        <input 
+                          type="text" 
+                          placeholder="Search chapter..." 
+                          className="w-full bg-surfaceHighlight border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-sm font-medium text-white focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
+                          value={chapterSearchQuery}
+                          onChange={(e) => setChapterSearchQuery(e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-3">
+                      <button
+                        onClick={handleCatchUpToLatest}
+                        title="Marks all chapters up to the newest as read."
+                        className="px-4 py-2 rounded-lg bg-white/10 text-sm font-semibold text-white border border-white/10 hover:bg-white/20"
+                      >
+                        Mark Latest Read
+                      </button>
+                      <button
+                        onClick={handleClearReadHistory}
+                        title="Clears local read history for this series."
+                        className="px-4 py-2 rounded-lg bg-white/5 text-sm font-semibold text-gray-300 border border-white/10 hover:bg-white/10"
+                      >
+                        Clear History
+                      </button>
+                      <div className="flex flex-wrap items-center gap-2 bg-white/5 border border-white/10 rounded-lg px-2 py-1.5">
+                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Range</span>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          pattern="[0-9.]*"
+                          placeholder="1"
+                          value={rangeStart}
+                          onChange={(event) => setRangeStart(event.target.value)}
+                          className="w-16 h-8 bg-surfaceHighlight/70 border border-white/10 rounded-md px-2 text-xs font-semibold text-white focus:outline-none focus:border-primary"
+                        />
+                        <span className="text-xs text-gray-500">to</span>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          pattern="[0-9.]*"
+                          placeholder="10"
+                          value={rangeEnd}
+                          onChange={(event) => setRangeEnd(event.target.value)}
+                          className="w-16 h-8 bg-surfaceHighlight/70 border border-white/10 rounded-md px-2 text-xs font-semibold text-white focus:outline-none focus:border-primary"
+                        />
+                        <button
+                          onClick={handleMarkReadRange}
+                          disabled={rangeMarking || !rangeStart || !rangeEnd}
+                          className={`h-8 px-3 rounded-md text-[11px] font-semibold uppercase tracking-wide border transition-colors ${
+                            rangeMarking || !rangeStart || !rangeEnd
+                              ? 'bg-white/5 text-gray-500 border-white/10'
+                              : 'bg-primary/80 text-black border-primary hover:brightness-110'
+                          }`}
+                        >
+                          {rangeMarking ? 'Marking...' : 'Mark Range'}
+                        </button>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setSelectionMode((prev) => !prev);
+                          setSelectedChapterIds(new Set());
+                        }}
+                        title="Select chapters to download in a batch."
+                        className={`px-4 py-2 rounded-lg text-sm font-semibold border transition-colors ${
+                          selectionMode
+                            ? 'bg-primary text-black border-primary'
+                            : 'bg-white/10 text-white border-white/10 hover:bg-white/20'
+                        }`}
+                      >
+                        {selectionMode
+                          ? `Selecting (${selectedChapterIds.size})`
+                          : 'Select Chapters'}
+                      </button>
+                      {selectionMode && (
+                        <>
+                          <button
+                            onClick={handleBatchDownload}
+                            disabled={batchDownloading || selectedChapterIds.size === 0}
+                            className={`px-4 py-2.5 rounded-xl text-sm font-semibold border transition-colors ${
+                              batchDownloading || selectedChapterIds.size === 0
+                                ? 'bg-white/5 text-gray-500 border-white/10'
+                                : 'bg-primary/90 text-black border-primary hover:brightness-110'
+                            }`}
+                          >
+                            {batchDownloading
+                              ? 'Queueing...'
+                              : `Download Selected (${selectedChapterIds.size})`}
+                          </button>
+                          <button
+                            onClick={() => setSelectedChapterIds(new Set())}
+                            className="px-3 py-2.5 rounded-xl text-xs font-semibold text-gray-300 border border-white/10 hover:bg-white/10"
+                          >
+                            Clear
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {filteredChapters.length > 0 ? (
+                    <>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {filteredChapters.slice(0, visibleChapters).map((chapter, idx) => {
+                          const isRead = readChapterIds.has(chapter.id);
+                          const isDownloaded = downloadedChapterIds.has(chapter.id);
+                          const isQueued = queuedChapterIds.has(chapter.id);
+                          const isSelected = selectedChapterIds.has(chapter.id);
+                          return (
+                            <motion.div
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ delay: idx < 20 ? idx * 0.03 : 0 }}
+                              key={chapter.id}
+                              onClick={() => {
+                                if (selectionMode) {
+                                  toggleChapterSelection(chapter.id);
+                                  return;
+                                }
+                                navigateToReader(chapter);
+                              }}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter' || event.key === ' ') {
+                                  event.preventDefault();
+                                  if (selectionMode) {
+                                    toggleChapterSelection(chapter.id);
+                                    return;
+                                  }
+                                  navigateToReader(chapter);
+                                }
+                              }}
+                              role="button"
+                              tabIndex={0}
+                              aria-label={`Open ${chapter.title}`}
+                              className={`flex items-center justify-between p-4 rounded-xl border transition-all group text-left cursor-pointer ${
+                                selectionMode && isSelected
+                                  ? 'bg-primary/10 border-primary/50 ring-1 ring-primary/40'
+                                  : isDownloaded
+                                    ? `bg-primary/5 hover:bg-primary/10 border-primary/30 ${
+                                        isRead ? 'ring-1 ring-emerald-400/40' : ''
+                                      }`
+                                    : isRead
+                                      ? 'bg-emerald-500/10 border-emerald-500/30'
+                                      : 'bg-surface hover:bg-surfaceHighlight border-white/5 hover:border-white/10'
+                              }`}
+                              whileHover={{ x: 5 }}
+                            >
+                              <div className="flex-1 min-w-0 pr-4">
+                              <div className="flex items-center gap-2">
+                                {selectionMode && (
+                                  <div
+                                    className={`h-4 w-4 rounded border ${
+                                      isSelected
+                                        ? 'bg-primary border-primary'
+                                        : 'border-white/20'
+                                    }`}
+                                  />
+                                )}
+                              <h4 className={`font-bold text-[15px] transition-colors truncate ${isRead ? 'text-emerald-100' : 'text-gray-200 group-hover:text-primary'}`}>
+                                {chapter.title.toLowerCase().includes('chapter') || chapter.title.toLowerCase().includes('episode') 
+                                  ? chapter.title 
+                                  : `Chapter ${chapter.number}${chapter.title ? ` - ${chapter.title}` : ''}`}
+                                {isRead && (
+                                  <span className="ml-2 text-[9px] uppercase tracking-wider text-emerald-300">Read</span>
+                                )}
+                                {isDownloaded && (
+                                  <span className="ml-2 text-[9px] uppercase tracking-wider text-primary/80">Downloaded</span>
+                                )}
+                              </h4>
+                              </div>
+                              <p className="text-xs font-medium text-gray-500 mt-1.5">{chapter.date}</p>
+                            </div>
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleToggleChapterRead(chapter);
+                                }}
+                                className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide border transition-colors ${
+                                  isRead
+                                    ? 'border-emerald-400/40 text-emerald-300 bg-emerald-500/10'
+                                    : 'border-white/10 text-gray-400 hover:text-white hover:border-white/20'
+                                }`}
+                              >
+                                {isRead ? 'Read' : 'Mark'}
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleMarkReadUpTo(chapter);
+                                }}
+                                title="Mark this and previous chapters as read"
+                                className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide border border-primary/30 text-primary/80 hover:text-primary hover:border-primary/60 transition-colors"
+                              >
+                                Up to
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (isDownloaded) {
+                                    handleOpenDownload(chapter.number);
+                                    return;
+                                  }
+                                  if (!isQueued) {
+                                    void handleDownloadChapter(chapter);
+                                  }
+                                }}
+                                title={isDownloaded ? 'Open downloaded file' : 'Download for offline reading'}
+                                className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide border transition-colors ${
+                                  isDownloaded
+                                    ? 'border-primary/60 text-primary bg-primary/10'
+                                    : isQueued
+                                      ? 'border-white/10 text-gray-500 bg-white/5'
+                                      : 'border-white/10 text-gray-400 hover:text-white hover:border-white/20'
+                                }`}
+                              >
+                                {isDownloaded ? 'Open' : isQueued ? 'Queued' : 'Download'}
+                              </button>
+                              <ChevronLeft className="w-5 h-5 text-gray-600 group-hover:text-primary rotate-180 transition-colors" />
+                            </div>
+                          </motion.div>
+                        );
+                        })}
+                      </div>
+                      
+                      {visibleChapters < filteredChapters.length && !chapterSearchQuery && (
+                        <div className="mt-10 flex justify-center">
+                           <button 
+                             onClick={handleLoadMore}
+                             className="px-8 py-3 bg-surfaceHighlight hover:bg-white/10 border border-white/10 rounded-full text-sm font-bold transition-colors"
+                           >
+                             Load More Chapters
+                           </button>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="py-16 text-center text-gray-500">
+                      <p className="text-lg">No chapters found matching "{chapterSearchQuery}"</p>
+                    </div>
+                  )}
+                </motion.div>
+              )}
+
               {/* 3. Empty State for AniList View (Before clicking search) */}
               {!showChapters && !providerResults && !providerLoading && isAniListSource && (
                  <div className="p-12 rounded-2xl bg-surfaceHighlight/10 border border-white/5 text-center">
@@ -1091,6 +2025,239 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
                  </div>
               )}
             </>
+          )}
+
+          {/* TAB: INFO */}
+          {activeTab === 'Info' && isAniListSource && (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="rounded-2xl border border-white/10 bg-surfaceHighlight/30 p-5 space-y-4">
+                  <h3 className="text-base font-bold text-gray-300 uppercase tracking-wider">Overview</h3>
+                  {rankings.length > 0 && (
+                    <div className="space-y-2">
+                      {rankings.map((rank) => (
+                        <div key={rank.id} className="flex items-center gap-2 text-xs text-gray-300">
+                          <span className="text-primary font-bold">#{rank.rank}</span>
+                          <span>{rank.context || (rank.type === 'POPULAR' ? 'Most Popular All Time' : 'Highest Rated All Time')}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="grid grid-cols-2 gap-4 text-[14px]">
+                    <div>
+                      <div className="text-[11px] uppercase text-gray-500">Format</div>
+                      <div className="text-white font-semibold text-[15px]">{formatDisplay}</div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] uppercase text-gray-500">Status</div>
+                      <div className="text-white font-semibold text-[15px]">{statusLabel}</div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] uppercase text-gray-500">Start Date</div>
+                      <div className="text-white font-semibold text-[15px]">{startDateLabel}</div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] uppercase text-gray-500">Average Score</div>
+                      <div className="text-white font-semibold text-[15px]">{averageScoreLabel}</div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] uppercase text-gray-500">Mean Score</div>
+                      <div className="text-white font-semibold text-[15px]">{meanScoreLabel}</div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] uppercase text-gray-500">Popularity</div>
+                      <div className="text-white font-semibold text-[15px]">{popularityLabel}</div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] uppercase text-gray-500">Favorites</div>
+                      <div className="text-white font-semibold text-[15px]">{favouritesLabel}</div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] uppercase text-gray-500">Source</div>
+                      <div className="text-white font-semibold text-[15px]">{sourceLabel}</div>
+                    </div>
+                    <div className="col-span-2">
+                      <div className="text-[11px] uppercase text-gray-500">Genres</div>
+                      <div className="text-white font-semibold text-[15px]">{data.genres.join(', ')}</div>
+                    </div>
+                  </div>
+                  {data.mediaListEntry?.status && (
+                    <div className="rounded-xl bg-black/30 border border-white/10 px-3 py-2 text-xs text-gray-300 flex items-center justify-between">
+                      <span>Your Status</span>
+                      <span className="text-primary font-bold">
+                        {STATUS_LABELS[data.mediaListEntry.status] ?? formatEnumLabel(data.mediaListEntry.status)}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-2xl border border-white/10 bg-surfaceHighlight/30 p-5 space-y-3">
+                  <h3 className="text-base font-bold text-gray-300 uppercase tracking-wider">Titles</h3>
+                  <div className="space-y-3 text-[13px] text-gray-300">
+                    {data.titles?.romaji && (
+                      <div>
+                        <span className="text-gray-500 uppercase tracking-wide text-[11px]">Romaji</span>
+                        <div className="text-white font-semibold text-[15px]">{data.titles.romaji}</div>
+                      </div>
+                    )}
+                    {data.titles?.english && (
+                      <div>
+                        <span className="text-gray-500 uppercase tracking-wide text-[11px]">English</span>
+                        <div className="text-white font-semibold text-[15px]">{data.titles.english}</div>
+                      </div>
+                    )}
+                    {data.titles?.native && (
+                      <div>
+                        <span className="text-gray-500 uppercase tracking-wide text-[11px]">Native</span>
+                        <div className="text-white font-semibold text-[15px]">{data.titles.native}</div>
+                      </div>
+                    )}
+                    {data.synonyms && data.synonyms.length > 0 && (
+                      <div>
+                        <span className="text-gray-500 uppercase tracking-wide text-[11px]">Synonyms</span>
+                        <div className="text-white font-semibold text-[14px]">{data.synonyms.join(', ')}</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {displayTags.length > 0 && (
+                  <div className="rounded-2xl border border-white/10 bg-surfaceHighlight/30 p-5 space-y-3">
+                    <h3 className="text-base font-bold text-gray-300 uppercase tracking-wider">Tags</h3>
+                    <div className="space-y-2">
+                      {displayTags.slice(0, 10).map((tag) => (
+                        <div key={tag.id} className="space-y-1">
+                          <div className="flex items-center justify-between text-sm text-gray-200">
+                            <span>{tag.name}</span>
+                            <span className="text-primary font-semibold">{tag.rank}%</span>
+                          </div>
+                          <div className="h-1.5 rounded-full bg-black/40 overflow-hidden">
+                            <div className="h-full bg-primary" style={{ width: `${tag.rank}%` }} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="rounded-2xl border border-white/10 bg-surfaceHighlight/30 p-5 space-y-4">
+                  <h3 className="text-base font-bold text-gray-300 uppercase tracking-wider">Status Distribution</h3>
+                  {statusDistribution.length > 0 ? (
+                    <div className="space-y-3">
+                      {statusDistribution.map((item) => {
+                        const pct = statusTotal > 0 ? Math.round((item.amount / statusTotal) * 100) : 0;
+                        const colorMap: Record<string, string> = {
+                          CURRENT: 'bg-green-500',
+                          PLANNING: 'bg-blue-500',
+                          COMPLETED: 'bg-purple-500',
+                          PAUSED: 'bg-yellow-500',
+                          DROPPED: 'bg-red-500',
+                          REPEATING: 'bg-emerald-500',
+                        };
+                        const barColor = colorMap[item.status] ?? 'bg-gray-500';
+                        return (
+                          <div key={item.status} className="space-y-1">
+                            <div className="flex items-center justify-between text-sm text-gray-200">
+                              <span>{formatEnumLabel(item.status)}</span>
+                              <span>{formatNumber(item.amount)}</span>
+                            </div>
+                            <div className="h-2 rounded-full bg-black/40 overflow-hidden">
+                              <div className={`h-full ${barColor}`} style={{ width: `${pct}%` }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-gray-500">No status data available.</div>
+                  )}
+                </div>
+
+                <div className="rounded-2xl border border-white/10 bg-surfaceHighlight/30 p-5 space-y-4 lg:col-span-2">
+                  <h3 className="text-base font-bold text-gray-300 uppercase tracking-wider">Score Distribution</h3>
+                  {scoreDistribution.length > 0 ? (
+                    <div className="flex items-end gap-2 h-36">
+                      {scoreDistribution.map((item) => {
+                        const height = scoreMax > 0 ? Math.max(8, (item.amount / scoreMax) * 100) : 0;
+                        const hue = Math.round((item.score / 100) * 120);
+                        return (
+                          <div key={item.score} className="flex flex-col items-center gap-1 flex-1">
+                            <div
+                              className="w-full rounded-full"
+                              style={{
+                                height: `${height}%`,
+                                backgroundColor: `hsl(${hue}, 70%, 50%)`,
+                              }}
+                            />
+                            <span className="text-[11px] text-gray-400">{item.score}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-gray-500">No score data available.</div>
+                  )}
+                </div>
+
+                {topCharacters.length > 0 && (
+                  <div className="rounded-2xl border border-white/10 bg-surfaceHighlight/30 p-6 space-y-4 lg:col-span-2">
+                    <h3 className="text-base font-bold text-gray-300 uppercase tracking-wider">Characters</h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {topCharacters.map((character) => (
+                        <div key={character.id} className="flex items-center gap-4 rounded-2xl bg-black/40 border border-white/10 p-4 min-h-[96px]">
+                          {character.image ? (
+                            <img
+                              src={character.image}
+                              alt={character.name}
+                              className="w-14 h-20 object-cover rounded-xl"
+                            />
+                          ) : (
+                            <div className="w-14 h-20 rounded-xl bg-white/5 flex items-center justify-center text-[10px] text-gray-500">
+                              NO IMAGE
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <div className="text-[16px] font-semibold text-white leading-snug break-words">
+                              {character.name}
+                            </div>
+                            {character.role && <div className="text-[13px] text-gray-400">{formatEnumLabel(character.role)}</div>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {topStaff.length > 0 && (
+                  <div className="rounded-2xl border border-white/10 bg-surfaceHighlight/30 p-6 space-y-4 lg:col-span-2">
+                    <h3 className="text-base font-bold text-gray-300 uppercase tracking-wider">Staff</h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {topStaff.map((member) => (
+                        <div key={member.id} className="flex items-center gap-4 rounded-2xl bg-black/40 border border-white/10 p-4 min-h-[96px]">
+                          {member.image ? (
+                            <img
+                              src={member.image}
+                              alt={member.name}
+                              className="w-14 h-20 object-cover rounded-xl"
+                            />
+                          ) : (
+                            <div className="w-14 h-20 rounded-xl bg-white/5 flex items-center justify-center text-[10px] text-gray-500">
+                              NO IMAGE
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <div className="text-[16px] font-semibold text-white leading-snug break-words">
+                              {member.name}
+                            </div>
+                            {member.role && <div className="text-[13px] text-gray-400">{member.role}</div>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </motion.div>
           )}
 
           {/* TAB: RECOMMENDATIONS */}
@@ -1109,6 +2276,86 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
 
         </div>
       </div>
+
+      {reconcileContext && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={closeReconcile} />
+
+          <motion.div
+            initial={{ opacity: 0, scale: 0.96 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.96 }}
+            className="relative w-full max-w-lg bg-[#151515] rounded-xl shadow-2xl border border-white/10 overflow-hidden"
+          >
+            <div className="p-6 border-b border-white/10">
+              <h3 className="text-xl font-bold text-white">
+                {reconcileContext.swapType === 'anilist' ? 'Change AniList Link' : 'Change Provider'}
+              </h3>
+              <p className="text-sm text-gray-400 mt-1">
+                Choose how progress should be reconciled after this mapping change.
+              </p>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="rounded-lg border border-white/10 bg-black/30 p-4">
+                  <div className="text-xs text-gray-500 font-semibold uppercase">Provider</div>
+                  <div className="text-lg font-bold text-white mt-1">
+                    {reconcileContext.localProgress && reconcileContext.localProgress > 0
+                      ? `Ch ${reconcileContext.localProgress}`
+                      : '—'}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-white/10 bg-black/30 p-4">
+                  <div className="text-xs text-gray-500 font-semibold uppercase">AniList</div>
+                  <div className="text-lg font-bold text-white mt-1">
+                    {reconcileContext.remoteProgress && reconcileContext.remoteProgress > 0
+                      ? `Ch ${reconcileContext.remoteProgress}`
+                      : '—'}
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                {([
+                  { id: 'higher', label: 'Use higher progress (recommended)' },
+                  { id: 'provider', label: 'Keep provider progress and sync AniList' },
+                  { id: 'anilist', label: 'Use AniList progress and update local history' },
+                  { id: 'none', label: 'Don’t sync now' },
+                ] as Array<{ id: ReconcileChoice; label: string }>).map((option) => (
+                  <button
+                    key={option.id}
+                    onClick={() => setReconcileChoice(option.id)}
+                    className={`w-full text-left px-4 py-3 rounded-lg border transition-colors text-sm font-semibold ${
+                      reconcileChoice === option.id
+                        ? 'border-primary bg-primary/10 text-white'
+                        : 'border-white/10 bg-white/5 text-gray-300 hover:bg-white/10'
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="p-5 border-t border-white/10 flex items-center justify-end gap-3">
+              <button
+                onClick={closeReconcile}
+                className="px-4 py-2 rounded-lg text-sm font-semibold text-gray-300 hover:text-white hover:bg-white/5"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => applyReconcile()}
+                disabled={reconcileLoading}
+                className="px-5 py-2 rounded-lg text-sm font-bold bg-primary text-onPrimary hover:bg-primaryHover disabled:opacity-60"
+              >
+                {reconcileLoading ? 'Updating...' : 'Apply Mapping'}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 };

@@ -5,12 +5,15 @@
   "workspaces": [
     "app",
     "api",
+    "desktop",
     "packages/*"
   ],
   "scripts": {
     "dev": "concurrently -n API,APP -c blue,magenta \"bun run dev:api\" \"bun run dev:app\"",
     "dev:app": "bun run --cwd app dev",
     "dev:api": "bun run --cwd api dev",
+    "dev:desktop": "bun run --cwd desktop dev",
+    "build:desktop": "bun run --cwd desktop build",
     "setup": "bun ./scripts/bootstrap.ts",
     "postinstall": "bun ./scripts/bootstrap.ts"
   },

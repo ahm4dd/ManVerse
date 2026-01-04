@@ -5,21 +5,28 @@ import type { HonoEnv } from '../types/api.ts';
 import { requireAuth } from '../middleware/auth.ts';
 import { ScraperService } from '../services/scraper-service.ts';
 import { Providers } from '@manverse/core';
+import { asuraScansConfig } from '@manverse/scrapers';
 import {
   getActiveMapping,
   getActiveMappingByProviderId,
+  getAnilistMangaById,
+  getDatabase,
   getProviderMangaById,
   getProviderMangaByProviderId,
   listProviderMappings,
   setActiveMapping,
+  upsertAnilistManga,
   upsertProviderManga,
 } from '@manverse/database';
 import { ApiErrorSchema, ApiSuccessUnknownSchema } from '../openapi/schemas.ts';
 import { openApiHook } from '../openapi/hook.ts';
+import { AniListService } from '../services/anilist-service.ts';
+import { mapMediaToDb } from '../services/library-mapper.ts';
 
 const manga = new OpenAPIHono<HonoEnv>({ defaultHook: openApiHook });
 const service = new MangaService();
 const scraper = new ScraperService();
+const anilistService = new AniListService();
 
 const errorResponse = {
   description: 'Error',
@@ -109,6 +116,28 @@ function normalizeProvider(input?: string) {
   return Providers.AsuraScans;
 }
 
+function normalizeProviderId(provider: string, providerId: string): string {
+  const trimmed = providerId.trim();
+  if (!trimmed) return trimmed;
+
+  if (provider === Providers.AsuraScans) {
+    if (/^https?:\/\//i.test(trimmed)) {
+      return trimmed.replace(/\/+$/, '');
+    }
+
+    const cleaned = trimmed.replace(/^\/+/, '');
+    if (cleaned.startsWith('asuracomic.net/')) {
+      return `https://${cleaned}`.replace(/\/+$/, '');
+    }
+    if (cleaned.startsWith('series/')) {
+      return `https://asuracomic.net/${cleaned}`.replace(/\/+$/, '');
+    }
+    return `https://asuracomic.net/series/${cleaned}`.replace(/\/+$/, '');
+  }
+
+  return trimmed;
+}
+
 function toProviderInput(provider: string, providerId: string, details: any) {
   return {
     provider,
@@ -126,6 +155,68 @@ function toProviderInput(provider: string, providerId: string, details: any) {
     updated_on: details.updatedOn || null,
     last_scraped: Math.floor(Date.now() / 1000),
   };
+}
+
+function parseJsonArray<T>(value?: string | null): T[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? (parsed as T[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function getProviderImageReferer(provider: string): string {
+  if (provider === Providers.AsuraScans) {
+    return asuraScansConfig.baseUrl;
+  }
+  return '';
+}
+
+function hydrateProviderDetails(provider: string, record: { [key: string]: any }) {
+  const chapters = parseJsonArray<any>(record.chapters).map((chapter) => ({
+    chapterNumber: chapter.chapterNumber || chapter.number || '',
+    chapterTitle: chapter.chapterTitle || chapter.title || '',
+    chapterUrl: chapter.chapterUrl || chapter.url || '',
+    releaseDate: chapter.releaseDate || chapter.date || '',
+  }));
+
+  return {
+    id: record.provider_id,
+    title: record.title,
+    description: record.description || '',
+    image: record.image || '',
+    headerForImage: { Referer: getProviderImageReferer(provider) },
+    status: record.status || 'Unknown',
+    rating: record.rating || '',
+    genres: parseJsonArray<string>(record.genres),
+    chapters,
+    author: record.author || '',
+    artist: record.artist || '',
+    serialization: record.serialization || '',
+    updatedOn: record.updated_on || '',
+  };
+}
+
+async function ensureAnilistRecord(
+  anilistId: number,
+  accessToken?: string,
+  fallbackTitle?: string,
+): Promise<void> {
+  const existing = getAnilistMangaById(anilistId);
+  if (existing) return;
+
+  try {
+    const media = accessToken
+      ? await anilistService.getMangaDetailsForUser(accessToken, anilistId)
+      : await anilistService.getMangaDetails(anilistId);
+    upsertAnilistManga(mapMediaToDb(media));
+    return;
+  } catch (error) {
+    const safeTitle = fallbackTitle?.trim() || `AniList ${anilistId}`;
+    upsertAnilistManga({ id: anilistId, title_romaji: safeTitle });
+  }
 }
 
 const searchRoute = createRoute({
@@ -195,7 +286,12 @@ const providerMappingRoute = createRoute({
 manga.openapi(providerMappingRoute, (c) => {
   const { provider, id } = c.req.valid('query');
   const resolvedProvider = normalizeProvider(provider);
-  const mapping = getActiveMappingByProviderId(resolvedProvider, id);
+  const normalizedId = normalizeProviderId(resolvedProvider, id);
+  let mapping = getActiveMappingByProviderId(resolvedProvider, normalizedId);
+
+  if (!mapping && normalizedId !== id) {
+    mapping = getActiveMappingByProviderId(resolvedProvider, id);
+  }
 
   if (!mapping) {
     return jsonError(
@@ -231,23 +327,48 @@ const providerDetailsRoute = createRoute({
 manga.openapi(providerDetailsRoute, (c) => {
   const { provider, id } = c.req.valid('query');
   const resolvedProvider = normalizeProvider(provider);
+  const normalizedId = normalizeProviderId(resolvedProvider, id);
 
   return scraper
-    .getSeriesDetails(id, resolvedProvider)
+    .getSeriesDetails(normalizedId, resolvedProvider)
     .then((details) => {
-      upsertProviderManga(toProviderInput(resolvedProvider, id, details));
-      return jsonSuccess(c, details);
+      let providerRecord = null;
+      try {
+        providerRecord = upsertProviderManga(
+          toProviderInput(resolvedProvider, normalizedId, details),
+        );
+      } catch (error) {
+        console.warn('Failed to persist provider details:', error);
+      }
+      return jsonSuccess(c, {
+        ...details,
+        providerMangaId: providerRecord?.id ?? null,
+        providerId: normalizedId,
+      });
     })
-    .catch((error) =>
-      jsonError(
+    .catch((error) => {
+      const fallback =
+        getProviderMangaByProviderId(resolvedProvider, normalizedId) ||
+        (normalizedId !== id ? getProviderMangaByProviderId(resolvedProvider, id) : null);
+
+      if (fallback) {
+        const hydrated = hydrateProviderDetails(resolvedProvider, fallback);
+        return jsonSuccess(c, {
+          ...hydrated,
+          providerMangaId: fallback.id,
+          providerId: fallback.provider_id,
+        });
+      }
+
+      return jsonError(
         c,
         {
           code: 'PROVIDER_DETAILS_FAILED',
           message: error instanceof Error ? error.message : 'Failed to fetch provider details',
         },
         502,
-      ),
-    );
+      );
+    });
 });
 
 const mangaDetailsRoute = createRoute({
@@ -328,9 +449,10 @@ manga.openapi(mangaChaptersRoute, (c) => {
   }
 
   return scraper
-    .getSeriesDetails(resolvedProviderId, resolvedProvider)
+    .getSeriesDetails(normalizeProviderId(resolvedProvider, resolvedProviderId), resolvedProvider)
     .then((details) => {
-      upsertProviderManga(toProviderInput(resolvedProvider, resolvedProviderId, details));
+      const normalizedProviderId = normalizeProviderId(resolvedProvider, resolvedProviderId);
+      upsertProviderManga(toProviderInput(resolvedProvider, normalizedProviderId, details));
       return jsonSuccess(c, details);
     })
     .catch((error) =>
@@ -387,34 +509,103 @@ manga.openapi(mangaMapRoute, async (c) => {
 
   const body = c.req.valid('json');
   const resolvedProvider = normalizeProvider(body.provider);
+  const rawProviderId = body.providerId?.trim();
+  const normalizedProviderId = rawProviderId
+    ? normalizeProviderId(resolvedProvider, rawProviderId)
+    : undefined;
+
+  if (!body.providerMangaId && !normalizedProviderId) {
+    return jsonError(
+      c,
+      { code: 'PROVIDER_ID_REQUIRED', message: 'Provider series id is required' },
+      400,
+    );
+  }
 
   let providerRecord = null;
   if (body.providerMangaId) {
     providerRecord = getProviderMangaById(body.providerMangaId);
-  } else if (body.providerId) {
-    providerRecord = getProviderMangaByProviderId(resolvedProvider, body.providerId);
+  }
+
+  if (!providerRecord && normalizedProviderId) {
+    const lookupIds = [normalizedProviderId];
+    if (rawProviderId && rawProviderId !== normalizedProviderId) {
+      lookupIds.push(rawProviderId);
+    }
+
+    for (const id of lookupIds) {
+      providerRecord = getProviderMangaByProviderId(resolvedProvider, id);
+      if (providerRecord) break;
+    }
+
     if (!providerRecord) {
-      const details = body.title
-        ? {
-            title: body.title,
-            image: body.image,
-            status: body.status,
-            rating: body.rating,
-          }
-        : await scraper.getSeriesDetails(body.providerId, resolvedProvider);
+      let details = null;
+
+      if (body.title || body.image || body.status || body.rating) {
+        details = {
+          title: body.title?.trim() || normalizedProviderId,
+          image: body.image,
+          status: body.status,
+          rating: body.rating,
+        };
+      } else {
+        try {
+          details = await scraper.getSeriesDetails(normalizedProviderId, resolvedProvider);
+        } catch (error) {
+          details = {
+            title: normalizedProviderId,
+            image: null,
+            status: null,
+            rating: null,
+          };
+        }
+      }
+
       providerRecord = upsertProviderManga(
-        toProviderInput(resolvedProvider, body.providerId, details),
+        toProviderInput(resolvedProvider, normalizedProviderId, details),
       );
+    }
+  }
+
+  if (!providerRecord) {
+    if (normalizedProviderId) {
+      try {
+        const fallbackTitle = body.title?.trim() || normalizedProviderId;
+        const db = getDatabase();
+        db.prepare(
+          `INSERT OR IGNORE INTO provider_manga (
+            provider,
+            provider_id,
+            title,
+            created_at,
+            updated_at
+          ) VALUES (?, ?, ?, unixepoch(), unixepoch())`,
+        ).run(resolvedProvider, normalizedProviderId, fallbackTitle);
+
+        providerRecord = getProviderMangaByProviderId(resolvedProvider, normalizedProviderId);
+      } catch (error) {
+        console.warn('Failed to create fallback provider record:', error);
+      }
     }
   }
 
   if (!providerRecord) {
     return jsonError(
       c,
-      { code: 'PROVIDER_NOT_FOUND', message: 'Provider series not found' },
+      {
+        code: 'PROVIDER_NOT_FOUND',
+        message: 'Provider series not found',
+        details: {
+          provider: resolvedProvider,
+          providerId: normalizedProviderId ?? rawProviderId ?? null,
+        },
+      },
       404,
     );
   }
+
+  const auth = c.get('auth');
+  await ensureAnilistRecord(anilistId, auth?.anilistToken, body.title);
 
   const mapping = setActiveMapping(anilistId, resolvedProvider, providerRecord.id, 'manual');
   return jsonSuccess(c, { mapping, provider: providerRecord });

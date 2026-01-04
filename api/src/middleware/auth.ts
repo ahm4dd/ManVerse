@@ -35,3 +35,40 @@ export const requireAuth: MiddlewareHandler<HonoEnv> = async (c, next) => {
     );
   }
 };
+
+export const requireAuthOrQuery: MiddlewareHandler<HonoEnv> = async (c, next) => {
+  const header = c.req.header('Authorization');
+  let token = header?.startsWith('Bearer ') ? header.slice('Bearer '.length).trim() : '';
+
+  if (!token) {
+    const queryToken = c.req.query('token');
+    token = queryToken ? queryToken.trim() : '';
+  }
+
+  if (!token) {
+    return jsonError(
+      c,
+      {
+        code: 'AUTH_REQUIRED',
+        message: 'Missing Authorization bearer token',
+      },
+      401,
+    );
+  }
+
+  try {
+    const payload = (await verify(token, getJwtSecret())) as AuthUser;
+    c.set('auth', payload);
+    await next();
+  } catch (error) {
+    return jsonError(
+      c,
+      {
+        code: 'INVALID_TOKEN',
+        message: 'Token verification failed',
+        details: error instanceof Error ? error.message : String(error),
+      },
+      401,
+    );
+  }
+};

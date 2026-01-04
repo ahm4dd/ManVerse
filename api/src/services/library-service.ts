@@ -9,6 +9,7 @@ import {
   upsertAnilistManga,
   upsertLibraryEntry,
   upsertSyncState,
+  type AnilistMangaRecord,
 } from '@manverse/database';
 import { AniListService } from './anilist-service.ts';
 import { mapMediaToDb, toUnixDate } from './library-mapper.ts';
@@ -30,6 +31,30 @@ function parseGenres(raw?: string | null): string[] {
   } catch {
     return raw.split(',').map((item) => item.trim()).filter(Boolean);
   }
+}
+
+function isStubAnilistRecord(record: AnilistMangaRecord | null): boolean {
+  if (!record) return true;
+  const hasText =
+    Boolean(record.title_english) ||
+    Boolean(record.title_native) ||
+    Boolean(record.description) ||
+    Boolean(record.banner_image) ||
+    Boolean(record.cover_large) ||
+    Boolean(record.cover_medium) ||
+    Boolean(record.status) ||
+    Boolean(record.format) ||
+    Boolean(record.country_of_origin);
+  const hasNumbers =
+    record.chapters !== null ||
+    record.volumes !== null ||
+    record.average_score !== null ||
+    record.popularity !== null ||
+    record.favourites !== null ||
+    record.updated_at !== null;
+  const hasGenres = Boolean(record.genres && record.genres.trim().length > 0);
+
+  return !hasText && !hasNumbers && !hasGenres;
 }
 
 function mapEntryToMediaList(entry: ReturnType<typeof listLibraryEntries>[number]): MediaListEntry | null {
@@ -439,17 +464,34 @@ export class LibraryService {
     await this.seedFromAnilist(userKey, auth);
   }
 
-  private async ensureMediaCached(mediaId: number): Promise<void> {
+  private async ensureMediaCached(mediaId: number, accessToken?: string): Promise<void> {
     const existing = getAnilistMangaById(mediaId);
-    if (existing) return;
+    if (existing && !isStubAnilistRecord(existing)) return;
 
-    const media = await this.anilist.getMangaDetails(mediaId);
-    upsertAnilistManga(mapMediaToDb(media));
+    try {
+      const media = accessToken
+        ? await this.anilist.getMangaDetailsForUser(accessToken, mediaId)
+        : await this.anilist.getMangaDetails(mediaId);
+      upsertAnilistManga(mapMediaToDb(media));
+    } catch (error) {
+      console.warn('Failed to refresh AniList media details:', error);
+    }
   }
 
   async list(userKey: string, status?: MediaListStatus, auth?: AuthUser) {
     await this.ensureSeeded(userKey, auth);
     let entries = listLibraryEntries(userKey, status);
+    const stubIds = entries
+      .filter((entry) => entry.entry.anilist_id && isStubAnilistRecord(entry.media))
+      .map((entry) => entry.entry.anilist_id)
+      .slice(0, 5);
+
+    if (stubIds.length > 0) {
+      for (const mediaId of stubIds) {
+        await this.ensureMediaCached(mediaId, auth?.anilistToken);
+      }
+      entries = listLibraryEntries(userKey, status);
+    }
 
     if (
       entries.length === 0 &&
@@ -487,7 +529,7 @@ export class LibraryService {
     input: { mediaId: number; status: MediaListStatus; progress?: number; score?: number; notes?: string },
     auth?: AuthUser,
   ) {
-    await this.ensureMediaCached(input.mediaId);
+    await this.ensureMediaCached(input.mediaId, auth?.anilistToken);
     const localEntry = upsertLibraryEntry({
       user_id: userKey,
       anilist_id: input.mediaId,
@@ -553,7 +595,7 @@ export class LibraryService {
     const score = input.score ?? existing?.score ?? null;
     const notes = input.notes ?? existing?.notes ?? null;
 
-    await this.ensureMediaCached(mediaId);
+    await this.ensureMediaCached(mediaId, auth?.anilistToken);
     const localEntry = upsertLibraryEntry({
       user_id: userKey,
       anilist_id: mediaId,

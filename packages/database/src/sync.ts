@@ -17,18 +17,18 @@ export interface SyncStateInput {
 export function upsertSyncState(input: SyncStateInput): SyncStateRecord {
   const db = getDatabase();
   const now = Math.floor(Date.now() / 1000);
-  const payload = {
-    user_id: input.user_id,
-    anilist_id: input.anilist_id,
-    local_status: input.local_status ?? null,
-    local_progress: input.local_progress ?? null,
-    local_score: input.local_score ?? null,
-    anilist_status: input.anilist_status ?? null,
-    anilist_progress: input.anilist_progress ?? null,
-    anilist_score: input.anilist_score ?? null,
-    needs_sync: input.needs_sync ?? 0,
-    conflict_state: input.conflict_state ?? null,
-    updated_at: now,
+  const params = {
+    $user_id: input.user_id,
+    $anilist_id: input.anilist_id,
+    $local_status: input.local_status ?? null,
+    $local_progress: input.local_progress ?? null,
+    $local_score: input.local_score ?? null,
+    $anilist_status: input.anilist_status ?? null,
+    $anilist_progress: input.anilist_progress ?? null,
+    $anilist_score: input.anilist_score ?? null,
+    $needs_sync: input.needs_sync ?? 0,
+    $conflict_state: input.conflict_state ?? null,
+    $updated_at: now,
   };
 
   const insert = db.prepare(`
@@ -74,8 +74,8 @@ export function upsertSyncState(input: SyncStateInput): SyncStateRecord {
   `);
 
   const transaction = db.transaction(() => {
-    insert.run(payload);
-    update.run(payload);
+    insert.run(params);
+    update.run(params);
   });
 
   transaction();

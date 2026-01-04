@@ -705,6 +705,18 @@ export const anilistApi = {
     const staff = media.staff?.edges || [];
     const author = staff.find((e: any) => e.role.toLowerCase().includes('story'))?.node.name.full || 'Unknown';
     const artist = staff.find((e: any) => e.role.toLowerCase().includes('art'))?.node.name.full || 'Unknown';
+    const staffMembers = staff.map((edge: any) => ({
+      id: edge.node?.id,
+      name: edge.node?.name?.full || 'Unknown',
+      role: edge.role,
+      image: edge.node?.image?.large || edge.node?.image?.medium || undefined,
+    }));
+    const characters = (media.characters?.edges || []).map((edge: any) => ({
+      id: edge.node?.id,
+      name: edge.node?.name?.full || 'Unknown',
+      role: edge.role,
+      image: edge.node?.image?.large || edge.node?.image?.medium || undefined,
+    }));
     const description = media.description?.replace(/<br>/g, '\n').replace(/<[^>]*>?/gm, '') || 'No description available.';
 
     const recs = media.recommendations?.nodes
@@ -760,6 +772,29 @@ export const anilistApi = {
       recommendations: recs,
       userListStatus,
       nextAiringEpisode: media.nextAiringEpisode,
+      format: media.format || null,
+      countryOfOrigin: media.countryOfOrigin || null,
+      averageScore: media.averageScore ?? null,
+      meanScore: media.meanScore ?? null,
+      popularity: media.popularity ?? null,
+      favourites: media.favourites ?? null,
+      sourceMaterial: media.source ?? null,
+      startDate: media.startDate ?? null,
+      endDate: media.endDate ?? null,
+      titles: {
+        romaji: media.title?.romaji ?? null,
+        english: media.title?.english ?? null,
+        native: media.title?.native ?? null,
+        userPreferred: media.title?.userPreferred ?? null,
+      },
+      synonyms: media.synonyms ?? [],
+      tags: media.tags ?? [],
+      characters,
+      staffMembers,
+      rankings: media.rankings ?? [],
+      statusDistribution: media.stats?.statusDistribution ?? [],
+      scoreDistribution: media.stats?.scoreDistribution ?? [],
+      siteUrl: media.siteUrl ?? undefined,
       ...((media.mediaListEntry) ? { mediaListEntry: media.mediaListEntry } : {})
     };
   },

@@ -31,23 +31,23 @@ export function upsertProviderManga(input: ProviderMangaInput): ProviderMangaRec
     throw new Error('Provider mapping requires provider and provider_id');
   }
 
-  const payload = {
-    provider: input.provider,
-    provider_id: input.provider_id,
-    title: input.title,
-    image: input.image ?? null,
-    status: input.status ?? null,
-    rating: input.rating ?? null,
-    chapters: toJsonString(input.chapters),
-    genres: input.genres ? JSON.stringify(input.genres) : null,
-    description: input.description ?? null,
-    author: input.author ?? null,
-    artist: input.artist ?? null,
-    serialization: input.serialization ?? null,
-    updated_on: input.updated_on ?? null,
-    last_scraped: input.last_scraped ?? now,
-    created_at: now,
-    updated_at: now,
+  const params = {
+    $provider: input.provider,
+    $provider_id: input.provider_id,
+    $title: input.title,
+    $image: input.image ?? null,
+    $status: input.status ?? null,
+    $rating: input.rating ?? null,
+    $chapters: toJsonString(input.chapters),
+    $genres: input.genres ? JSON.stringify(input.genres) : null,
+    $description: input.description ?? null,
+    $author: input.author ?? null,
+    $artist: input.artist ?? null,
+    $serialization: input.serialization ?? null,
+    $updated_on: input.updated_on ?? null,
+    $last_scraped: input.last_scraped ?? now,
+    $created_at: now,
+    $updated_at: now,
   };
 
   const insert = db.prepare(`
@@ -107,8 +107,8 @@ export function upsertProviderManga(input: ProviderMangaInput): ProviderMangaRec
   `);
 
   const transaction = db.transaction(() => {
-    insert.run(payload);
-    update.run(payload);
+    insert.run(params);
+    update.run(params);
   });
 
   transaction();

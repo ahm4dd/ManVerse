@@ -28,21 +28,21 @@ export function upsertLibraryEntry(input: LibraryEntryInput): LibraryEntryRecord
   const now = Math.floor(Date.now() / 1000);
   const createdAt = input.created_at ?? now;
   const updatedAt = input.updated_at ?? now;
-  const payload = {
-    user_id: input.user_id,
-    anilist_id: input.anilist_id,
-    provider: input.provider ?? null,
-    provider_manga_id: input.provider_manga_id ?? null,
-    anilist_entry_id: input.anilist_entry_id ?? null,
-    status: input.status,
-    progress: input.progress ?? 0,
-    score: input.score ?? null,
-    notes: input.notes ?? null,
-    is_favorite: input.is_favorite ?? 0,
-    started_at: input.started_at ?? null,
-    completed_at: input.completed_at ?? null,
-    created_at: createdAt,
-    updated_at: updatedAt,
+  const params = {
+    $user_id: input.user_id,
+    $anilist_id: input.anilist_id,
+    $provider: input.provider ?? null,
+    $provider_manga_id: input.provider_manga_id ?? null,
+    $anilist_entry_id: input.anilist_entry_id ?? null,
+    $status: input.status,
+    $progress: input.progress ?? 0,
+    $score: input.score ?? null,
+    $notes: input.notes ?? null,
+    $is_favorite: input.is_favorite ?? 0,
+    $started_at: input.started_at ?? null,
+    $completed_at: input.completed_at ?? null,
+    $created_at: createdAt,
+    $updated_at: updatedAt,
   };
 
   const insert = db.prepare(`
@@ -96,8 +96,8 @@ export function upsertLibraryEntry(input: LibraryEntryInput): LibraryEntryRecord
   `);
 
   const transaction = db.transaction(() => {
-    insert.run(payload);
-    update.run(payload);
+    insert.run(params);
+    update.run(params);
   });
 
   transaction();

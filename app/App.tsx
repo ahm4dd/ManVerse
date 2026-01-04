@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Home from './pages/Home';
 import Details from './pages/Details';
 import Reader from './pages/Reader';
@@ -25,11 +25,24 @@ interface ReaderViewData {
   anilistId?: string; // for tracking
   providerSeriesId?: string;
   chapterNumber?: number; // for tracking
-  chapters: Chapter[]; // Full list for navigation
+  chapters?: Chapter[]; // Full list for navigation
   seriesTitle?: string;
   seriesImage?: string;
   source?: 'AniList' | 'AsuraScans';
 }
+
+type NavState = {
+  app: true;
+  view: View;
+  data?: any;
+  index: number;
+};
+
+type NavOptions = {
+  replace?: boolean;
+};
+
+const NAV_STATE_KEY = 'manverse_nav_state_v1';
 
 const DEFAULT_FILTERS: FilterState = {
   format: 'All',
@@ -66,6 +79,135 @@ const AppContent: React.FC = () => {
 
   // Animation State
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
+  const historyIndexRef = useRef(0);
+
+  const loadStoredNavState = () => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const raw = sessionStorage.getItem(NAV_STATE_KEY);
+      return raw ? (JSON.parse(raw) as NavState) : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const saveNavState = (state: NavState) => {
+    if (typeof window === 'undefined') return;
+    try {
+      sessionStorage.setItem(NAV_STATE_KEY, JSON.stringify(state));
+    } catch {
+      // Ignore storage errors
+    }
+  };
+
+  const buildUrl = (view: View, data?: any) => {
+    const params = new URLSearchParams();
+    if (view !== 'home') {
+      params.set('view', view);
+    }
+    if (view === 'details' && typeof data === 'string') {
+      params.set('id', data);
+    }
+    if (view === 'reader' && data) {
+      if (data.chapterId) params.set('chapterId', data.chapterId);
+      if (data.seriesId) params.set('seriesId', data.seriesId);
+      if (data.anilistId) params.set('anilistId', data.anilistId);
+      if (data.providerSeriesId) params.set('providerSeriesId', data.providerSeriesId);
+      if (data.chapterNumber !== undefined) params.set('chapterNumber', String(data.chapterNumber));
+      if (data.source) params.set('source', data.source);
+    }
+    const query = params.toString();
+    return query ? `/?${query}` : '/';
+  };
+
+  const parseRouteFromParams = (params: URLSearchParams) => {
+    const rawView = params.get('view') as View | null;
+    const view: View = rawView || 'home';
+    const allowedViews: View[] = [
+      'home',
+      'details',
+      'reader',
+      'login',
+      'library',
+      'recommendations',
+      'recent-reads',
+    ];
+
+    if (!allowedViews.includes(view)) {
+      return { view: 'home' as View };
+    }
+
+    if (view === 'details') {
+      const id = params.get('id');
+      if (!id) return { view: 'home' as View };
+      return { view, data: id };
+    }
+
+    if (view === 'reader') {
+      const chapterId = params.get('chapterId');
+      const seriesId = params.get('seriesId');
+      if (!chapterId || !seriesId) return { view: 'home' as View };
+      const chapterNumberRaw = params.get('chapterNumber');
+      const chapterNumber = chapterNumberRaw ? Number(chapterNumberRaw) : undefined;
+      const sourceParam = params.get('source');
+      const source =
+        sourceParam === 'AniList' || sourceParam === 'AsuraScans' ? sourceParam : undefined;
+      return {
+        view,
+        data: {
+          chapterId,
+          seriesId,
+          anilistId: params.get('anilistId') || undefined,
+          providerSeriesId: params.get('providerSeriesId') || undefined,
+          chapterNumber: Number.isFinite(chapterNumber) ? chapterNumber : undefined,
+          source,
+        },
+      };
+    }
+
+    return { view };
+  };
+
+  const mergeReaderState = (routeState: { view: View; data?: any }, storedState: NavState | null) => {
+    if (routeState.view !== 'reader' || storedState?.view !== 'reader') {
+      return routeState;
+    }
+    const routeData = routeState.data as ReaderViewData | undefined;
+    const storedData = storedState.data as ReaderViewData | undefined;
+    if (!routeData || !storedData) return routeState;
+    if (routeData.chapterId !== storedData.chapterId || routeData.seriesId !== storedData.seriesId) {
+      return routeState;
+    }
+    return {
+      ...routeState,
+      data: {
+        ...storedData,
+        ...routeData,
+      },
+    };
+  };
+
+  const resolveInitialState = (params: URLSearchParams) => {
+    const historyState = window.history.state as NavState | null;
+    if (historyState?.app) {
+      return historyState;
+    }
+    const storedState = loadStoredNavState();
+    const parsed = parseRouteFromParams(params);
+    const merged = mergeReaderState(parsed, storedState);
+    if ((merged.view === 'home' && !merged.data) && storedState?.app) {
+      return {
+        ...storedState,
+        index: 0,
+      } as NavState;
+    }
+    return {
+      app: true,
+      view: merged.view,
+      data: merged.data ?? null,
+      index: 0,
+    } as NavState;
+  };
 
   // Check if filters are active (dirty)
   const isFiltersDirty = 
@@ -116,15 +258,19 @@ const AppContent: React.FC = () => {
     if (token) {
       setIsVerifying(true);
       anilistApi.setToken(token);
-      params.delete('token');
-      params.delete('error');
-      window.history.replaceState(null, '', '/');
     }
 
-    if (authError) {
+    if (token || authError) {
+      params.delete('token');
       params.delete('error');
-      window.history.replaceState(null, '', '/');
     }
+
+    const initialState = resolveInitialState(params);
+    setCurrentView(initialState.view);
+    setViewData(initialState.data ?? null);
+    historyIndexRef.current = initialState.index ?? 0;
+    saveNavState(initialState);
+    window.history.replaceState(initialState, '', buildUrl(initialState.view, initialState.data));
 
     loadUser();
   }, []);
@@ -138,24 +284,80 @@ const AppContent: React.FC = () => {
     return () => window.clearInterval(interval);
   }, [user]);
 
-  // Simple router logic
-  const navigate = (view: View, data?: any) => {
+  const navigate = (view: View, data?: any, options: NavOptions = {}) => {
+    if (!options.replace && view === currentView && data === viewData) {
+      window.scrollTo(0, 0);
+      return;
+    }
     window.scrollTo(0, 0);
-    setViewData(data);
+    const nextIndex = options.replace ? historyIndexRef.current : historyIndexRef.current + 1;
+    const state: NavState = {
+      app: true,
+      view,
+      data,
+      index: nextIndex,
+    };
+    const url = buildUrl(view, data);
+
+    if (options.replace) {
+      window.history.replaceState(state, '', url);
+    } else {
+      window.history.pushState(state, '', url);
+    }
+
+    historyIndexRef.current = nextIndex;
+    saveNavState(state);
+    setViewData(data ?? null);
     setCurrentView(view);
   };
+
+  const handleBack = () => {
+    if (historyIndexRef.current > 0) {
+      window.history.back();
+      return;
+    }
+    navigate('home', undefined, { replace: true });
+  };
+
+  useEffect(() => {
+    const handlePopState = (event: PopStateEvent) => {
+      const state = (event.state as NavState | null)?.app ? (event.state as NavState) : null;
+      const storedState = loadStoredNavState();
+      const fallback = mergeReaderState(
+        parseRouteFromParams(new URLSearchParams(window.location.search)),
+        storedState,
+      );
+      const nextState: NavState = state
+        ? state
+        : ({
+            app: true,
+            view: fallback.view,
+            data: fallback.data,
+            index: Math.max(0, historyIndexRef.current - 1),
+          } as NavState);
+
+      historyIndexRef.current = nextState.index ?? 0;
+      saveNavState(nextState);
+      setCurrentView(nextState.view);
+      setViewData(nextState.data ?? null);
+      window.scrollTo(0, 0);
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   const handleLogout = () => {
     anilistApi.logout();
     setUser(null);
     setShowProfileMenu(false);
-    navigate('home');
+    navigate('home', undefined, { replace: true });
   };
 
   const handleLoginSuccess = async () => {
     await loadUser();
     setShowLoginMenu(false);
-    navigate('home');
+    navigate('home', undefined, { replace: true });
   };
 
   const handleOAuthLogin = async () => {
@@ -175,7 +377,7 @@ const AppContent: React.FC = () => {
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (currentView !== 'home') {
-       navigate('home');
+       navigate('home', undefined, { replace: true });
     }
     // Optional: Open filters automatically on search if you want
     // setShowFilters(true);
@@ -266,7 +468,7 @@ const AppContent: React.FC = () => {
                           value={searchQuery}
                           onChange={(e) => {
                             setSearchQuery(e.target.value);
-                            if (currentView !== 'home') navigate('home');
+                            if (currentView !== 'home') navigate('home', undefined, { replace: true });
                           }}
                         />
                         {/* Search Source Selector (Embedded) */}
@@ -547,7 +749,7 @@ const AppContent: React.FC = () => {
 
           {currentView === 'recent-reads' && (
             <PageTransition key="recent-reads">
-              <RecentReads onNavigate={navigate} onBack={() => navigate('home')} />
+              <RecentReads onNavigate={navigate} onBack={handleBack} />
             </PageTransition>
           )}
 
@@ -556,7 +758,7 @@ const AppContent: React.FC = () => {
               <Details 
                 seriesId={viewData} 
                 onNavigate={navigate} 
-                onBack={() => navigate('home')}
+                onBack={handleBack}
                 user={user}
               />
             </PageTransition>
@@ -566,7 +768,7 @@ const AppContent: React.FC = () => {
             <PageTransition key="reader">
               <Reader 
                 data={viewData as ReaderViewData}
-                onBack={() => navigate('details', viewData.seriesId)} 
+                onBack={handleBack}
                 onNavigate={navigate}
               />
             </PageTransition>
