@@ -1,0 +1,16 @@
+{
+  "name": "manverse-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "main.cjs",
+  "scripts": {
+    "dev": "MANVERSE_DEV=true bun launch.cjs",
+    "start": "bun launch.cjs",
+    "build": "electron-builder --config electron-builder.json"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  }
+}

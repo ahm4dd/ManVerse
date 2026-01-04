@@ -72,6 +72,8 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
   const [anilistSearchLoading, setAnilistSearchLoading] = useState(false);
   const [linkingAniList, setLinkingAniList] = useState(false);
   const [linkedAniList, setLinkedAniList] = useState<{ id: string; title: string; image?: string } | null>(null);
+  const [showAniListRemap, setShowAniListRemap] = useState(false);
+  const [showProviderRemap, setShowProviderRemap] = useState(false);
 
   // Chapter Search State
   const [chapterSearchQuery, setChapterSearchQuery] = useState('');
@@ -101,6 +103,8 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
       setAnilistSearchLoading(false);
       setLinkingAniList(false);
       setLinkedAniList(null);
+      setShowAniListRemap(false);
+      setShowProviderRemap(false);
       try {
         // Determine source based on ID format (Numeric = AniList, String = Provider)
         const source = /^\d+$/.test(seriesId) ? 'AniList' : 'AsuraScans';
@@ -193,7 +197,8 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     }
     setHistoryMatch(match);
 
-    const providerIdFallback =
+      const providerIdFallback =
+      activeProviderSeries?.id ||
       match?.providerSeriesId ||
       (match && !/^\d+$/.test(match.seriesId) ? match.seriesId : undefined) ||
       (data.source === 'AsuraScans' ? data.id : undefined);
@@ -256,19 +261,45 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
 
   const handleSelectProviderSeries = async (id: string) => {
     setProviderLoading(true);
+    const normalizedId = normalizeAsuraInput(id);
     try {
-      const details = await api.getSeriesDetails(id, 'AsuraScans');
+      const details = await api.getSeriesDetails(normalizedId, 'AsuraScans');
       setActiveProviderSeries(details);
       setProviderResults(null); // Clear list to show chapters
+      setShowProviderRemap(false);
 
       if (user && data?.source === 'AniList') {
         try {
-          await api.mapProviderSeries(data.id, id, {
-            title: details.title,
-            image: details.image,
-            status: details.status,
-            rating: details.rating,
+          await api.mapProviderSeries(
+            data.id,
+            normalizedId,
+            {
+              title: details.title,
+              image: details.image,
+              status: details.status,
+              rating: details.rating,
+            },
+            details.providerMangaId,
+          );
+          history.attachAnilistId({
+            providerSeriesId: normalizedId,
+            title: data.title,
+            anilistId: data.id,
           });
+
+          const localMatch = history.getItem({ providerSeriesId: normalizedId, title: data.title });
+          const localProgressRaw = localMatch?.chapterNumber;
+          const localProgress = localProgressRaw
+            ? parseFloat(localProgressRaw.replace(/[^0-9.]/g, ''))
+            : NaN;
+          const remoteProgress = data.mediaListEntry?.progress ?? 0;
+          if (
+            !Number.isNaN(localProgress) &&
+            localProgress > 0 &&
+            localProgress > remoteProgress
+          ) {
+            await anilistApi.updateProgress(parseInt(data.id, 10), Math.floor(localProgress));
+          }
         } catch (e) {
           console.warn('Failed to persist provider mapping', e);
         }
@@ -325,18 +356,30 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     if (!data) return;
 
     const providerId = activeProviderSeries?.id || data.id;
+    const normalizedProviderId =
+      data.source === 'AsuraScans' ? normalizeAsuraInput(providerId) : providerId;
+
+    if (!normalizedProviderId) {
+      notify('Provider series is missing. Load a provider series first.', 'warning');
+      return;
+    }
 
     setLinkingAniList(true);
     try {
-      await api.mapProviderSeries(anilistId, providerId, {
-        title: data.title,
-        image: data.image,
-        status: data.status,
-        rating: data.rating,
-      });
+      await api.mapProviderSeries(
+        anilistId,
+        normalizedProviderId,
+        {
+          title: data.title,
+          image: data.image,
+          status: data.status,
+          rating: data.rating,
+        },
+        activeProviderSeries?.providerMangaId,
+      );
 
       history.attachAnilistId({
-        providerSeriesId: providerId,
+        providerSeriesId: normalizedProviderId,
         title: data.title,
         anilistId,
       });
@@ -357,6 +400,20 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
       }
 
       notify('Linked to AniList successfully.', 'success');
+      const localProgressRaw = historyMatch?.chapterNumber;
+      const localProgress = localProgressRaw
+        ? parseFloat(localProgressRaw.replace(/[^0-9.]/g, ''))
+        : NaN;
+      const remoteProgress = data.mediaListEntry?.progress ?? 0;
+      if (
+        user &&
+        !Number.isNaN(localProgress) &&
+        localProgress > 0 &&
+        localProgress > remoteProgress
+      ) {
+        await anilistApi.updateProgress(parseInt(anilistId, 10), Math.floor(localProgress));
+      }
+      setShowAniListRemap(false);
     } catch (e) {
       console.error(e);
       notify('Failed to link AniList entry.', 'error');
@@ -374,12 +431,47 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     await handleLinkAniList(anilistId);
   };
 
+  const parseChapterNumber = (value: string) => {
+    const parsed = parseFloat(value.replace(/[^0-9.]/g, ''));
+    return Number.isNaN(parsed) ? null : parsed;
+  };
+
+  const getLatestChapter = (chapters: SeriesDetails['chapters']) => {
+    let best = chapters[0];
+    let bestNum = best ? parseChapterNumber(best.number) ?? -Infinity : -Infinity;
+    for (const chapter of chapters) {
+      const num = parseChapterNumber(chapter.number);
+      if (num !== null && num > bestNum) {
+        best = chapter;
+        bestNum = num;
+      }
+    }
+    return best;
+  };
+
+  const startProviderRemap = () => {
+    if (!data) return;
+    setShowProviderRemap(true);
+    setProviderResults([]);
+    setManualQuery('');
+    setManualProviderUrl('');
+    setShowProviderMenu(false);
+  };
+
+  const cancelProviderRemap = () => {
+    setShowProviderRemap(false);
+    setProviderResults(null);
+    setManualQuery('');
+    setManualProviderUrl('');
+  };
+
   const navigateToReader = (chapter: any) => {
     if (!activeProviderSeries) return;
 
     // We preserve the main view seriesId for back navigation.
     // We pass the AniList ID if the main view was from AniList.
     const isAniListSource = data?.source === 'AniList';
+    const linkedAnilistId = !isAniListSource ? linkedAniList?.id : undefined;
     
     // Attempt to parse chapter number
     const chapterNum = parseFloat(chapter.number.replace(/[^0-9.]/g, ''));
@@ -387,7 +479,7 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     onNavigate('reader', {
       chapterId: chapter.id,
       seriesId: seriesId, // Back navigation ID
-      anilistId: isAniListSource ? data?.id : undefined,
+      anilistId: isAniListSource ? data?.id : linkedAnilistId,
       providerSeriesId: activeProviderSeries.id,
       chapterNumber: !isNaN(chapterNum) ? chapterNum : undefined,
       chapters: activeProviderSeries.chapters, // Pass the full chapter list for navigation
@@ -436,7 +528,7 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     if (!data || !activeProviderSeries) return;
     const updated = history.toggleRead({
       seriesId: data.source === 'AniList' ? data.id : activeProviderSeries.id,
-      anilistId: data.source === 'AniList' ? data.id : undefined,
+      anilistId: data.source === 'AniList' ? data.id : linkedAniList?.id,
       providerSeriesId: activeProviderSeries.id,
       seriesTitle: data.title,
       seriesImage: data.image,
@@ -446,6 +538,37 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
       source: activeProviderSeries.source || 'AsuraScans',
     });
     setReadChapterIds(new Set(updated));
+  };
+
+  const handleMarkAllRead = async () => {
+    if (!data || !activeProviderSeries) return;
+    const chapters = activeProviderSeries.chapters;
+    if (chapters.length === 0) return;
+
+    const latest = getLatestChapter(chapters);
+    const allIds = chapters.map((chapter) => chapter.id);
+    setReadChapterIds(new Set(allIds));
+
+    history.add({
+      seriesId: data.source === 'AniList' ? data.id : activeProviderSeries.id,
+      anilistId: data.source === 'AniList' ? data.id : linkedAniList?.id,
+      providerSeriesId: activeProviderSeries.id,
+      seriesTitle: data.title,
+      seriesImage: data.image,
+      chapterId: latest.id,
+      chapterNumber: latest.number,
+      chapterTitle: latest.title,
+      source: activeProviderSeries.source || 'AsuraScans',
+      readChapters: allIds,
+    });
+
+    const anilistId = data.source === 'AniList' ? data.id : linkedAniList?.id;
+    const numericProgress = parseChapterNumber(latest.number);
+    if (user && anilistId && numericProgress !== null) {
+      await anilistApi.updateProgress(parseInt(anilistId, 10), Math.floor(numericProgress));
+    }
+
+    notify('Marked all chapters as read.', 'success');
   };
 
   const handleStatusUpdate = async (status: string) => {
@@ -533,6 +656,8 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
   const isAniListSource = data.source === 'AniList';
   const showChapters = activeProviderSeries && activeProviderSeries.chapters.length > 0;
   const hasRecommendations = data.recommendations && data.recommendations.length > 0;
+  const showProviderSelection = providerResults !== null && (!showChapters || showProviderRemap);
+  const providerList = providerResults ?? [];
 
   const STATUS_LABELS: Record<string, string> = {
       'CURRENT': 'Reading',
@@ -638,15 +763,17 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
                       {resumeChapter && (
                         <button 
                           onClick={() => navigateToReader(resumeChapter)}
-                          className="flex-1 min-w-[160px] px-8 py-4 bg-primary/90 hover:bg-primary text-onPrimary font-bold text-lg rounded-xl shadow-lg shadow-primary/25 transition-all transform hover:scale-[1.02] active:scale-95 whitespace-nowrap"
+                          className="flex-1 min-w-[160px] px-8 py-4 bg-primary/90 hover:bg-primary text-onPrimary font-bold text-lg rounded-xl shadow-lg shadow-primary/25 transition-all transform hover:scale-[1.02] active:scale-95 text-left flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2"
                         >
-                          {historyMatch ? 'Resume' : 'Continue'} Ch {resumeChapter.number}
+                          <span className="truncate">
+                            {historyMatch ? 'Resume' : 'Continue'} Ch {resumeChapter.number}
+                          </span>
                           {historyMatch?.timestamp ? (
-                            <span className="ml-2 text-xs font-semibold text-black/70">
+                            <span className="text-xs font-semibold text-black/70">
                               {formatTimeAgo(historyMatch.timestamp)}
                             </span>
                           ) : data?.mediaListEntry?.progress ? (
-                            <span className="ml-2 text-xs font-semibold text-black/70">AniList</span>
+                            <span className="text-xs font-semibold text-black/70">AniList</span>
                           ) : null}
                         </button>
                       )}
@@ -758,16 +885,24 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
                     </p>
                   </div>
                   {linkedAniList && (
-                    <button
-                      onClick={() => onNavigate('details', linkedAniList.id)}
-                      className="px-4 py-2 rounded-xl bg-white/10 text-white text-sm font-semibold border border-white/10 hover:bg-white/20"
-                    >
-                      Open AniList
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => onNavigate('details', linkedAniList.id)}
+                        className="px-4 py-2 rounded-xl bg-white/10 text-white text-sm font-semibold border border-white/10 hover:bg-white/20"
+                      >
+                        Open AniList
+                      </button>
+                      <button
+                        onClick={() => setShowAniListRemap((prev) => !prev)}
+                        className="px-4 py-2 rounded-xl bg-white/5 text-white text-sm font-semibold border border-white/10 hover:bg-white/15"
+                      >
+                        {showAniListRemap ? 'Cancel' : 'Change Link'}
+                      </button>
+                    </div>
                   )}
                 </div>
 
-                {linkedAniList ? (
+                {linkedAniList && (
                   <div className="flex items-center gap-4 rounded-xl bg-black/30 border border-white/10 p-4">
                     {linkedAniList.image && (
                       <img
@@ -779,9 +914,16 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
                     <div>
                       <div className="text-sm font-bold text-white">{linkedAniList.title}</div>
                       <div className="text-xs text-green-400 font-semibold mt-1">Linked</div>
+                      {showAniListRemap && (
+                        <div className="text-[11px] text-yellow-300 mt-1">
+                          Remapping will replace the current link.
+                        </div>
+                      )}
                     </div>
                   </div>
-                ) : (
+                )}
+
+                {(!linkedAniList || showAniListRemap) && (
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                     <div className="rounded-xl border border-white/10 bg-black/30 p-4 space-y-3">
                       <div>
@@ -916,108 +1058,27 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
                 </div>
               )}
 
-              {/* 1. Show Chapters if available */}
-              {showChapters && (
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 mb-8">
-                    <h3 className="text-2xl font-extrabold text-white flex items-center gap-3 tracking-tight">
-                      Available Chapters
-                      <span className="text-sm font-bold text-gray-400 bg-surfaceHighlight px-2.5 py-0.5 rounded-full border border-white/5">
-                        {activeProviderSeries?.chapters.length}
-                      </span>
-                    </h3>
-                    
-                    {/* Chapter Search Bar */}
-                    <div className="relative w-full sm:w-72 group">
-                      <div className="absolute inset-y-0 left-3.5 flex items-center pointer-events-none text-gray-500 group-focus-within:text-primary transition-colors">
-                        <SearchIcon className="w-5 h-5" />
-                      </div>
-                      <input 
-                        type="text" 
-                        placeholder="Search chapter..." 
-                        className="w-full bg-surfaceHighlight border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-sm font-medium text-white focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
-                        value={chapterSearchQuery}
-                        onChange={(e) => setChapterSearchQuery(e.target.value)}
-                      />
-                    </div>
-                  </div>
-                  
-                  {filteredChapters.length > 0 ? (
-                    <>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                        {filteredChapters.slice(0, visibleChapters).map((chapter, idx) => (
-                          <motion.button
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: idx < 20 ? idx * 0.03 : 0 }}
-                            key={chapter.id}
-                            onClick={() => navigateToReader(chapter)}
-                            className="flex items-center justify-between p-4 rounded-xl bg-surface hover:bg-surfaceHighlight border border-white/5 hover:border-white/10 transition-all group text-left"
-                            whileHover={{ x: 5 }}
-                          >
-                            <div className="flex-1 min-w-0 pr-4">
-                              <h4 className={`font-bold text-[15px] transition-colors truncate ${readChapterIds.has(chapter.id) ? 'text-gray-500' : 'text-gray-200 group-hover:text-primary'}`}>
-                                {chapter.title.toLowerCase().includes('chapter') || chapter.title.toLowerCase().includes('episode') 
-                                  ? chapter.title 
-                                  : `Chapter ${chapter.number}${chapter.title ? ` - ${chapter.title}` : ''}`}
-                                {readChapterIds.has(chapter.id) && (
-                                  <span className="ml-2 text-[9px] uppercase tracking-wider text-gray-500">Read</span>
-                                )}
-                              </h4>
-                              <p className="text-xs font-medium text-gray-500 mt-1.5">{chapter.date}</p>
-                            </div>
-                            <div className="flex items-center gap-2 flex-shrink-0">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleToggleChapterRead(chapter);
-                                }}
-                                className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide border transition-colors ${
-                                  readChapterIds.has(chapter.id)
-                                    ? 'border-emerald-400/40 text-emerald-300 bg-emerald-500/10'
-                                    : 'border-white/10 text-gray-400 hover:text-white hover:border-white/20'
-                                }`}
-                              >
-                                {readChapterIds.has(chapter.id) ? 'Read' : 'Mark'}
-                              </button>
-                              <ChevronLeft className="w-5 h-5 text-gray-600 group-hover:text-primary rotate-180 transition-colors" />
-                            </div>
-                          </motion.button>
-                        ))}
-                      </div>
-                      
-                      {visibleChapters < filteredChapters.length && !chapterSearchQuery && (
-                        <div className="mt-10 flex justify-center">
-                           <button 
-                             onClick={handleLoadMore}
-                             className="px-8 py-3 bg-surfaceHighlight hover:bg-white/10 border border-white/10 rounded-full text-sm font-bold transition-colors"
-                           >
-                             Load More Chapters
-                           </button>
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    <div className="py-16 text-center text-gray-500">
-                      <p className="text-lg">No chapters found matching "{chapterSearchQuery}"</p>
-                    </div>
-                  )}
-                </motion.div>
-              )}
-
-              {/* 2. Show Provider Search Results (Manual Matching) */}
-              {providerResults && !showChapters && (
+              {/* Provider Search Results / Remap */}
+              {showProviderSelection && (
                 <div className="animate-fade-in">
-                  <h3 className="text-2xl font-extrabold text-white mb-3">Select Series from {selectedProvider}</h3>
-                  <p className="text-gray-400 mb-8 font-medium">We found multiple matches. Please select the correct one to load chapters.</p>
+                  <h3 className="text-2xl font-extrabold text-white mb-3">
+                    {showProviderRemap ? 'Remap Provider Series' : `Select Series from ${selectedProvider}`}
+                  </h3>
+                  <p className="text-gray-400 mb-8 font-medium">
+                    {showProviderRemap
+                      ? 'Search for the correct provider series to replace the current mapping.'
+                      : 'We found multiple matches. Please select the correct one to load chapters.'}
+                  </p>
                   
-                  {providerResults.length === 0 ? (
+                  {providerList.length === 0 ? (
                      <div className="p-10 rounded-2xl bg-surfaceHighlight/30 text-center text-gray-400 border border-dashed border-white/10 font-medium">
-                        No matching series found on {selectedProvider} for "{data.title}".
+                        {showProviderRemap
+                          ? 'Start a new search or paste the provider URL below.'
+                          : `No matching series found on ${selectedProvider} for "${data.title}".`}
                      </div>
                   ) : (
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
-                      {providerResults.map((res) => (
+                      {providerList.map((res) => (
                         <div 
                           key={res.id} 
                           onClick={() => handleSelectProviderSeries(res.id)}
@@ -1036,7 +1097,7 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
                     </div>
                   )}
 
-                  {providerResults.length === 0 && (
+                  {providerList.length === 0 && (
                     <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
                       <div className="p-5 rounded-2xl bg-surfaceHighlight/30 border border-white/10">
                         <h4 className="text-sm font-bold text-white mb-2">Search with a different name</h4>
@@ -1082,6 +1143,133 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
                     </div>
                   )}
                 </div>
+              )}
+
+              {/* 1. Show Chapters if available */}
+              {showChapters && (
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 mb-8">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <h3 className="text-2xl font-extrabold text-white flex items-center gap-3 tracking-tight">
+                        Available Chapters
+                        <span className="text-sm font-bold text-gray-400 bg-surfaceHighlight px-2.5 py-0.5 rounded-full border border-white/5">
+                          {activeProviderSeries?.chapters.length}
+                        </span>
+                      </h3>
+                      {isAniListSource && (
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={startProviderRemap}
+                            className="px-3 py-1.5 rounded-lg bg-white/10 text-xs font-semibold text-white border border-white/10 hover:bg-white/20"
+                          >
+                            Change Provider
+                          </button>
+                          {showProviderRemap && (
+                            <button
+                              onClick={cancelProviderRemap}
+                              className="px-3 py-1.5 rounded-lg bg-white/5 text-xs font-semibold text-gray-300 border border-white/10 hover:bg-white/10"
+                            >
+                              Cancel
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full sm:w-auto">
+                      <button
+                        onClick={handleMarkAllRead}
+                        className="px-4 py-2.5 rounded-xl bg-white/10 text-sm font-semibold text-white border border-white/10 hover:bg-white/20"
+                      >
+                        Mark All Read
+                      </button>
+
+                      {/* Chapter Search Bar */}
+                      <div className="relative w-full sm:w-72 group">
+                        <div className="absolute inset-y-0 left-3.5 flex items-center pointer-events-none text-gray-500 group-focus-within:text-primary transition-colors">
+                          <SearchIcon className="w-5 h-5" />
+                        </div>
+                        <input 
+                          type="text" 
+                          placeholder="Search chapter..." 
+                          className="w-full bg-surfaceHighlight border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-sm font-medium text-white focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
+                          value={chapterSearchQuery}
+                          onChange={(e) => setChapterSearchQuery(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {filteredChapters.length > 0 ? (
+                    <>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {filteredChapters.slice(0, visibleChapters).map((chapter, idx) => (
+                          <motion.div
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: idx < 20 ? idx * 0.03 : 0 }}
+                            key={chapter.id}
+                            onClick={() => navigateToReader(chapter)}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter' || event.key === ' ') {
+                                event.preventDefault();
+                                navigateToReader(chapter);
+                              }
+                            }}
+                            role="button"
+                            tabIndex={0}
+                            aria-label={`Open ${chapter.title}`}
+                            className="flex items-center justify-between p-4 rounded-xl bg-surface hover:bg-surfaceHighlight border border-white/5 hover:border-white/10 transition-all group text-left cursor-pointer"
+                            whileHover={{ x: 5 }}
+                          >
+                            <div className="flex-1 min-w-0 pr-4">
+                              <h4 className={`font-bold text-[15px] transition-colors truncate ${readChapterIds.has(chapter.id) ? 'text-gray-500' : 'text-gray-200 group-hover:text-primary'}`}>
+                                {chapter.title.toLowerCase().includes('chapter') || chapter.title.toLowerCase().includes('episode') 
+                                  ? chapter.title 
+                                  : `Chapter ${chapter.number}${chapter.title ? ` - ${chapter.title}` : ''}`}
+                                {readChapterIds.has(chapter.id) && (
+                                  <span className="ml-2 text-[9px] uppercase tracking-wider text-gray-500">Read</span>
+                                )}
+                              </h4>
+                              <p className="text-xs font-medium text-gray-500 mt-1.5">{chapter.date}</p>
+                            </div>
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleToggleChapterRead(chapter);
+                                }}
+                                className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide border transition-colors ${
+                                  readChapterIds.has(chapter.id)
+                                    ? 'border-emerald-400/40 text-emerald-300 bg-emerald-500/10'
+                                    : 'border-white/10 text-gray-400 hover:text-white hover:border-white/20'
+                                }`}
+                              >
+                                {readChapterIds.has(chapter.id) ? 'Read' : 'Mark'}
+                              </button>
+                              <ChevronLeft className="w-5 h-5 text-gray-600 group-hover:text-primary rotate-180 transition-colors" />
+                            </div>
+                          </motion.div>
+                        ))}
+                      </div>
+                      
+                      {visibleChapters < filteredChapters.length && !chapterSearchQuery && (
+                        <div className="mt-10 flex justify-center">
+                           <button 
+                             onClick={handleLoadMore}
+                             className="px-8 py-3 bg-surfaceHighlight hover:bg-white/10 border border-white/10 rounded-full text-sm font-bold transition-colors"
+                           >
+                             Load More Chapters
+                           </button>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="py-16 text-center text-gray-500">
+                      <p className="text-lg">No chapters found matching "{chapterSearchQuery}"</p>
+                    </div>
+                  )}
+                </motion.div>
               )}
 
               {/* 3. Empty State for AniList View (Before clicking search) */}

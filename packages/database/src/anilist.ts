@@ -31,26 +31,26 @@ function toGenresString(genres?: string[] | null): string | null {
 export function upsertAnilistManga(input: AnilistMangaInput): AnilistMangaRecord {
   const db = getDatabase();
   const now = Math.floor(Date.now() / 1000);
-  const payload = {
-    id: input.id,
-    title_romaji: input.title_romaji,
-    title_english: input.title_english ?? null,
-    title_native: input.title_native ?? null,
-    description: input.description ?? null,
-    cover_large: input.cover_large ?? null,
-    cover_medium: input.cover_medium ?? null,
-    banner_image: input.banner_image ?? null,
-    status: input.status ?? null,
-    format: input.format ?? null,
-    chapters: input.chapters ?? null,
-    volumes: input.volumes ?? null,
-    genres: toGenresString(input.genres),
-    average_score: input.average_score ?? null,
-    popularity: input.popularity ?? null,
-    favourites: input.favourites ?? null,
-    updated_at: input.updated_at ?? null,
-    country_of_origin: input.country_of_origin ?? null,
-    cached_at: input.cached_at ?? now,
+  const params = {
+    $id: input.id,
+    $title_romaji: input.title_romaji,
+    $title_english: input.title_english ?? null,
+    $title_native: input.title_native ?? null,
+    $description: input.description ?? null,
+    $cover_large: input.cover_large ?? null,
+    $cover_medium: input.cover_medium ?? null,
+    $banner_image: input.banner_image ?? null,
+    $status: input.status ?? null,
+    $format: input.format ?? null,
+    $chapters: input.chapters ?? null,
+    $volumes: input.volumes ?? null,
+    $genres: toGenresString(input.genres),
+    $average_score: input.average_score ?? null,
+    $popularity: input.popularity ?? null,
+    $favourites: input.favourites ?? null,
+    $updated_at: input.updated_at ?? null,
+    $country_of_origin: input.country_of_origin ?? null,
+    $cached_at: input.cached_at ?? now,
   };
 
   const insert = db.prepare(`
@@ -121,8 +121,8 @@ export function upsertAnilistManga(input: AnilistMangaInput): AnilistMangaRecord
   `);
 
   const transaction = db.transaction(() => {
-    insert.run(payload);
-    update.run(payload);
+    insert.run(params);
+    update.run(params);
   });
 
   transaction();

@@ -36,6 +36,8 @@ type ProviderSeriesDetails = {
   artist?: string;
   serialization?: string;
   updatedOn?: string;
+  providerMangaId?: number;
+  providerId?: string;
 };
 
 type ProviderMapping = {
@@ -105,6 +107,7 @@ function formatSeriesDetails(details: ProviderSeriesDetails): SeriesDetails {
     serialization: details.serialization || 'Unknown',
     updatedOn: details.updatedOn || '',
     chapters,
+    providerMangaId: details.providerMangaId,
     source: 'AsuraScans',
   };
 }
@@ -206,10 +209,26 @@ export const api = {
       status?: string;
       rating?: string;
     },
+    providerMangaId?: number,
   ) => {
+    const payload: Record<string, unknown> = {
+      provider: 'AsuraScans',
+      providerId,
+    };
+
+    if (details) {
+      Object.entries(details).forEach(([key, value]) => {
+        if (typeof value === 'string' && value.trim().length > 0) {
+          payload[key] = value;
+        }
+      });
+    }
+    if (typeof providerMangaId === 'number' && Number.isFinite(providerMangaId)) {
+      payload.providerMangaId = providerMangaId;
+    }
     return apiRequest(`/api/manga/${anilistId}/map`, {
       method: 'POST',
-      body: JSON.stringify({ provider: 'AsuraScans', providerId, ...details }),
+      body: JSON.stringify(payload),
     });
   },
 };

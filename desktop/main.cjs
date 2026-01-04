@@ -1,0 +1,190 @@
+const { app, BrowserWindow, dialog } = require('electron');
+const { spawn } = require('node:child_process');
+const http = require('node:http');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const isDev = process.env.MANVERSE_DEV === 'true' || !app.isPackaged;
+const rootDir = path.resolve(__dirname, '..');
+
+const apiPort = Number(process.env.MANVERSE_API_PORT || 3001);
+const uiPort = Number(process.env.MANVERSE_UI_PORT || 3000);
+const apiUrl = `http://localhost:${apiPort}`;
+const uiUrl = `http://localhost:${uiPort}`;
+
+const bunPath = process.env.BUN_PATH || 'bun';
+let apiProcess = null;
+let uiProcess = null;
+let uiServer = null;
+
+function spawnProcess(command, args, options) {
+  const child = spawn(command, args, options);
+  child.on('error', (error) => {
+    dialog.showErrorBox('ManVerse process error', error.message);
+  });
+  return child;
+}
+
+function startApi() {
+  const apiDir = path.join(rootDir, 'api');
+  const args = ['run', isDev ? 'dev' : 'start'];
+  const env = {
+    ...process.env,
+    PORT: String(apiPort),
+    FRONTEND_URL: uiUrl,
+    FRONTEND_AUTH_PATH: process.env.FRONTEND_AUTH_PATH || '/',
+    CORS_ORIGIN: uiUrl,
+  };
+
+  apiProcess = spawnProcess(bunPath, args, {
+    cwd: apiDir,
+    env,
+    stdio: 'inherit',
+  });
+
+  apiProcess.on('exit', (code) => {
+    if (!app.isQuitting) {
+      dialog.showErrorBox(
+        'ManVerse API stopped',
+        `The API process exited with code ${code ?? 'unknown'}.`,
+      );
+    }
+  });
+}
+
+function startUiDevServer() {
+  if (!isDev) return;
+  if (process.env.MANVERSE_EXTERNAL_UI === 'true') return;
+
+  const appDir = path.join(rootDir, 'app');
+  const args = ['run', 'dev', '--', '--host', '127.0.0.1', '--port', String(uiPort)];
+  const env = {
+    ...process.env,
+    VITE_API_URL: apiUrl,
+  };
+
+  uiProcess = spawnProcess(bunPath, args, {
+    cwd: appDir,
+    env,
+    stdio: 'inherit',
+  });
+}
+
+function startUiStaticServer() {
+  if (isDev) return;
+
+  const distDir = path.join(rootDir, 'app', 'dist');
+  if (!fs.existsSync(distDir)) {
+    dialog.showErrorBox(
+      'Missing build',
+      'Frontend build not found. Run "bun run --cwd app build" first.',
+    );
+    return;
+  }
+
+  const mimeTypes = {
+    '.html': 'text/html; charset=utf-8',
+    '.js': 'text/javascript; charset=utf-8',
+    '.css': 'text/css; charset=utf-8',
+    '.svg': 'image/svg+xml',
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.json': 'application/json; charset=utf-8',
+    '.ico': 'image/x-icon',
+  };
+
+  uiServer = http.createServer((req, res) => {
+    const requestUrl = new URL(req.url || '/', 'http://localhost');
+    let filePath = path.join(distDir, decodeURIComponent(requestUrl.pathname));
+
+    if (filePath.endsWith(path.sep)) {
+      filePath = path.join(filePath, 'index.html');
+    }
+
+    if (!filePath.startsWith(distDir)) {
+      res.writeHead(403);
+      res.end('Forbidden');
+      return;
+    }
+
+    if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
+      filePath = path.join(distDir, 'index.html');
+    }
+
+    const ext = path.extname(filePath).toLowerCase();
+    res.writeHead(200, { 'Content-Type': mimeTypes[ext] || 'application/octet-stream' });
+    res.end(fs.readFileSync(filePath));
+  });
+
+  uiServer.listen(uiPort, '127.0.0.1');
+}
+
+async function waitForUrl(url, timeoutMs = 30000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const response = await fetch(url, { method: 'GET' });
+      if (response.ok) return;
+    } catch {
+      // ignore
+    }
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  }
+  throw new Error(`Timed out waiting for ${url}`);
+}
+
+async function createWindow() {
+  const win = new BrowserWindow({
+    width: 1280,
+    height: 900,
+    backgroundColor: '#0b0b0f',
+    autoHideMenuBar: true,
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      preload: path.join(__dirname, 'preload.cjs'),
+    },
+  });
+
+  if (isDev) {
+    win.webContents.openDevTools({ mode: 'detach' });
+  }
+
+  await win.loadURL(uiUrl);
+}
+
+async function bootstrap() {
+  startApi();
+  startUiDevServer();
+  startUiStaticServer();
+
+  await Promise.all([waitForUrl(`${apiUrl}/health`), waitForUrl(uiUrl)]);
+  await createWindow();
+}
+
+app.on('before-quit', () => {
+  app.isQuitting = true;
+  if (apiProcess) apiProcess.kill();
+  if (uiProcess) uiProcess.kill();
+  if (uiServer) uiServer.close();
+});
+
+app.whenReady().then(() => {
+  bootstrap().catch((error) => {
+    dialog.showErrorBox('ManVerse startup failed', error.message || String(error));
+    app.quit();
+  });
+});
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
+});
+
+app.on('activate', () => {
+  if (BrowserWindow.getAllWindows().length === 0) {
+    void createWindow();
+  }
+});

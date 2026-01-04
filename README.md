@@ -21,6 +21,7 @@ This repo contains:
 - [Provider mapping](#provider-mapping)
 - [Rate limits](#rate-limits)
 - [Troubleshooting](#troubleshooting)
+- [Desktop app (Electron)](#desktop-app-electron)
 - [License](#license)
 
 ## What you get
@@ -233,6 +234,32 @@ ANILIST_RPM=30
 - **Port in use**: change `PORT` in `api/.env`
 - **AniList login fails**: check client ID, secret, and redirect URI
 - **Puppeteer errors**: your OS may need Chromium dependencies (see Puppeteer docs)
+
+## Desktop app (Electron)
+
+The Electron wrapper lives in `desktop/`. It reuses the same frontend and API and starts them automatically.
+
+### Run desktop in dev
+
+```bash
+bun install
+bun run dev:desktop
+```
+
+If you already have the Vite dev server running and don’t want Electron to start it:
+
+```bash
+MANVERSE_EXTERNAL_UI=true bun run dev:desktop
+```
+
+### Build desktop locally
+
+```bash
+bun run --cwd app build
+bun run --cwd desktop build
+```
+
+Note: Packaging is in progress; the current build expects Bun to be available on the host machine.
 
 ## License
 

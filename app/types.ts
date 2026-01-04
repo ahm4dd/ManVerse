@@ -30,6 +30,7 @@ export interface SeriesDetails extends Series {
   serialization: string;
   updatedOn: string;
   chapters: Chapter[];
+  providerMangaId?: number;
   recommendations?: Series[]; // New field
   userListStatus?: 'CURRENT' | 'PLANNING' | 'COMPLETED' | 'DROPPED' | 'PAUSED' | 'REPEATING' | null;
   mediaListEntry?: {
