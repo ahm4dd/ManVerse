@@ -37,6 +37,29 @@ export interface SeriesDetails extends Series {
     progress?: number | null;
     status?: string | null;
   };
+  format?: string | null;
+  countryOfOrigin?: string | null;
+  averageScore?: number | null;
+  meanScore?: number | null;
+  popularity?: number | null;
+  favourites?: number | null;
+  sourceMaterial?: string | null;
+  startDate?: { year?: number | null; month?: number | null; day?: number | null } | null;
+  endDate?: { year?: number | null; month?: number | null; day?: number | null } | null;
+  titles?: {
+    romaji?: string | null;
+    english?: string | null;
+    native?: string | null;
+    userPreferred?: string | null;
+  };
+  synonyms?: string[];
+  tags?: { id: number; name: string; rank: number; isMediaSpoiler?: boolean }[];
+  characters?: { id: number; name: string; role?: string; image?: string }[];
+  staffMembers?: { id: number; name: string; role?: string; image?: string }[];
+  rankings?: { id: number; rank: number; type?: string; allTime?: boolean; context?: string }[];
+  statusDistribution?: { status: string; amount: number }[];
+  scoreDistribution?: { score: number; amount: number }[];
+  siteUrl?: string;
 }
 
 export interface Chapter {

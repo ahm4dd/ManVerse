@@ -39,6 +39,40 @@ const formatTimeAgo = (timestamp?: number) => {
   return `${years}y ago`;
 };
 
+const formatEnumLabel = (value?: string | null) => {
+  if (!value) return 'Unknown';
+  return value
+    .toLowerCase()
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (match) => match.toUpperCase());
+};
+
+const formatCountryLabel = (code?: string | null) => {
+  if (!code) return '';
+  const map: Record<string, string> = {
+    JP: 'Japan',
+    KR: 'South Korea',
+    CN: 'China',
+    TW: 'Taiwan',
+    US: 'United States',
+  };
+  return map[code] ?? code;
+};
+
+const formatFuzzyDate = (date?: { year?: number | null; month?: number | null; day?: number | null } | null) => {
+  if (!date || !date.year) return 'N/A';
+  const month = date.month ? `${date.month}`.padStart(2, '0') : null;
+  const day = date.day ? `${date.day}`.padStart(2, '0') : null;
+  if (month && day) return `${date.year}-${month}-${day}`;
+  if (month) return `${date.year}-${month}`;
+  return `${date.year}`;
+};
+
+const formatNumber = (value?: number | null) => {
+  if (value === null || value === undefined) return 'N/A';
+  return value.toLocaleString();
+};
+
 const parseAniListId = (input: string) => {
   const trimmed = input.trim();
   if (!trimmed) return null;
@@ -1175,6 +1209,26 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
   }
 
   const isAniListSource = data.source === 'AniList';
+  const countryLabel = formatCountryLabel(data.countryOfOrigin);
+  const formatLabel = data.format ? formatEnumLabel(data.format) : 'Unknown';
+  const formatDisplay = countryLabel ? `${formatLabel} (${countryLabel})` : formatLabel;
+  const sourceLabel = data.sourceMaterial ? formatEnumLabel(data.sourceMaterial) : 'Unknown';
+  const statusLabel = formatEnumLabel(data.status);
+  const startDateLabel = formatFuzzyDate(data.startDate ?? null);
+  const averageScoreLabel = data.averageScore !== null && data.averageScore !== undefined ? `${data.averageScore}%` : '—';
+  const meanScoreLabel = data.meanScore !== null && data.meanScore !== undefined ? `${data.meanScore}%` : '—';
+  const popularityLabel = formatNumber(data.popularity);
+  const favouritesLabel = formatNumber(data.favourites);
+  const rankings = (data.rankings ?? []).filter((rank) => rank.allTime).slice(0, 2);
+  const displayTags = (data.tags ?? [])
+    .filter((tag) => !tag.isMediaSpoiler)
+    .sort((a, b) => b.rank - a.rank);
+  const topCharacters = (data.characters ?? []).slice(0, 6);
+  const topStaff = (data.staffMembers ?? []).slice(0, 6);
+  const scoreDistribution = (data.scoreDistribution ?? []).slice().sort((a, b) => a.score - b.score);
+  const statusDistribution = data.statusDistribution ?? [];
+  const statusTotal = statusDistribution.reduce((sum, item) => sum + item.amount, 0);
+  const scoreMax = scoreDistribution.reduce((max, item) => Math.max(max, item.amount), 0);
   const showChapters = activeProviderSeries && activeProviderSeries.chapters.length > 0;
   const hasRecommendations = data.recommendations && data.recommendations.length > 0;
   const showProviderSelection = providerResults !== null && (!showChapters || showProviderRemap);
@@ -1530,6 +1584,241 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
                     </div>
                   </div>
                 )}
+              </motion.div>
+            )}
+
+            {isAniListSource && (
+              <motion.div
+                variants={{ hidden: { y: 20, opacity: 0 }, visible: { y: 0, opacity: 1 } }}
+                className="mt-10 grid grid-cols-1 xl:grid-cols-12 gap-6"
+              >
+                <div className="xl:col-span-4 space-y-6">
+                  <div className="rounded-2xl border border-white/10 bg-surfaceHighlight/30 p-5 space-y-4">
+                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider">Overview</h3>
+                    {rankings.length > 0 && (
+                      <div className="space-y-2">
+                        {rankings.map((rank) => (
+                          <div key={rank.id} className="flex items-center gap-2 text-xs text-gray-300">
+                            <span className="text-primary font-bold">#{rank.rank}</span>
+                            <span>{rank.context || (rank.type === 'POPULAR' ? 'Most Popular All Time' : 'Highest Rated All Time')}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div className="grid grid-cols-2 gap-3 text-[13px]">
+                      <div>
+                        <div className="text-[10px] uppercase text-gray-500">Format</div>
+                        <div className="text-white font-semibold">{formatDisplay}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] uppercase text-gray-500">Status</div>
+                        <div className="text-white font-semibold">{statusLabel}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] uppercase text-gray-500">Start Date</div>
+                        <div className="text-white font-semibold">{startDateLabel}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] uppercase text-gray-500">Average Score</div>
+                        <div className="text-white font-semibold">{averageScoreLabel}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] uppercase text-gray-500">Mean Score</div>
+                        <div className="text-white font-semibold">{meanScoreLabel}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] uppercase text-gray-500">Popularity</div>
+                        <div className="text-white font-semibold">{popularityLabel}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] uppercase text-gray-500">Favorites</div>
+                        <div className="text-white font-semibold">{favouritesLabel}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] uppercase text-gray-500">Source</div>
+                        <div className="text-white font-semibold">{sourceLabel}</div>
+                      </div>
+                      <div className="col-span-2">
+                        <div className="text-[10px] uppercase text-gray-500">Genres</div>
+                        <div className="text-white font-semibold line-clamp-2">{data.genres.join(', ')}</div>
+                      </div>
+                    </div>
+                    {data.mediaListEntry?.status && (
+                      <div className="rounded-xl bg-black/30 border border-white/10 px-3 py-2 text-xs text-gray-300 flex items-center justify-between">
+                        <span>Your Status</span>
+                        <span className="text-primary font-bold">
+                          {STATUS_LABELS[data.mediaListEntry.status] ?? formatEnumLabel(data.mediaListEntry.status)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="rounded-2xl border border-white/10 bg-surfaceHighlight/30 p-5 space-y-3">
+                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider">Titles</h3>
+                    <div className="space-y-2 text-xs text-gray-300">
+                      {data.titles?.romaji && (
+                        <div>
+                          <span className="text-gray-500 uppercase tracking-wide text-[10px]">Romaji</span>
+                          <div className="text-white font-semibold">{data.titles.romaji}</div>
+                        </div>
+                      )}
+                      {data.titles?.english && (
+                        <div>
+                          <span className="text-gray-500 uppercase tracking-wide text-[10px]">English</span>
+                          <div className="text-white font-semibold">{data.titles.english}</div>
+                        </div>
+                      )}
+                      {data.titles?.native && (
+                        <div>
+                          <span className="text-gray-500 uppercase tracking-wide text-[10px]">Native</span>
+                          <div className="text-white font-semibold">{data.titles.native}</div>
+                        </div>
+                      )}
+                      {data.synonyms && data.synonyms.length > 0 && (
+                        <div>
+                          <span className="text-gray-500 uppercase tracking-wide text-[10px]">Synonyms</span>
+                          <div className="text-white font-semibold">{data.synonyms.join(', ')}</div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {displayTags.length > 0 && (
+                    <div className="rounded-2xl border border-white/10 bg-surfaceHighlight/30 p-5 space-y-3">
+                      <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider">Tags</h3>
+                      <div className="space-y-2">
+                        {displayTags.slice(0, 10).map((tag) => (
+                          <div key={tag.id} className="space-y-1">
+                            <div className="flex items-center justify-between text-xs text-gray-300">
+                              <span>{tag.name}</span>
+                              <span className="text-primary font-semibold">{tag.rank}%</span>
+                            </div>
+                            <div className="h-1.5 rounded-full bg-black/40 overflow-hidden">
+                              <div className="h-full bg-primary" style={{ width: `${tag.rank}%` }} />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="xl:col-span-8 space-y-6">
+                  {topCharacters.length > 0 && (
+                    <div className="rounded-2xl border border-white/10 bg-surfaceHighlight/30 p-5 space-y-4">
+                      <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider">Characters</h3>
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                        {topCharacters.map((character) => (
+                          <div key={character.id} className="flex items-center gap-3 rounded-xl bg-black/40 border border-white/10 p-3">
+                            {character.image ? (
+                              <img
+                                src={character.image}
+                                alt={character.name}
+                                className="w-12 h-16 object-cover rounded-lg"
+                              />
+                            ) : (
+                              <div className="w-12 h-16 rounded-lg bg-white/5 flex items-center justify-center text-[10px] text-gray-500">
+                                NO IMAGE
+                              </div>
+                            )}
+                            <div className="min-w-0">
+                              <div className="text-sm font-semibold text-white truncate">{character.name}</div>
+                              {character.role && <div className="text-[11px] text-gray-400">{formatEnumLabel(character.role)}</div>}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {topStaff.length > 0 && (
+                    <div className="rounded-2xl border border-white/10 bg-surfaceHighlight/30 p-5 space-y-4">
+                      <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider">Staff</h3>
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                        {topStaff.map((member) => (
+                          <div key={member.id} className="flex items-center gap-3 rounded-xl bg-black/40 border border-white/10 p-3">
+                            {member.image ? (
+                              <img
+                                src={member.image}
+                                alt={member.name}
+                                className="w-12 h-16 object-cover rounded-lg"
+                              />
+                            ) : (
+                              <div className="w-12 h-16 rounded-lg bg-white/5 flex items-center justify-center text-[10px] text-gray-500">
+                                NO IMAGE
+                              </div>
+                            )}
+                            <div className="min-w-0">
+                              <div className="text-sm font-semibold text-white truncate">{member.name}</div>
+                              {member.role && <div className="text-[11px] text-gray-400">{member.role}</div>}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div className="rounded-2xl border border-white/10 bg-surfaceHighlight/30 p-5 space-y-4">
+                      <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider">Status Distribution</h3>
+                      {statusDistribution.length > 0 ? (
+                        <div className="space-y-3">
+                          {statusDistribution.map((item) => {
+                            const pct = statusTotal > 0 ? Math.round((item.amount / statusTotal) * 100) : 0;
+                            const colorMap: Record<string, string> = {
+                              CURRENT: 'bg-green-500',
+                              PLANNING: 'bg-blue-500',
+                              COMPLETED: 'bg-purple-500',
+                              PAUSED: 'bg-yellow-500',
+                              DROPPED: 'bg-red-500',
+                              REPEATING: 'bg-emerald-500',
+                            };
+                            const barColor = colorMap[item.status] ?? 'bg-gray-500';
+                            return (
+                              <div key={item.status} className="space-y-1">
+                                <div className="flex items-center justify-between text-xs text-gray-300">
+                                  <span>{formatEnumLabel(item.status)}</span>
+                                  <span>{formatNumber(item.amount)}</span>
+                                </div>
+                                <div className="h-2 rounded-full bg-black/40 overflow-hidden">
+                                  <div className={`h-full ${barColor}`} style={{ width: `${pct}%` }} />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="text-sm text-gray-500">No status data available.</div>
+                      )}
+                    </div>
+
+                    <div className="rounded-2xl border border-white/10 bg-surfaceHighlight/30 p-5 space-y-4">
+                      <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider">Score Distribution</h3>
+                      {scoreDistribution.length > 0 ? (
+                        <div className="flex items-end gap-2 h-28">
+                          {scoreDistribution.map((item) => {
+                            const height = scoreMax > 0 ? Math.max(8, (item.amount / scoreMax) * 100) : 0;
+                            const hue = Math.round((item.score / 100) * 120);
+                            return (
+                              <div key={item.score} className="flex flex-col items-center gap-1 flex-1">
+                                <div
+                                  className="w-full rounded-full"
+                                  style={{
+                                    height: `${height}%`,
+                                    backgroundColor: `hsl(${hue}, 70%, 50%)`,
+                                  }}
+                                />
+                                <span className="text-[10px] text-gray-400">{item.score}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="text-sm text-gray-500">No score data available.</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </motion.div>
             )}
           </motion.div>

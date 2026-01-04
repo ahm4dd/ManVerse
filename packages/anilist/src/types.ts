@@ -66,9 +66,32 @@ const NextAiringEpisodeSchema = z.object({
 const StaffEdgeSchema = z.object({
   role: z.string(),
   node: z.object({
+    id: z.number().optional(),
     name: z.object({
       full: z.string(),
     }),
+    image: z
+      .object({
+        large: z.url().optional(),
+        medium: z.url().optional(),
+      })
+      .optional(),
+  }),
+});
+
+const CharacterEdgeSchema = z.object({
+  role: z.string(),
+  node: z.object({
+    id: z.number().optional(),
+    name: z.object({
+      full: z.string(),
+    }),
+    image: z
+      .object({
+        large: z.url().optional(),
+        medium: z.url().optional(),
+      })
+      .optional(),
   }),
 });
 
@@ -91,7 +114,7 @@ export const MediaStatusSchema = z.enum([
   'HIATUS',
 ]);
 
-export const MediaFormatSchema = z.enum(['MANGA', 'NOVEL', 'ONE_SHOT']);
+export const MediaFormatSchema = z.enum(['MANGA', 'NOVEL', 'ONE_SHOT', 'MANHWA', 'MANHUA']);
 
 export const AniListMangaSchema = z.object({
   id: z.number(),
@@ -112,6 +135,7 @@ export const AniListMangaSchema = z.object({
         id: z.number(),
         name: z.string(),
         rank: z.number(), // Relevance 0-100
+        isMediaSpoiler: z.boolean().optional(),
       }),
     )
     .optional(),
@@ -119,9 +143,42 @@ export const AniListMangaSchema = z.object({
   meanScore: z.number().nullable().optional(),
   popularity: z.number(),
   favourites: z.number(),
+  source: z.string().nullable().optional(),
   updatedAt: z.number().nullable().optional(),
   countryOfOrigin: z.string().nullable().optional(),
   nextAiringEpisode: NextAiringEpisodeSchema.nullable().optional(),
+  rankings: z
+    .array(
+      z.object({
+        id: z.number(),
+        rank: z.number(),
+        type: z.string().optional(),
+        allTime: z.boolean().optional(),
+        context: z.string().optional(),
+      }),
+    )
+    .optional(),
+  stats: z
+    .object({
+      scoreDistribution: z.array(
+        z.object({
+          score: z.number(),
+          amount: z.number(),
+        }),
+      ),
+      statusDistribution: z.array(
+        z.object({
+          status: z.string(),
+          amount: z.number(),
+        }),
+      ),
+    })
+    .optional(),
+  characters: z
+    .object({
+      edges: z.array(CharacterEdgeSchema),
+    })
+    .optional(),
   staff: z
     .object({
       edges: z.array(StaffEdgeSchema),

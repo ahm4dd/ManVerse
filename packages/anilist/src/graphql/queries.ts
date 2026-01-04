@@ -100,11 +100,13 @@ export const GET_MANGA_DETAILS = gql`
         id
         name
         rank
+        isMediaSpoiler
       }
       averageScore
       meanScore
       popularity
       favourites
+      source
       updatedAt
       countryOfOrigin
       nextAiringEpisode {
@@ -112,12 +114,49 @@ export const GET_MANGA_DETAILS = gql`
         timeUntilAiring
         episode
       }
+      rankings {
+        id
+        rank
+        type
+        allTime
+        context
+      }
+      stats {
+        scoreDistribution {
+          score
+          amount
+        }
+        statusDistribution {
+          status
+          amount
+        }
+      }
+      characters(perPage: 8, sort: [ROLE, RELEVANCE]) {
+        edges {
+          role
+          node {
+            id
+            name {
+              full
+            }
+            image {
+              large
+              medium
+            }
+          }
+        }
+      }
       staff {
         edges {
           role
           node {
+            id
             name {
               full
+            }
+            image {
+              large
+              medium
             }
           }
         }
