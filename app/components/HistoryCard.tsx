@@ -21,6 +21,7 @@ interface HistoryCardProps {
   onRemove?: (id: string) => void;
   isViewMore?: boolean;
   viewLabel?: string;
+  disableClick?: boolean;
 }
 
 const HistoryCard: React.FC<HistoryCardProps> = ({
@@ -31,12 +32,16 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
   onRemove,
   isViewMore = false,
   viewLabel,
+  disableClick = false,
 }) => {
   if (isViewMore) {
     return (
       <div 
         className="relative h-full w-full rounded-xl border border-white/10 bg-surfaceHighlight/30 flex flex-col items-center justify-center cursor-pointer hover:bg-white/5 transition-colors group aspect-video"
-        onClick={() => onClick && onClick(item)}
+        onClick={() => {
+          if (disableClick) return;
+          onClick && onClick(item);
+        }}
       >
         <div className="w-12 h-12 rounded-full bg-surfaceHighlight flex items-center justify-center mb-3 group-hover:scale-110 transition-transform border border-white/5 shadow-lg">
            <span className="text-gray-400 group-hover:text-white transition-colors">View</span>
@@ -54,7 +59,10 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
     <motion.div 
       layout
       className="relative group cursor-pointer overflow-hidden rounded-xl border border-white/5 bg-surfaceHighlight shadow-lg w-full h-full aspect-video"
-      onClick={() => (onInfo || onClick)?.(item)}
+      onClick={() => {
+        if (disableClick) return;
+        (onInfo || onClick)?.(item);
+      }}
       whileHover={{ scale: 1.01 }}
       transition={{ type: 'spring', stiffness: 300, damping: 20 }}
     >
@@ -83,7 +91,7 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
       )}
 
       {/* Content Overlay */}
-      <div className="absolute inset-0 p-5 flex flex-col justify-end items-start">
+      <div className="absolute inset-0 p-5 flex flex-col justify-end items-start z-10">
         
         {/* Chapter Badge */}
         <div className="mb-2">
@@ -108,14 +116,15 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
 
         {/* Actions */}
         {(onResume || onInfo || onClick) && (
-          <div className="flex items-center gap-2 mb-3">
+          <div className="flex items-center gap-2 mb-3 w-full flex-wrap">
             {(onResume || onClick) && (
               <button
                 onClick={(event) => {
                   event.stopPropagation();
+                  if (disableClick) return;
                   (onResume || onClick)?.(item);
                 }}
-                className="px-3 py-1.5 rounded-full bg-primary text-black text-[11px] font-extrabold uppercase tracking-wide shadow-sm hover:brightness-110"
+                className="px-3 py-1.5 rounded-full bg-primary text-black text-[11px] font-extrabold uppercase tracking-wide shadow-sm hover:brightness-110 flex-1 min-w-0 truncate"
               >
                 Resume {String(item.chapterNumber).toLowerCase().includes('chapter') ? item.chapterNumber : `Ch ${item.chapterNumber}`}
               </button>
@@ -123,9 +132,10 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
             <button
               onClick={(event) => {
                 event.stopPropagation();
+                if (disableClick) return;
                 (onInfo || onClick)?.(item);
               }}
-              className="px-3 py-1.5 rounded-full bg-white/10 text-white text-[11px] font-bold uppercase tracking-wide border border-white/10 hover:bg-white/20"
+              className="px-3 py-1.5 rounded-full bg-white/10 text-white text-[11px] font-bold uppercase tracking-wide border border-white/10 hover:bg-white/20 flex-shrink-0"
             >
               Info
             </button>
@@ -139,7 +149,7 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
       </div>
       
       {/* Hover Play Icon */}
-       <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none">
+       <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none z-0">
           <div className="w-14 h-14 rounded-full bg-primary/90 backdrop-blur-sm border border-white/20 flex items-center justify-center text-black shadow-xl transform scale-75 group-hover:scale-100 transition-transform">
              <ChevronRight className="w-7 h-7 ml-1" />
           </div>

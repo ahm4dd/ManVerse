@@ -60,6 +60,10 @@ const Home: React.FC<HomeProps> = ({
   const recentHistoryRef = useRef<HTMLDivElement>(null);
   const [continueHistoryWidth, setContinueHistoryWidth] = useState(0);
   const [recentHistoryWidth, setRecentHistoryWidth] = useState(0);
+  const [suppressContinueClick, setSuppressContinueClick] = useState(false);
+  const [suppressRecentClick, setSuppressRecentClick] = useState(false);
+  const continueClickTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const recentClickTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Check if filters are active (dirty)
   const isFiltersDirty = 
@@ -95,6 +99,33 @@ const Home: React.FC<HomeProps> = ({
         setRecentHistoryWidth(recentHistoryRef.current.scrollWidth - recentHistoryRef.current.offsetWidth);
      }
   }, [recentReads]);
+
+  useEffect(() => {
+    return () => {
+      if (continueClickTimeout.current) clearTimeout(continueClickTimeout.current);
+      if (recentClickTimeout.current) clearTimeout(recentClickTimeout.current);
+    };
+  }, []);
+
+  const handleContinueDragStart = () => {
+    if (continueClickTimeout.current) clearTimeout(continueClickTimeout.current);
+    setSuppressContinueClick(true);
+  };
+
+  const handleContinueDragEnd = () => {
+    if (continueClickTimeout.current) clearTimeout(continueClickTimeout.current);
+    continueClickTimeout.current = setTimeout(() => setSuppressContinueClick(false), 180);
+  };
+
+  const handleRecentDragStart = () => {
+    if (recentClickTimeout.current) clearTimeout(recentClickTimeout.current);
+    setSuppressRecentClick(true);
+  };
+
+  const handleRecentDragEnd = () => {
+    if (recentClickTimeout.current) clearTimeout(recentClickTimeout.current);
+    recentClickTimeout.current = setTimeout(() => setSuppressRecentClick(false), 180);
+  };
 
   // Trigger global search when global props change (Debounced)
   useEffect(() => {
@@ -351,6 +382,8 @@ const Home: React.FC<HomeProps> = ({
                      <motion.div 
                        drag="x"
                        dragConstraints={{ right: 0, left: -continueHistoryWidth }}
+                       onDragStart={handleContinueDragStart}
+                       onDragEnd={handleContinueDragEnd}
                        className="flex gap-5 w-max py-2" 
                      >
                         {continueReading.map((item) => (
@@ -359,6 +392,7 @@ const Home: React.FC<HomeProps> = ({
                                  item={item} 
                                  onResume={handleContinueClick}
                                  onInfo={handleInfoClick}
+                                 disableClick={suppressContinueClick}
                               />
                           </div>
                         ))}
@@ -367,6 +401,7 @@ const Home: React.FC<HomeProps> = ({
                              isViewMore={true}
                              viewLabel="View Library"
                              onClick={() => onNavigate('library')}
+                             disableClick={suppressContinueClick}
                            />
                         </div>
                      </motion.div>
@@ -398,6 +433,8 @@ const Home: React.FC<HomeProps> = ({
                      <motion.div 
                        drag="x"
                        dragConstraints={{ right: 0, left: -recentHistoryWidth }}
+                       onDragStart={handleRecentDragStart}
+                       onDragEnd={handleRecentDragEnd}
                        className="flex gap-5 w-max py-2" 
                      >
                         {recentReads.map((item) => (
@@ -406,6 +443,7 @@ const Home: React.FC<HomeProps> = ({
                                  item={item} 
                                  onResume={handleContinueClick}
                                  onInfo={handleInfoClick}
+                                 disableClick={suppressRecentClick}
                               />
                           </div>
                         ))}
@@ -414,6 +452,7 @@ const Home: React.FC<HomeProps> = ({
                              isViewMore={true}
                              viewLabel="View Recent Reads"
                              onClick={() => onNavigate('recent-reads')}
+                             disableClick={suppressRecentClick}
                            />
                         </div>
                      </motion.div>
