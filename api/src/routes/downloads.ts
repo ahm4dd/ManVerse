@@ -116,39 +116,6 @@ downloads.openapi(listRoute, (c) => {
   return jsonSuccess(c, { jobs });
 });
 
-const statusRoute = createRoute({
-  method: 'get',
-  path: '/{id}',
-  tags: ['downloads'],
-  middleware: requireAuth,
-  security: [{ BearerAuth: [] }],
-  request: {
-    params: z.object({
-      id: z.string(),
-    }),
-  },
-  responses: {
-    200: {
-      description: 'Download status',
-      content: {
-        'application/json': {
-          schema: DownloadJobResponseSchema,
-        },
-      },
-    },
-    default: errorResponse,
-  },
-});
-
-downloads.openapi(statusRoute, (c) => {
-  const { id } = c.req.valid('param');
-  const job = downloadService.getJob(id);
-  if (!job) {
-    return jsonError(c, { code: 'NOT_FOUND', message: 'Download job not found' }, 404);
-  }
-  return jsonSuccess(c, job);
-});
-
 const cancelRoute = createRoute({
   method: 'delete',
   path: '/{id}',
@@ -293,6 +260,39 @@ downloads.openapi(offlineChaptersRoute, (c) => {
     downloadedAt: chapter.downloaded_at,
   }));
   return jsonSuccess(c, chapters);
+});
+
+const statusRoute = createRoute({
+  method: 'get',
+  path: '/{id}',
+  tags: ['downloads'],
+  middleware: requireAuth,
+  security: [{ BearerAuth: [] }],
+  request: {
+    params: z.object({
+      id: z.string(),
+    }),
+  },
+  responses: {
+    200: {
+      description: 'Download status',
+      content: {
+        'application/json': {
+          schema: DownloadJobResponseSchema,
+        },
+      },
+    },
+    default: errorResponse,
+  },
+});
+
+downloads.openapi(statusRoute, (c) => {
+  const { id } = c.req.valid('param');
+  const job = downloadService.getJob(id);
+  if (!job) {
+    return jsonError(c, { code: 'NOT_FOUND', message: 'Download job not found' }, 404);
+  }
+  return jsonSuccess(c, job);
 });
 
 export default downloads;

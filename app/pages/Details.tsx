@@ -83,6 +83,9 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
   const [downloadedChapterIds, setDownloadedChapterIds] = useState<Set<string>>(new Set());
   const [downloadedChaptersByNumber, setDownloadedChaptersByNumber] = useState<Record<string, number>>({});
   const [queuedChapterIds, setQueuedChapterIds] = useState<Set<string>>(new Set());
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedChapterIds, setSelectedChapterIds] = useState<Set<string>>(new Set());
+  const [batchDownloading, setBatchDownloading] = useState(false);
   const [anilistQuery, setAnilistQuery] = useState('');
   const [anilistResults, setAnilistResults] = useState<Series[]>([]);
   const [anilistManualInput, setAnilistManualInput] = useState('');
@@ -270,6 +273,11 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
   useEffect(() => {
     refreshDownloadedChapters(activeProviderSeries?.providerMangaId);
   }, [activeProviderSeries?.providerMangaId, activeProviderSeries?.chapters?.length]);
+
+  useEffect(() => {
+    setSelectionMode(false);
+    setSelectedChapterIds(new Set());
+  }, [activeProviderSeries?.id]);
 
   const normalizeAsuraInput = (input: string) => {
     const trimmed = input.trim();
@@ -943,6 +951,83 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     window.open(api.getDownloadFileUrl(downloadId), '_blank', 'noopener');
   };
 
+  const toggleChapterSelection = (chapterId: string) => {
+    setSelectedChapterIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(chapterId)) {
+        next.delete(chapterId);
+      } else {
+        next.add(chapterId);
+      }
+      return next;
+    });
+  };
+
+  const handleBatchDownload = async () => {
+    if (!activeProviderSeries || batchDownloading) return;
+    const selectedChapters = activeProviderSeries.chapters.filter((chapter) =>
+      selectedChapterIds.has(chapter.id),
+    );
+    if (selectedChapters.length === 0) {
+      notify('Select chapters to download.', 'error');
+      return;
+    }
+
+    setBatchDownloading(true);
+    let queued = 0;
+    let skipped = 0;
+    let failed = 0;
+
+    for (const chapter of selectedChapters) {
+      if (downloadedChapterIds.has(chapter.id) || queuedChapterIds.has(chapter.id)) {
+        skipped += 1;
+        continue;
+      }
+
+      setQueuedChapterIds((prev) => new Set(prev).add(chapter.id));
+      try {
+        await api.queueDownload({
+          providerSeriesId: activeProviderSeries.id,
+          chapterId: chapter.id,
+          chapterUrl: chapter.url,
+          chapterNumber: chapter.number,
+          chapterTitle: chapter.title,
+          seriesTitle: activeProviderSeries.title,
+          seriesImage: activeProviderSeries.image,
+          seriesStatus: activeProviderSeries.status,
+          seriesRating: activeProviderSeries.rating,
+          seriesChapters: activeProviderSeries.chapters?.length
+            ? String(activeProviderSeries.chapters.length)
+            : undefined,
+        });
+        queued += 1;
+      } catch (error) {
+        failed += 1;
+      } finally {
+        setQueuedChapterIds((prev) => {
+          const next = new Set(prev);
+          next.delete(chapter.id);
+          return next;
+        });
+      }
+    }
+
+    await refreshDownloadedChapters(activeProviderSeries.providerMangaId);
+    setBatchDownloading(false);
+    setSelectedChapterIds(new Set());
+    setSelectionMode(false);
+
+    if (queued > 0) {
+      notify(`Queued ${queued} chapters for download.`, 'success');
+    }
+    if (skipped > 0) {
+      notify(`${skipped} chapters already queued or downloaded.`, 'info');
+    }
+    if (failed > 0) {
+      notify(`Failed to queue ${failed} chapters.`, 'error');
+    }
+  };
+
   const handleStatusUpdate = async (status: string) => {
     if (!user) {
         notify("Login in to proceed to manage your library.", 'error');
@@ -1558,6 +1643,42 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
                       >
                         Mark All Read
                       </button>
+                      <button
+                        onClick={() => {
+                          setSelectionMode((prev) => !prev);
+                          setSelectedChapterIds(new Set());
+                        }}
+                        className={`px-4 py-2.5 rounded-xl text-sm font-semibold border transition-colors ${
+                          selectionMode
+                            ? 'bg-primary text-black border-primary'
+                            : 'bg-white/10 text-white border-white/10 hover:bg-white/20'
+                        }`}
+                      >
+                        {selectionMode ? 'Selecting' : 'Select'}
+                      </button>
+                      {selectionMode && (
+                        <>
+                          <button
+                            onClick={handleBatchDownload}
+                            disabled={batchDownloading || selectedChapterIds.size === 0}
+                            className={`px-4 py-2.5 rounded-xl text-sm font-semibold border transition-colors ${
+                              batchDownloading || selectedChapterIds.size === 0
+                                ? 'bg-white/5 text-gray-500 border-white/10'
+                                : 'bg-primary/90 text-black border-primary hover:brightness-110'
+                            }`}
+                          >
+                            {batchDownloading
+                              ? 'Queueing...'
+                              : `Download Selected (${selectedChapterIds.size})`}
+                          </button>
+                          <button
+                            onClick={() => setSelectedChapterIds(new Set())}
+                            className="px-3 py-2.5 rounded-xl text-xs font-semibold text-gray-300 border border-white/10 hover:bg-white/10"
+                          >
+                            Clear
+                          </button>
+                        </>
+                      )}
 
                       {/* Chapter Search Bar */}
                       <div className="relative w-full sm:w-72 group">
@@ -1582,26 +1703,53 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
                           const isRead = readChapterIds.has(chapter.id);
                           const isDownloaded = downloadedChapterIds.has(chapter.id);
                           const isQueued = queuedChapterIds.has(chapter.id);
+                          const isSelected = selectedChapterIds.has(chapter.id);
                           return (
-                          <motion.div
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: idx < 20 ? idx * 0.03 : 0 }}
-                            key={chapter.id}
-                            onClick={() => navigateToReader(chapter)}
-                            onKeyDown={(event) => {
-                              if (event.key === 'Enter' || event.key === ' ') {
-                                event.preventDefault();
+                            <motion.div
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ delay: idx < 20 ? idx * 0.03 : 0 }}
+                              key={chapter.id}
+                              onClick={() => {
+                                if (selectionMode) {
+                                  toggleChapterSelection(chapter.id);
+                                  return;
+                                }
                                 navigateToReader(chapter);
-                              }
-                            }}
-                            role="button"
-                            tabIndex={0}
-                            aria-label={`Open ${chapter.title}`}
-                            className="flex items-center justify-between p-4 rounded-xl bg-surface hover:bg-surfaceHighlight border border-white/5 hover:border-white/10 transition-all group text-left cursor-pointer"
-                            whileHover={{ x: 5 }}
-                          >
-                            <div className="flex-1 min-w-0 pr-4">
+                              }}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter' || event.key === ' ') {
+                                  event.preventDefault();
+                                  if (selectionMode) {
+                                    toggleChapterSelection(chapter.id);
+                                    return;
+                                  }
+                                  navigateToReader(chapter);
+                                }
+                              }}
+                              role="button"
+                              tabIndex={0}
+                              aria-label={`Open ${chapter.title}`}
+                              className={`flex items-center justify-between p-4 rounded-xl border transition-all group text-left cursor-pointer ${
+                                selectionMode && isSelected
+                                  ? 'bg-primary/10 border-primary/50 ring-1 ring-primary/40'
+                                  : isDownloaded
+                                    ? 'bg-primary/5 hover:bg-primary/10 border-primary/30'
+                                    : 'bg-surface hover:bg-surfaceHighlight border-white/5 hover:border-white/10'
+                              }`}
+                              whileHover={{ x: 5 }}
+                            >
+                              <div className="flex-1 min-w-0 pr-4">
+                              <div className="flex items-center gap-2">
+                                {selectionMode && (
+                                  <div
+                                    className={`h-4 w-4 rounded border ${
+                                      isSelected
+                                        ? 'bg-primary border-primary'
+                                        : 'border-white/20'
+                                    }`}
+                                  />
+                                )}
                               <h4 className={`font-bold text-[15px] transition-colors truncate ${isRead ? 'text-gray-500' : 'text-gray-200 group-hover:text-primary'}`}>
                                 {chapter.title.toLowerCase().includes('chapter') || chapter.title.toLowerCase().includes('episode') 
                                   ? chapter.title 
@@ -1609,7 +1757,11 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
                                 {isRead && (
                                   <span className="ml-2 text-[9px] uppercase tracking-wider text-gray-500">Read</span>
                                 )}
+                                {isDownloaded && (
+                                  <span className="ml-2 text-[9px] uppercase tracking-wider text-primary/80">Downloaded</span>
+                                )}
                               </h4>
+                              </div>
                               <p className="text-xs font-medium text-gray-500 mt-1.5">{chapter.date}</p>
                             </div>
                             <div className="flex items-center gap-2 flex-shrink-0">
