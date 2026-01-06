@@ -55,9 +55,14 @@ export interface DownloadedChapter {
 
 const PROVIDER_CACHE_KEY = 'manverse_provider_cache_v1';
 const MAPPED_CACHE_KEY = 'manverse_provider_mapped_cache_v1';
+const PROVIDER_SEARCH_CACHE_KEY = 'manverse_provider_search_cache_v1';
 const MAX_PROVIDER_CACHE = 20;
+const MAX_PROVIDER_SEARCH_CACHE = 40;
+const PROVIDER_SEARCH_TTL_MS = 10 * 60 * 1000;
 const providerDetailsCache = new Map<string, SeriesDetails>();
 const mappedProviderCache = new Map<string, SeriesDetails>();
+const providerSearchCache = new Map<string, { results: Series[]; expiresAt: number }>();
+const providerSearchInFlight = new Map<string, Promise<Series[]>>();
 
 function loadCacheFromSession(key: string) {
   if (typeof window === 'undefined') return {};
@@ -80,6 +85,29 @@ function persistCacheToSession(key: string, cache: Map<string, SeriesDetails>) {
   }
 }
 
+function loadSearchCacheFromSession() {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = sessionStorage.getItem(PROVIDER_SEARCH_CACHE_KEY);
+    return raw
+      ? (JSON.parse(raw) as Record<string, { results: Series[]; expiresAt: number }>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function persistSearchCacheToSession() {
+  if (typeof window === 'undefined') return;
+  try {
+    const entries = Array.from(providerSearchCache.entries()).slice(-MAX_PROVIDER_SEARCH_CACHE);
+    const payload = Object.fromEntries(entries);
+    sessionStorage.setItem(PROVIDER_SEARCH_CACHE_KEY, JSON.stringify(payload));
+  } catch {
+    // Ignore persistence failures (storage quota, etc)
+  }
+}
+
 function initCache() {
   const provider = loadCacheFromSession(PROVIDER_CACHE_KEY);
   Object.entries(provider).forEach(([id, details]) => {
@@ -88,6 +116,12 @@ function initCache() {
   const mapped = loadCacheFromSession(MAPPED_CACHE_KEY);
   Object.entries(mapped).forEach(([id, details]) => {
     mappedProviderCache.set(id, details);
+  });
+  const search = loadSearchCacheFromSession();
+  Object.entries(search).forEach(([key, entry]) => {
+    if (entry.expiresAt > Date.now()) {
+      providerSearchCache.set(key, entry);
+    }
   });
 }
 
@@ -201,6 +235,25 @@ function formatSeriesDetails(details: ProviderSeriesDetails): SeriesDetails {
   };
 }
 
+function normalizeProviderSearchKey(provider: Source, query: string) {
+  return `${provider}:${query.trim().toLowerCase()}`;
+}
+
+function getCachedProviderSearch(key: string): Series[] | null {
+  const entry = providerSearchCache.get(key);
+  if (!entry) return null;
+  if (entry.expiresAt > Date.now()) {
+    return entry.results;
+  }
+  providerSearchCache.delete(key);
+  return null;
+}
+
+function setCachedProviderSearch(key: string, results: Series[]) {
+  providerSearchCache.set(key, { results, expiresAt: Date.now() + PROVIDER_SEARCH_TTL_MS });
+  persistSearchCacheToSession();
+}
+
 export const api = {
   // Home Page / Discovery
   getPopularSeries: async (): Promise<Series[]> => {
@@ -219,6 +272,55 @@ export const api = {
     }
   },
 
+  searchProviderSeries: async (query: string, provider: Source = 'AsuraScans'): Promise<Series[]> => {
+    const trimmed = query.trim();
+    if (!trimmed) return [];
+    const cacheKey = normalizeProviderSearchKey(provider, trimmed);
+    const cached = getCachedProviderSearch(cacheKey);
+    if (cached) {
+      return cached;
+    }
+    const inFlight = providerSearchInFlight.get(cacheKey);
+    if (inFlight) {
+      return inFlight;
+    }
+
+    const request = apiRequest<ProviderSearchResult>(
+      `/api/manga/search?source=asura&query=${encodeURIComponent(trimmed)}`,
+    )
+      .then((res) => {
+        const results = res.results.map(formatSeriesResult);
+        setCachedProviderSearch(cacheKey, results);
+        return results;
+      })
+      .finally(() => {
+        providerSearchInFlight.delete(cacheKey);
+      });
+
+    providerSearchInFlight.set(cacheKey, request);
+    return request;
+  },
+
+  prefetchProviderSearch: (queries: string[], provider: Source = 'AsuraScans') => {
+    if (typeof window === 'undefined') return;
+    const unique: string[] = [];
+    const seen = new Set<string>();
+    for (const term of queries) {
+      const cleaned = term.trim();
+      if (!cleaned) continue;
+      const key = cleaned.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      unique.push(cleaned);
+    }
+
+    unique.slice(0, 4).forEach((term, index) => {
+      window.setTimeout(() => {
+        api.searchProviderSeries(term, provider).catch(() => {});
+      }, 250 + index * 350);
+    });
+  },
+
   searchSeries: async (query: string, source: Source = 'AniList', filters: SearchFilters = {}): Promise<Series[]> => {
     if (source === 'AniList') {
       try {
@@ -229,10 +331,7 @@ export const api = {
       }
     } else {
       try {
-        const res = await apiRequest<ProviderSearchResult>(
-          `/api/manga/search?source=asura&query=${encodeURIComponent(query)}`,
-        );
-        return res.results.map(formatSeriesResult);
+        return await api.searchProviderSeries(query, source);
       } catch (e) {
         console.warn('Provider search failed', e);
         return [];

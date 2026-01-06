@@ -385,6 +385,14 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     return unique.slice(0, 6);
   };
 
+  useEffect(() => {
+    if (!data || data.source !== 'AniList') return;
+    if (providerLoading || providerResults !== null) return;
+    const terms = buildProviderSearchTerms();
+    if (terms.length === 0) return;
+    api.prefetchProviderSearch(terms, 'AsuraScans');
+  }, [data?.id]);
+
   const searchProviderWithFallback = async (providerId: string, queries: string[]) => {
     if (!data) return;
     if (providerId !== 'AsuraScans') return;
@@ -408,6 +416,7 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
           return;
         }
       }
+      setProviderResults([]);
       notify(`No matches found on ${providerId}.`, 'warning');
     } catch (e) {
       console.error(e);

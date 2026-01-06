@@ -33,7 +33,14 @@ export default class AsuraScansScraper implements IScraper {
 
     const targetUrl = `${this.config.baseUrl}series?page=${pageNumber}&name=${term}`;
 
-    await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: this.config.timeout });
+    await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: this.config.timeout });
+    try {
+      await page.waitForSelector(this.config.selectors.search.resultContainer, {
+        timeout: Math.min(10000, this.config.timeout),
+      });
+    } catch {
+      // If no results render quickly, we still attempt to parse the page.
+    }
     // console.log(`Navigating to ${targetUrl}...`);
 
     // Extract search results using configured selectors
@@ -60,7 +67,11 @@ export default class AsuraScansScraper implements IScraper {
           const spans = secondContentDiv.querySelectorAll(selectors.spans);
 
           const status = statusSpan?.textContent?.trim() || '';
-          const imageUrl = img?.getAttribute('src') || '';
+          const imageUrl =
+            img?.getAttribute('src') ||
+            img?.getAttribute('data-src') ||
+            img?.getAttribute('data-lazy-src') ||
+            '';
           const name = spans[0]?.textContent?.trim() || '';
           const chapters = spans[1]?.textContent?.trim() || '';
 
@@ -135,7 +146,14 @@ export default class AsuraScansScraper implements IScraper {
       return cached;
     }
 
-    await page.goto(url, { waitUntil: 'networkidle2', timeout: this.config.timeout });
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: this.config.timeout });
+    try {
+      await page.waitForSelector(detailSelectors.title, {
+        timeout: Math.min(12000, this.config.timeout),
+      });
+    } catch {
+      // Allow parsing fallback when selector is slow or missing.
+    }
     console.log(`Navigating to ${url} for manhwa details...`);
 
     const baseUrl = this.config.baseUrl;
@@ -148,7 +166,11 @@ export default class AsuraScansScraper implements IScraper {
         const title = breadcrumbTitle?.textContent?.trim() || '';
 
         const imgElement = document.querySelector(selectors.image);
-        const image = imgElement?.getAttribute('src') || '';
+        const image =
+          imgElement?.getAttribute('src') ||
+          imgElement?.getAttribute('data-src') ||
+          imgElement?.getAttribute('data-lazy-src') ||
+          '';
 
         const statusElements = Array.from(document.querySelectorAll(selectors.status));
         const statusLabel = statusElements.find((el) => el.textContent?.includes('Status'));
@@ -262,7 +284,14 @@ export default class AsuraScansScraper implements IScraper {
   }
 
   async checkManhwaChapter(page: Page, url: string): Promise<ManhwaChapter> {
-    await page.goto(url, { waitUntil: 'networkidle2', timeout: this.config.timeout });
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: this.config.timeout });
+    try {
+      await page.waitForSelector(this.config.selectors.chapter.images, {
+        timeout: Math.min(12000, this.config.timeout),
+      });
+    } catch {
+      // Continue even if images are lazy; we can still read data-src attributes.
+    }
     console.log(`Navigating to ${url} for chapter images...`);
 
     // Extract chapter images
@@ -271,7 +300,12 @@ export default class AsuraScansScraper implements IScraper {
       (images, baseUrl) => {
         return images
           .map((img, index) => {
-            const src = img.getAttribute('src');
+            const src =
+              img.getAttribute('src') ||
+              img.getAttribute('data-src') ||
+              img.getAttribute('data-lazy-src') ||
+              img.getAttribute('data-original') ||
+              '';
             const alt = img.getAttribute('alt') || '';
 
             const pageMatch = alt.match(/page\s+(\d+)/i);
