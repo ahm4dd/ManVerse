@@ -344,7 +344,7 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     setSelectedProvider(providerId);
 
     try {
-      const results = await api.searchSeries(query, 'AsuraScans');
+      const results = await api.searchProviderSeries(query, 'AsuraScans');
       setProviderResults(results);
 
       if (results.length === 1) {
@@ -361,29 +361,93 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     }
   };
 
+  const normalizeMatchText = (value: string) =>
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
+
+  const normalizeSearchKey = (value: string) =>
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim() || value.toLowerCase().trim();
+
+  const scoreSearchTerm = (value: string) => {
+    const cleaned = value.trim();
+    if (!cleaned) return 0;
+    const ascii = cleaned.replace(/[^a-z0-9]/gi, '');
+    const asciiRatio = ascii.length / cleaned.length;
+    const length = cleaned.length;
+    let lengthScore = 0.2;
+    if (length >= 6 && length <= 40) lengthScore = 1;
+    else if (length < 6) lengthScore = Math.max(0.2, length / 6);
+    else if (length > 40) lengthScore = Math.max(0.2, 40 / length);
+    const digitBoost = /\d/.test(cleaned) ? 0.05 : 0;
+    return asciiRatio * 0.6 + lengthScore * 0.35 + digitBoost;
+  };
+
   const buildProviderSearchTerms = () => {
     if (!data) return [];
-    const rawTerms = [
-      data.title,
-      data.titles?.romaji,
-      data.titles?.english,
-      data.titles?.native,
-      ...(data.synonyms ?? []),
-    ]
-      .filter(Boolean)
-      .map((term) => term?.trim())
-      .filter((term) => term && term.length >= 3) as string[];
+    const candidates = new Map<string, { term: string; score: number }>();
+    const push = (term: string | undefined | null, base: number) => {
+      if (!term) return;
+      const cleaned = term.trim();
+      if (cleaned.length < 3) return;
+      const key = normalizeSearchKey(cleaned);
+      const score = base + scoreSearchTerm(cleaned);
+      const existing = candidates.get(key);
+      if (!existing || score > existing.score) {
+        candidates.set(key, { term: cleaned, score });
+      }
+    };
 
-    const unique: string[] = [];
-    const seen = new Set<string>();
-    for (const term of rawTerms) {
-      const key = term.toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      unique.push(term);
-    }
-    return unique.slice(0, 6);
+    push(data.titles?.english, 3.2);
+    push(data.title, 3.0);
+    push(data.titles?.romaji, 2.6);
+    push(data.titles?.native, 1.6);
+    (data.synonyms ?? []).forEach((synonym) => push(synonym, 3.4));
+
+    return Array.from(candidates.values())
+      .sort((a, b) => b.score - a.score)
+      .map((entry) => entry.term)
+      .slice(0, 8);
   };
+
+  const scoreTitleMatch = (title: string, terms: string[]) => {
+    const candidate = normalizeMatchText(title);
+    if (!candidate) return 0;
+    let best = 0;
+    for (const term of terms) {
+      const normalized = normalizeMatchText(term);
+      if (!normalized) continue;
+      if (candidate === normalized) {
+        best = Math.max(best, 1);
+        continue;
+      }
+      if (candidate.includes(normalized) || normalized.includes(candidate)) {
+        best = Math.max(best, 0.9);
+        continue;
+      }
+      const candidateTokens = candidate.split(' ');
+      const termTokens = normalized.split(' ');
+      const overlap = candidateTokens.filter((token) => termTokens.includes(token)).length;
+      const overlapRatio = overlap / Math.max(candidateTokens.length, termTokens.length);
+      const prefixBoost =
+        candidate.startsWith(normalized) || normalized.startsWith(candidate) ? 0.08 : 0;
+      const score = Math.min(0.88, 0.5 + overlapRatio * 0.35 + prefixBoost);
+      best = Math.max(best, score);
+    }
+    return best;
+  };
+
+  useEffect(() => {
+    if (!data || data.source !== 'AniList') return;
+    if (providerLoading || providerResults !== null) return;
+    const terms = buildProviderSearchTerms();
+    if (terms.length === 0) return;
+    api.prefetchProviderSearch(terms, 'AsuraScans');
+  }, [data?.id]);
 
   const searchProviderWithFallback = async (providerId: string, queries: string[]) => {
     if (!data) return;
@@ -395,20 +459,53 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     setSelectedProvider(providerId);
 
     try {
-      for (const query of queries) {
-        const results = await api.searchSeries(query, 'AsuraScans');
-        if (results.length > 0) {
-          setProviderResults(results);
-          if (results.length === 1) {
-            handleSelectProviderSeries(results[0].id);
-            notify(`Found match using "${query}".`, 'success');
-          } else if (query !== queries[0]) {
-            notify(`Found matches using "${query}".`, 'success');
+      const uniqueQueries = Array.from(new Set(queries.map((q) => q.trim()).filter(Boolean)));
+      const searchTerms = uniqueQueries.slice(0, 3);
+      const resultsByQuery = await Promise.all(
+        searchTerms.map(async (query) => {
+          try {
+            const results = await api.searchProviderSeries(query, 'AsuraScans');
+            return { query, results };
+          } catch {
+            return { query, results: [] as Series[] };
           }
-          return;
-        }
+        }),
+      );
+
+      const merged = new Map<string, { series: Series; score: number }>();
+      for (const { results } of resultsByQuery) {
+        results.forEach((series) => {
+          const score = scoreTitleMatch(series.title, searchTerms);
+          const existing = merged.get(series.id);
+          if (!existing || score > existing.score) {
+            merged.set(series.id, { series, score });
+          }
+        });
       }
-      notify(`No matches found on ${providerId}.`, 'warning');
+
+      const ranked = Array.from(merged.values())
+        .sort((a, b) => b.score - a.score)
+        .map((entry) => entry.series);
+
+      if (ranked.length === 0) {
+        setProviderResults([]);
+        notify(`No matches found on ${providerId}.`, 'warning');
+        return;
+      }
+
+      setProviderResults(ranked);
+      const bestScore = merged.get(ranked[0].id)?.score ?? 0;
+      const runnerUpScore = ranked.length > 1 ? merged.get(ranked[1].id)?.score ?? 0 : 0;
+      const highConfidence = bestScore >= 0.92 && bestScore - runnerUpScore >= 0.12;
+      if (ranked.length === 1 || highConfidence) {
+        handleSelectProviderSeries(ranked[0].id);
+        notify(`Found match using "${searchTerms[0]}".`, 'success');
+        return;
+      }
+
+      if (searchTerms.length > 1) {
+        notify(`Found matches using ${searchTerms.slice(0, 2).join(' / ')}.`, 'success');
+      }
     } catch (e) {
       console.error(e);
       notify('Failed to search provider.', 'error');
@@ -419,6 +516,31 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
 
   const handleSearchOnProvider = async (providerId: string) => {
     if (!data) return;
+    if (providerId !== 'AsuraScans') return;
+    if (!showProviderRemap) {
+      if (activeProviderSeries?.chapters?.length) {
+        setShowProviderMenu(false);
+        notify('Provider already linked.', 'info');
+        return;
+      }
+      try {
+        setProviderLoading(true);
+        setProviderResults(null);
+        setShowProviderMenu(false);
+        setSelectedProvider(providerId);
+        const mapped = await api.getMappedProviderDetails(data.id, 'AsuraScans');
+        if (mapped?.chapters?.length) {
+          setActiveProviderSeries(mapped);
+          setProviderResults(null);
+          notify('Using existing provider mapping.', 'success');
+          return;
+        }
+      } catch {
+        // No mapping found; continue with search.
+      } finally {
+        setProviderLoading(false);
+      }
+    }
     const terms = buildProviderSearchTerms();
     if (terms.length <= 1) {
       await searchProvider(providerId, data.title);
