@@ -457,10 +457,10 @@ const AppContent: React.FC = () => {
         <nav className="sticky top-0 z-[60] bg-surface/95 backdrop-blur-md border-b border-white/5 shadow-sm">
           <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8">
             {/* Grid Layout: [Left Content] [Search Bar] [Right Actions] */}
-            <div className="grid grid-cols-[1fr_auto_1fr] items-center h-20 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(0,1fr)] items-center gap-3 md:gap-4 py-3 md:py-0 md:h-20">
               
               {/* Left Section: Logo & Links */}
-              <div className="flex items-center gap-6 justify-start min-w-0">
+              <div className="flex items-center gap-4 md:gap-6 justify-start min-w-0 w-full">
                 <div 
                   className="flex items-center gap-3 cursor-pointer group flex-shrink-0"
                   onClick={() => navigate('home')}
@@ -507,7 +507,7 @@ const AppContent: React.FC = () => {
               </div>
 
               {/* Center Section: Search Bar */}
-              <div className="flex items-center justify-center w-full max-w-2xl px-2">
+              <div className="flex items-center justify-center w-full max-w-2xl px-0 md:px-2">
                  <div className="relative w-full flex items-center gap-3">
                     <form onSubmit={handleSearchSubmit} className="relative w-full group flex items-center shadow-lg rounded-xl m-0">
                         <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-gray-500 group-focus-within:text-primary transition-colors z-10">
@@ -516,7 +516,7 @@ const AppContent: React.FC = () => {
                         <input
                           type="text"
                           placeholder={searchSource === 'AniList' ? "Search ManVerse..." : "Search Asura..."}
-                          className="w-full h-12 bg-[#1a1a1a] border border-[#333] hover:border-[#444] rounded-xl pl-12 pr-32 text-base text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary transition-all font-medium"
+                          className="w-full h-12 bg-[#1a1a1a] border border-[#333] hover:border-[#444] rounded-xl pl-12 pr-28 md:pr-32 text-base text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary transition-all font-medium"
                           value={searchQuery}
                           onChange={(e) => {
                             setSearchQuery(e.target.value);
@@ -566,7 +566,7 @@ const AppContent: React.FC = () => {
               </div>
 
               {/* Right Section: Actions & Profile */}
-              <div className="flex items-center gap-3 sm:gap-4 justify-end pl-4 border-l border-white/10 md:border-l-0">
+              <div className="flex items-center gap-3 sm:gap-4 justify-end w-full md:w-auto md:pl-4 md:border-l md:border-white/10">
                 {/* Theme Switcher */}
                   <div className="relative hidden md:block">
                     <button 
