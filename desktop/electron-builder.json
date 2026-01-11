@@ -37,6 +37,10 @@
       "to": "bun"
     },
     {
+      "from": "../node_modules",
+      "to": "node_modules"
+    },
+    {
       "from": "../app/dist",
       "to": "app/dist"
     },
