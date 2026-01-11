@@ -38,7 +38,7 @@
     },
     {
       "from": "runtime/node_modules",
-      "to": "node_modules"
+      "to": "api/node_modules"
     },
     {
       "from": "runtime/app/dist",

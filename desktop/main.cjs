@@ -289,7 +289,7 @@ function startApi() {
     FRONTEND_AUTH_PATH: process.env.FRONTEND_AUTH_PATH || '/',
     CORS_ORIGIN: uiUrl,
     PATH: bunDir + path.delimiter + (process.env.PATH || ''),
-    NODE_PATH: path.join(resourcesDir, 'node_modules'),
+    NODE_PATH: path.join(apiDir, 'node_modules'),
   };
 
   apiProcess = spawnProcess(bunPath, args, {

@@ -1,8 +1,10 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
-const root = resolve(process.cwd());
+const scriptDir = dirname(fileURLToPath(import.meta.url));
+const root = resolve(scriptDir, '..');
 const runtimeDir = resolve(root, 'desktop', 'runtime');
 
 const ensureDir = (path: string) => {
