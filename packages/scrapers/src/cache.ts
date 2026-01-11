@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import { createHash } from 'crypto';
 
 interface CacheEntry<T> {
@@ -12,12 +13,26 @@ export class ScraperCache {
   private cacheDir: string;
 
   constructor(private namespace: string) {
-    // Store cache in user's home directory or project temp
-    // For this project, let's use a local .cache folder in the package or cwd
-    // Using process.cwd()/.cache ensures it persists across runs in this environment
-    this.cacheDir = path.resolve(process.cwd(), '.cache', this.namespace);
-    if (!fs.existsSync(this.cacheDir)) {
-      fs.mkdirSync(this.cacheDir, { recursive: true });
+    // Store cache in a user-writable location (AppImage resources are read-only).
+    const baseDir =
+      process.env.XDG_CACHE_HOME ||
+      process.env.APPDATA ||
+      path.join(os.homedir(), '.cache');
+    this.cacheDir = path.join(baseDir, 'manverse', this.namespace);
+    try {
+      if (!fs.existsSync(this.cacheDir)) {
+        fs.mkdirSync(this.cacheDir, { recursive: true });
+      }
+    } catch {
+      // Fall back to a temp directory if the cache dir cannot be created.
+      this.cacheDir = path.join(os.tmpdir(), 'manverse', this.namespace);
+      try {
+        if (!fs.existsSync(this.cacheDir)) {
+          fs.mkdirSync(this.cacheDir, { recursive: true });
+        }
+      } catch {
+        // Ignore failures; cache writes will fail gracefully.
+      }
     }
   }
 
