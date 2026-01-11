@@ -34,7 +34,7 @@ interface ReaderProps {
     seriesStatus?: string;
   };
   onBack: () => void;
-  onNavigate: (view: string, data?: any) => void;
+  onNavigate: (view: string, data?: any, options?: { replace?: boolean }) => void;
 }
 
 // Custom Gear Icon for Reader settings
@@ -323,6 +323,8 @@ const Reader: React.FC<ReaderProps> = ({
         if (savedPage > 1 && savedPage <= data.length) {
           setCurrentPage(savedPage);
           shouldScrollRef.current = savedPage;
+        } else {
+          shouldScrollRef.current = 1;
         }
 
         // Initialize read chapters set
@@ -590,17 +592,21 @@ const Reader: React.FC<ReaderProps> = ({
 
     const chapterNum = parseFloat(chapter.number.replace(/[^0-9.]/g, ""));
     setShowChapterList(false);
-    onNavigate("reader", {
-      ...readerData,
-      chapters: chapterList,
-      seriesTitle: resolvedTitle ?? readerData.seriesTitle,
-      seriesImage: resolvedImage ?? readerData.seriesImage,
-      source: resolvedSource ?? readerData.source,
-      seriesStatus: resolvedStatus ?? readerData.seriesStatus,
-      providerMangaId: resolvedProviderMangaId ?? readerData.providerMangaId,
-      chapterId: chapter.id,
-      chapterNumber: !isNaN(chapterNum) ? chapterNum : undefined,
-    });
+    onNavigate(
+      "reader",
+      {
+        ...readerData,
+        chapters: chapterList,
+        seriesTitle: resolvedTitle ?? readerData.seriesTitle,
+        seriesImage: resolvedImage ?? readerData.seriesImage,
+        source: resolvedSource ?? readerData.source,
+        seriesStatus: resolvedStatus ?? readerData.seriesStatus,
+        providerMangaId: resolvedProviderMangaId ?? readerData.providerMangaId,
+        chapterId: chapter.id,
+        chapterNumber: !isNaN(chapterNum) ? chapterNum : undefined,
+      },
+      { replace: true },
+    );
   };
 
   const toggleControls = (e: React.MouseEvent) => {
@@ -895,6 +901,11 @@ const Reader: React.FC<ReaderProps> = ({
                               <div className="flex justify-between items-baseline">
                                 <span className={isRead ? "opacity-50" : ""}>
                                   Chapter {ch.number}
+                                  {isCurrent && (
+                                    <span className="ml-2 text-[9px] uppercase tracking-wider text-primary">
+                                      Current
+                                    </span>
+                                  )}
                                   {isRead && (
                                     <span className="ml-2 text-[9px] uppercase tracking-wider text-gray-500">
                                       Read
@@ -902,7 +913,7 @@ const Reader: React.FC<ReaderProps> = ({
                                   )}
                                 </span>
                                 <span className="text-[10px] text-gray-600 ml-2">
-                                  {isCurrent ? "Current" : ch.date}
+                                  {ch.date}
                                 </span>
                               </div>
                             </button>
