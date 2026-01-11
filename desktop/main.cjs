@@ -1,6 +1,6 @@
 const { app, BrowserWindow, dialog } = require('electron');
 const { autoUpdater } = require('electron-updater');
-const { spawn } = require('node:child_process');
+const { spawn, spawnSync } = require('node:child_process');
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -28,6 +28,7 @@ let apiProcess = null;
 let uiProcess = null;
 let uiServer = null;
 let mainWindow = null;
+let isShuttingDown = false;
 
 function spawnProcess(command, args, options) {
   const child = spawn(command, args, options);
@@ -35,6 +36,59 @@ function spawnProcess(command, args, options) {
     dialog.showErrorBox('ManVerse process error', error.message);
   });
   return child;
+}
+
+function killProcessTree(child, label) {
+  if (!child || child.killed || !child.pid) {
+    return Promise.resolve();
+  }
+
+  const pid = child.pid;
+
+  return new Promise((resolve) => {
+    let resolved = false;
+    const finish = () => {
+      if (resolved) return;
+      resolved = true;
+      resolve();
+    };
+
+    const timeout = setTimeout(() => {
+      if (process.platform === 'win32') {
+        spawnSync('taskkill', ['/PID', String(pid), '/T', '/F']);
+      } else {
+        try {
+          process.kill(-pid, 'SIGKILL');
+        } catch {
+          try {
+            process.kill(pid, 'SIGKILL');
+          } catch {
+            // ignore
+          }
+        }
+      }
+      finish();
+    }, 2500);
+
+    child.once('exit', () => {
+      clearTimeout(timeout);
+      finish();
+    });
+
+    try {
+      if (process.platform === 'win32') {
+        child.kill('SIGTERM');
+      } else {
+        process.kill(-pid, 'SIGTERM');
+      }
+    } catch {
+      try {
+        child.kill('SIGTERM');
+      } catch {
+        // ignore
+      }
+    }
+  });
 }
 
 function startApi() {
@@ -55,6 +109,7 @@ function startApi() {
     cwd: apiDir,
     env,
     stdio: 'inherit',
+    detached: process.platform !== 'win32',
   });
 
   apiProcess.on('exit', (code) => {
@@ -82,6 +137,7 @@ function startUiDevServer() {
     cwd: appDir,
     env,
     stdio: 'inherit',
+    detached: process.platform !== 'win32',
   });
 }
 
@@ -221,11 +277,28 @@ async function bootstrap() {
   initAutoUpdates();
 }
 
-app.on('before-quit', () => {
+app.on('before-quit', (event) => {
+  if (isShuttingDown) return;
+  event.preventDefault();
+  isShuttingDown = true;
   app.isQuitting = true;
-  if (apiProcess) apiProcess.kill();
-  if (uiProcess) uiProcess.kill();
-  if (uiServer) uiServer.close();
+
+  const shutdownTasks = [];
+  if (uiServer) {
+    shutdownTasks.push(
+      new Promise((resolve) => {
+        uiServer.close(() => resolve());
+      }),
+    );
+  }
+  shutdownTasks.push(killProcessTree(apiProcess, 'API'));
+  shutdownTasks.push(killProcessTree(uiProcess, 'UI'));
+
+  Promise.all(shutdownTasks)
+    .catch(() => {})
+    .finally(() => {
+      app.exit(0);
+    });
 });
 
 app.whenReady().then(() => {
