@@ -1,6 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { ChevronRight, XIcon } from './Icons';
+import { isProviderSource, providerShortLabel, type Source } from '../lib/providers';
 
 interface HistoryItem {
   id: string;
@@ -9,7 +10,7 @@ interface HistoryItem {
   chapterNumber: string | number;
   chapterId?: string;
   timestamp: number;
-  source: 'AniList' | 'AsuraScans';
+  source: Source;
   progressSource: 'AniList' | 'Local';
 }
 
@@ -107,7 +108,7 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
         
         {/* Source / Subtitle */}
         <div className="text-[10px] font-bold text-gray-300 uppercase tracking-wider opacity-80 mb-3 flex gap-2">
-          <span>{item.source === 'AniList' ? 'AniList' : 'Asura'}</span>
+          <span>{isProviderSource(item.source) ? providerShortLabel(item.source) : 'AniList'}</span>
           <span>•</span>
           <span className={item.progressSource === 'Local' ? 'text-green-400' : 'text-gray-300'}>
             {item.progressSource === 'Local' ? 'Synced' : 'Tracked'}

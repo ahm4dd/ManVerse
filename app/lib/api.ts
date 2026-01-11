@@ -1,8 +1,16 @@
 import { Series, SeriesDetails, ChapterPage } from '../types';
 import { anilistApi, SearchFilters } from './anilist';
 import { API_URL, apiRequest, getStoredToken } from './api-client';
+import {
+  Providers,
+  type ProviderType,
+  type Source,
+  providerApiSource,
+  providerBaseUrl,
+  providerReferer,
+} from './providers';
 
-export type Source = 'AniList' | 'AsuraScans';
+export type { Source };
 
 export type DownloadJobStatus = 'queued' | 'downloading' | 'completed' | 'failed' | 'canceled';
 
@@ -214,7 +222,7 @@ function formatSeriesResult(item: ProviderSearchResult['results'][number]): Seri
     latestChapter: item.chapters || '',
     type: 'Manhwa',
     genres: item.genres,
-    source: 'AsuraScans',
+    source: Providers.AsuraScans,
   };
 }
 
@@ -243,11 +251,11 @@ function formatSeriesDetails(details: ProviderSeriesDetails): SeriesDetails {
     updatedOn: details.updatedOn || '',
     chapters,
     providerMangaId: details.providerMangaId,
-    source: 'AsuraScans',
+    source: Providers.AsuraScans,
   };
 }
 
-function normalizeProviderSearchKey(provider: Source, query: string, page = 1) {
+function normalizeProviderSearchKey(provider: ProviderType, query: string, page = 1) {
   return `${provider}:${query.trim().toLowerCase()}:page:${page}`;
 }
 
@@ -260,7 +268,7 @@ function getCachedProviderSearch(key: string): Series[] | null {
   return null;
 }
 
-function peekProviderSearchCache(query: string, provider: Source, page = 1) {
+function peekProviderSearchCache(query: string, provider: ProviderType, page = 1) {
   const cacheKey = normalizeProviderSearchKey(provider, query, page);
   const entry = providerSearchCache.get(cacheKey);
   if (!entry) return null;
@@ -307,7 +315,9 @@ export const api = {
     } catch (error) {
       console.warn("AniList failed, falling back to provider search", error);
       try {
-        const res = await apiRequest<ProviderSearchResult>('/api/manga/search?source=asura&query=');
+        const res = await apiRequest<ProviderSearchResult>(
+          `/api/manga/search?source=${encodeURIComponent(providerApiSource(Providers.AsuraScans))}&query=`,
+        );
         return res.results.map(formatSeriesResult);
       } catch (e) {
         console.warn('Provider fallback failed', e);
@@ -318,7 +328,7 @@ export const api = {
 
   searchProviderSeries: async (
     query: string,
-    provider: Source = 'AsuraScans',
+    provider: ProviderType = Providers.AsuraScans,
     page = 1,
   ): Promise<Series[]> => {
     const trimmed = query.trim();
@@ -334,7 +344,7 @@ export const api = {
     }
 
     const request = apiRequest<ProviderSearchResult>(
-      `/api/manga/search?source=asura&query=${encodeURIComponent(trimmed)}&page=${page}`,
+      `/api/manga/search?source=${encodeURIComponent(providerApiSource(provider))}&query=${encodeURIComponent(trimmed)}&page=${page}`,
     )
       .then((res) => {
         const results = res.results.map(formatSeriesResult);
@@ -354,7 +364,7 @@ export const api = {
 
   refreshProviderSearch: async (
     query: string,
-    provider: Source = 'AsuraScans',
+    provider: ProviderType = Providers.AsuraScans,
     page = 1,
   ): Promise<Series[]> => {
     const trimmed = query.trim();
@@ -365,7 +375,7 @@ export const api = {
       return inFlight;
     }
     const request = apiRequest<ProviderSearchResult>(
-      `/api/manga/search?source=asura&query=${encodeURIComponent(trimmed)}&page=${page}`,
+      `/api/manga/search?source=${encodeURIComponent(providerApiSource(provider))}&query=${encodeURIComponent(trimmed)}&page=${page}`,
     )
       .then((res) => {
         const results = res.results.map(formatSeriesResult);
@@ -386,7 +396,7 @@ export const api = {
 
   searchProviderSeriesMeta: async (
     query: string,
-    provider: Source = 'AsuraScans',
+    provider: ProviderType = Providers.AsuraScans,
     page = 1,
   ): Promise<ProviderSearchMeta> => {
     const trimmed = query.trim();
@@ -402,7 +412,7 @@ export const api = {
     }
 
     const request = apiRequest<ProviderSearchResult>(
-      `/api/manga/search?source=asura&query=${encodeURIComponent(trimmed)}&page=${page}`,
+      `/api/manga/search?source=${encodeURIComponent(providerApiSource(provider))}&query=${encodeURIComponent(trimmed)}&page=${page}`,
     )
       .then((res) => {
         const results = res.results.map(formatSeriesResult);
@@ -425,7 +435,7 @@ export const api = {
     return request;
   },
 
-  prefetchProviderSearch: (queries: string[], provider: Source = 'AsuraScans') => {
+  prefetchProviderSearch: (queries: string[], provider: ProviderType = Providers.AsuraScans) => {
     if (typeof window === 'undefined') return;
     const unique: string[] = [];
     const seen = new Set<string>();
@@ -485,8 +495,9 @@ export const api = {
       return cached;
     }
 
+    const provider = source === 'AniList' ? Providers.AsuraScans : source;
     const details = await apiRequest<ProviderSeriesDetails>(
-      `/api/manga/provider?provider=AsuraScans&id=${encodeURIComponent(id)}`,
+      `/api/manga/provider?provider=${encodeURIComponent(provider)}&id=${encodeURIComponent(id)}`,
     );
     const formatted = formatSeriesDetails(details);
     providerDetailsCache.set(id, formatted);
@@ -497,10 +508,13 @@ export const api = {
   getChapterImages: async (chapterId: string): Promise<ChapterPage[]> => {
     // Chapters always come from the scraper
     const pages = await apiRequest<Array<{ page: number; img: string; headerForImage?: string }>>(
-      `/api/chapters/${encodeURIComponent(chapterId)}?provider=AsuraScans`,
+      `/api/chapters/${encodeURIComponent(chapterId)}?provider=${encodeURIComponent(Providers.AsuraScans)}`,
     );
     return pages.map((page) => {
-      const referer = page.headerForImage || 'https://asuracomic.net/';
+      const referer =
+        page.headerForImage ||
+        providerReferer(Providers.AsuraScans) ||
+        providerBaseUrl(Providers.AsuraScans);
       const proxyUrl = `${API_URL}/api/chapters/image?url=${encodeURIComponent(page.img)}&referer=${encodeURIComponent(referer)}`;
       return { page: page.page, src: proxyUrl };
     });
@@ -512,14 +526,17 @@ export const api = {
 
   getProviderMappingByProviderId: async (
     providerId: string,
-    provider: Source = 'AsuraScans',
+    provider: ProviderType = Providers.AsuraScans,
   ): Promise<ProviderMapping> => {
     return apiRequest<ProviderMapping>(
       `/api/manga/provider/mapping?provider=${encodeURIComponent(provider)}&id=${encodeURIComponent(providerId)}`,
     );
   },
 
-  getMappedProviderDetails: async (anilistId: string, provider: Source = 'AsuraScans'): Promise<SeriesDetails> => {
+  getMappedProviderDetails: async (
+    anilistId: string,
+    provider: ProviderType = Providers.AsuraScans,
+  ): Promise<SeriesDetails> => {
     const cacheKey = `${provider}:${anilistId}`;
     const cached = mappedProviderCache.get(cacheKey);
     if (cached) {
@@ -544,9 +561,10 @@ export const api = {
       rating?: string;
     },
     providerMangaId?: number,
+    provider: ProviderType = Providers.AsuraScans,
   ) => {
     const payload: Record<string, unknown> = {
-      provider: 'AsuraScans',
+      provider,
       providerId,
     };
 
@@ -564,7 +582,7 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     });
-    mappedProviderCache.delete(`AsuraScans:${anilistId}`);
+    mappedProviderCache.delete(`${provider}:${anilistId}`);
     persistCacheToSession(MAPPED_CACHE_KEY, mappedProviderCache);
     return response;
   },
@@ -586,7 +604,7 @@ export const api = {
     return apiRequest<DownloadJob>('/api/downloads', {
       method: 'POST',
       body: JSON.stringify({
-        provider: 'AsuraScans',
+        provider: Providers.AsuraScans,
         ...payload,
       }),
     });

@@ -9,6 +9,7 @@ import { ChapterPage, Chapter } from "../types";
 import { api } from "../lib/api";
 import { anilistApi } from "../lib/anilist";
 import { history } from "../lib/history";
+import { Providers, type Source, isProviderSource } from "../lib/providers";
 import {
   ChevronLeft,
   ChevronRight,
@@ -30,7 +31,7 @@ interface ReaderProps {
     // Passed for history context
     seriesTitle?: string;
     seriesImage?: string;
-    source?: "AniList" | "AsuraScans";
+    source?: Source;
     seriesStatus?: string;
   };
   onBack: () => void;
@@ -70,9 +71,9 @@ const Reader: React.FC<ReaderProps> = ({
   const [resolvedImage, setResolvedImage] = useState<string | undefined>(
     readerData.seriesImage
   );
-  const [resolvedSource, setResolvedSource] = useState<
-    "AniList" | "AsuraScans" | undefined
-  >(readerData.source);
+  const [resolvedSource, setResolvedSource] = useState<Source | undefined>(
+    readerData.source
+  );
   const [resolvedStatus, setResolvedStatus] = useState<string | undefined>(
     readerData.seriesStatus
   );
@@ -257,24 +258,29 @@ const Reader: React.FC<ReaderProps> = ({
     const loadChapters = async () => {
       try {
         let details = null;
+        const providerSource =
+          readerData.source ?? resolvedSource ?? 'AniList';
+        const provider = isProviderSource(providerSource)
+          ? providerSource
+          : Providers.AsuraScans;
         if (readerData.providerSeriesId) {
           details = await api.getSeriesDetails(
             readerData.providerSeriesId,
-            "AsuraScans"
+            provider
           );
         } else if (readerData.anilistId) {
           details = await api.getMappedProviderDetails(
             readerData.anilistId,
-            "AsuraScans"
+            provider
           );
         } else if (readerData.seriesId) {
           const isAniListId = /^\d+$/.test(readerData.seriesId);
           details = isAniListId
             ? await api.getMappedProviderDetails(
                 readerData.seriesId,
-                "AsuraScans"
+                provider
               )
-            : await api.getSeriesDetails(readerData.seriesId, "AsuraScans");
+            : await api.getSeriesDetails(readerData.seriesId, provider);
         }
 
         if (!cancelled && details) {
@@ -371,7 +377,7 @@ const Reader: React.FC<ReaderProps> = ({
           chapterId: readerData.chapterId,
           chapterNumber: currentChapter.number,
           chapterTitle: currentChapter.title,
-          source: resolvedSource || "AsuraScans",
+          source: resolvedSource || Providers.AsuraScans,
           page: currentPage,
         });
 

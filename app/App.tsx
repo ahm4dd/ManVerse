@@ -15,7 +15,7 @@ import { NotificationProvider } from './lib/notifications';
 import { AnimatePresence, motion } from 'framer-motion';
 import PageTransition from './components/PageTransition';
 import SearchFilters, { FilterState } from './components/SearchFilters';
-import { Source } from './lib/api';
+import { providerOptions, type Source, isProviderSource } from './lib/providers';
 
 type View = 'home' | 'details' | 'reader' | 'login' | 'library' | 'recommendations' | 'recent-reads';
 
@@ -28,7 +28,7 @@ interface ReaderViewData {
   chapters?: Chapter[]; // Full list for navigation
   seriesTitle?: string;
   seriesImage?: string;
-  source?: 'AniList' | 'AsuraScans';
+  source?: Source;
 }
 
 type NavState = {
@@ -195,7 +195,11 @@ const AppContent: React.FC = () => {
       const chapterNumber = chapterNumberRaw ? Number(chapterNumberRaw) : undefined;
       const sourceParam = params.get('source');
       const source =
-        sourceParam === 'AniList' || sourceParam === 'AsuraScans' ? sourceParam : undefined;
+        sourceParam === 'AniList'
+          ? ('AniList' as Source)
+          : providerOptions.some((provider) => provider.id === sourceParam)
+            ? (sourceParam as Source)
+            : undefined;
       return {
         view,
         data: {
@@ -254,7 +258,7 @@ const AppContent: React.FC = () => {
   };
 
   // Check if filters are active (dirty)
-  const defaultSort = searchSource === 'AsuraScans' ? 'Relevance' : 'Popularity';
+  const defaultSort = isProviderSource(searchSource) ? 'Relevance' : 'Popularity';
   const isFiltersDirty = 
     filters.format !== 'All' || 
     filters.status !== 'All' || 
@@ -430,7 +434,7 @@ const AppContent: React.FC = () => {
   };
 
   useEffect(() => {
-    const options = searchSource === 'AsuraScans' ? SORT_OPTIONS_PROVIDER : SORT_OPTIONS_ANILIST;
+    const options = isProviderSource(searchSource) ? SORT_OPTIONS_PROVIDER : SORT_OPTIONS_ANILIST;
     setFilters((prev) => {
       if (options.includes(prev.sort)) return prev;
       return { ...prev, sort: options[0] };
@@ -525,7 +529,7 @@ const AppContent: React.FC = () => {
                         </div>
                         <input
                           type="text"
-                          placeholder={searchSource === 'AniList' ? "Search ManVerse..." : "Search Asura..."}
+                          placeholder={searchSource === 'AniList' ? "Search ManVerse..." : "Search Provider..."}
                           className="w-full h-12 bg-[#1a1a1a] border border-[#333] hover:border-[#444] rounded-xl pl-12 pr-28 md:pr-32 text-base text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary transition-all font-medium"
                           value={searchQuery}
                           onChange={(e) => {
@@ -542,7 +546,11 @@ const AppContent: React.FC = () => {
                                className="bg-transparent text-gray-300 text-xs font-bold px-3 py-1 outline-none cursor-pointer appearance-none hover:text-white"
                              >
                                <option value="AniList">AniList</option>
-                               <option value="AsuraScans">Asura</option>
+                               {providerOptions.map((provider) => (
+                                 <option key={provider.id} value={provider.id}>
+                                   {provider.shortLabel}
+                                 </option>
+                               ))}
                              </select>
                              <ChevronDown className="w-3 h-3 text-gray-500 mr-2 pointer-events-none" />
                            </div>
@@ -830,7 +838,11 @@ const AppContent: React.FC = () => {
                        filters={filters}
                        onChange={setFilters}
                        availableGenres={AVAILABLE_GENRES}
-                       sortOptions={searchSource === 'AsuraScans' ? SORT_OPTIONS_PROVIDER : SORT_OPTIONS_ANILIST}
+                       sortOptions={
+                         isProviderSource(searchSource)
+                           ? SORT_OPTIONS_PROVIDER
+                           : SORT_OPTIONS_ANILIST
+                       }
                        defaultSort={defaultSort}
                      />
                    </div>

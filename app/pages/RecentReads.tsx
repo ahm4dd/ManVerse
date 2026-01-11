@@ -3,13 +3,14 @@ import { history, type HistoryItem } from '../lib/history';
 import { api } from '../lib/api';
 import HistoryCard from '../components/HistoryCard';
 import { ChevronLeft, SearchIcon } from '../components/Icons';
+import { Providers, type Source, isProviderSource, providerOptions, providerShortLabel } from '../lib/providers';
 
 interface RecentReadsProps {
   onNavigate: (view: string, data?: any) => void;
   onBack: () => void;
 }
 
-type SourceFilter = 'All' | 'AniList' | 'AsuraScans';
+type SourceFilter = 'All' | Source;
 type SortOrder = 'Recent' | 'Oldest' | 'Tracked' | 'Local';
 
 interface CardItem {
@@ -21,7 +22,7 @@ interface CardItem {
   chapterNumber: string;
   chapterId?: string;
   timestamp: number;
-  source: 'AniList' | 'AsuraScans';
+  source: Source;
   progressSource: 'AniList' | 'Local';
 }
 
@@ -84,12 +85,13 @@ const RecentReads: React.FC<RecentReadsProps> = ({ onNavigate, onBack }) => {
 
     try {
       let providerDetails = null;
+      const provider = isProviderSource(item.source) ? item.source : Providers.AsuraScans;
       if (item.providerSeriesId) {
-        providerDetails = await api.getSeriesDetails(item.providerSeriesId, 'AsuraScans');
-      } else if (!anilistId && item.source === 'AsuraScans') {
-        providerDetails = await api.getSeriesDetails(item.id, 'AsuraScans');
+        providerDetails = await api.getSeriesDetails(item.providerSeriesId, provider);
+      } else if (!anilistId && isProviderSource(item.source)) {
+        providerDetails = await api.getSeriesDetails(item.id, provider);
       } else if (anilistId) {
-        providerDetails = await api.getMappedProviderDetails(anilistId, 'AsuraScans');
+        providerDetails = await api.getMappedProviderDetails(anilistId, provider);
       }
 
       if (!providerDetails) {
@@ -163,7 +165,11 @@ const RecentReads: React.FC<RecentReadsProps> = ({ onNavigate, onBack }) => {
             >
               <option value="All">All Sources</option>
               <option value="AniList">AniList</option>
-              <option value="AsuraScans">Asura</option>
+              {providerOptions.map((provider) => (
+                <option key={provider.id} value={provider.id}>
+                  {providerShortLabel(provider.id)}
+                </option>
+              ))}
             </select>
 
             <select

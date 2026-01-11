@@ -1,3 +1,4 @@
+import type { Source } from './lib/providers';
 
 export interface Series {
   id: string;
@@ -10,7 +11,7 @@ export interface Series {
   updatedAt?: number; // Added for release date calculation
   type?: string;
   genres?: string[];
-  source?: 'AniList' | 'AsuraScans';
+  source?: Source;
   nextAiringEpisode?: {
     airingAt: number;
     timeUntilAiring: number;
@@ -110,64 +111,4 @@ export interface MediaListCollection {
       progress: number;
     }[];
   }[];
-}
-
-// Scraper Configuration Types
-export interface AsuraScansConfig {
-  name: string;
-  baseUrl: string;
-  timeout: number;
-  retries: number;
-  headers: {
-    referer: string;
-    userAgent: string;
-  };
-  selectors: {
-    search: {
-      resultContainer: string;
-      nextButton: string;
-      previousButton: string;
-      structure: {
-        firstDiv: string;
-        innerDiv: string;
-        scopeDiv: string;
-        statusSpan: string;
-        image: string;
-        spans: string;
-        ratingText: string;
-      };
-      pagination: {
-        nextButtonText: string;
-        previousButtonText: string;
-      };
-    };
-    detail: {
-      title: string;
-      image: string;
-      status: string;
-      rating: string;
-      followers: string;
-      genres: string;
-      chapters: string;
-      gridElements: string;
-      synopsisHeading: string;
-      chapterLink: string;
-      chapterTitle: string;
-      chapterDate: string;
-    };
-    chapter: {
-      images: string;
-    };
-  };
-  output: {
-    directory: string;
-    fileExtension: string;
-    filenamePadding: number;
-  };
-}
-
-export interface IScraper {
-  search(query: string, page?: number): Promise<SearchResult>;
-  getSeriesDetails(id: string): Promise<SeriesDetails>;
-  getChapterImages(chapterId: string): Promise<ChapterPage[]>;
 }
