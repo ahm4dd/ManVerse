@@ -37,7 +37,7 @@ const settingsPath = path.join(app.getPath('userData'), 'settings.json');
 const notifierEventsPath = path.join(app.getPath('userData'), 'notifier-events.json');
 const NOTIFIER_EVENTS_LIMIT = 80;
 const defaultSettings = {
-  notifierEnabled: true,
+  notifierEnabled: false,
   launchOnStartup: false,
   pollBaseMinutes: 60,
   pollJitterMinutes: 15,
@@ -216,7 +216,15 @@ function getSettings() {
   return loadSettings();
 }
 
-function updateSetting(key, value) {
+async function restartApiProcess() {
+  if (apiProcess) {
+    await killProcessTree(apiProcess, 'API');
+    apiProcess = null;
+  }
+  startApi();
+}
+
+async function updateSetting(key, value) {
   const settings = { ...loadSettings(), [key]: value };
   saveSettings(settings);
   if (key === 'launchOnStartup') {
@@ -231,6 +239,13 @@ function updateSetting(key, value) {
     } else {
       clearNotifierTimer();
     }
+  }
+  if (
+    key === 'anilistClientId' ||
+    key === 'anilistClientSecret' ||
+    key === 'anilistRedirectUri'
+  ) {
+    await restartApiProcess();
   }
   return settings;
 }
@@ -592,7 +607,7 @@ app.on('before-quit', (event) => {
 app.whenReady().then(() => {
   app.setAppUserModelId('com.ahm4dd.manverse');
   ipcMain.handle('manverse:getSettings', () => getSettings());
-  ipcMain.handle('manverse:updateSetting', (_event, payload) =>
+  ipcMain.handle('manverse:updateSetting', async (_event, payload) =>
     updateSetting(payload?.key, payload?.value),
   );
   ipcMain.handle('manverse:getUpdateStatus', () => updateStatus);
