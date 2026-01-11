@@ -39,13 +39,15 @@ function spawnProcess(command, args, options) {
 
 function startApi() {
   const apiDir = path.join(rootDir, 'api');
-  const args = ['run', isDev ? 'dev' : 'start'];
+  const args = isDev ? ['run', 'dev'] : ['src/index.ts'];
+  const bunDir = path.dirname(bunPath);
   const env = {
     ...process.env,
     PORT: String(apiPort),
     FRONTEND_URL: uiUrl,
     FRONTEND_AUTH_PATH: process.env.FRONTEND_AUTH_PATH || '/',
     CORS_ORIGIN: uiUrl,
+    PATH: bunDir + path.delimiter + (process.env.PATH || ''),
   };
 
   apiProcess = spawnProcess(bunPath, args, {
