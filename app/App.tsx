@@ -51,8 +51,20 @@ const DEFAULT_FILTERS: FilterState = {
   status: 'All',
   genre: 'All',
   country: 'All',
-  sort: 'Popularity'
+  sort: 'Popularity',
 };
+
+const SORT_OPTIONS_ANILIST = [
+  'Popularity',
+  'Title',
+  'Score',
+  'Progress',
+  'Last Updated',
+  'Last Added',
+  'Start Date',
+];
+
+const SORT_OPTIONS_PROVIDER = ['Relevance', 'Chapters (High)', 'Chapters (Low)', 'Title'];
 
 const AVAILABLE_GENRES = [
   'Action', 'Adventure', 'Comedy', 'Drama', 'Ecchi', 'Fantasy', 'Horror', 'Mahou Shoujo', 'Mecha', 'Music', 'Mystery', 'Psychological', 'Romance', 'Sci-Fi', 'Slice of Life', 'Sports', 'Supernatural', 'Thriller'
@@ -241,12 +253,13 @@ const AppContent: React.FC = () => {
   };
 
   // Check if filters are active (dirty)
+  const defaultSort = searchSource === 'AsuraScans' ? 'Relevance' : 'Popularity';
   const isFiltersDirty = 
     filters.format !== 'All' || 
     filters.status !== 'All' || 
     filters.genre !== 'All' || 
     filters.country !== 'All' || 
-    filters.sort !== 'Popularity';
+    filters.sort !== defaultSort;
 
   // Load User Function (Extracted for re-use)
   const loadUser = async () => {
@@ -414,8 +427,16 @@ const AppContent: React.FC = () => {
     // setShowFilters(true);
   };
 
+  useEffect(() => {
+    const options = searchSource === 'AsuraScans' ? SORT_OPTIONS_PROVIDER : SORT_OPTIONS_ANILIST;
+    setFilters((prev) => {
+      if (options.includes(prev.sort)) return prev;
+      return { ...prev, sort: options[0] };
+    });
+  }, [searchSource]);
+
   const clearFilters = () => {
-    setFilters(DEFAULT_FILTERS);
+    setFilters({ ...DEFAULT_FILTERS, sort: defaultSort });
     setSearchQuery('');
     setShowFilters(false);
   };
@@ -743,6 +764,8 @@ const AppContent: React.FC = () => {
                        filters={filters}
                        onChange={setFilters}
                        availableGenres={AVAILABLE_GENRES}
+                       sortOptions={searchSource === 'AsuraScans' ? SORT_OPTIONS_PROVIDER : SORT_OPTIONS_ANILIST}
+                       defaultSort={defaultSort}
                      />
                    </div>
                 </motion.div>

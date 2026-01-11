@@ -10,6 +10,7 @@ import HistoryCard from '../components/HistoryCard';
 import SidebarList from '../components/SidebarList';
 import { FilterState } from '../components/SearchFilters';
 import { motion } from 'framer-motion';
+import { SortIcon } from '../components/Icons';
 
 interface HomeProps {
   onNavigate: (view: string, data?: any) => void;
@@ -500,10 +501,28 @@ const Home: React.FC<HomeProps> = ({
          sort: apiSort
       };
 
+      const sortProviderResults = (items: Series[]) => {
+        const parseChapter = (value?: string) => {
+          if (!value) return 0;
+          const match = value.match(/(\d+(?:\.\d+)?)/);
+          return match ? Number.parseFloat(match[1]) : 0;
+        };
+        if (globalFilters.sort === 'Chapters (High)') {
+          return [...items].sort((a, b) => parseChapter(b.latestChapter) - parseChapter(a.latestChapter));
+        }
+        if (globalFilters.sort === 'Chapters (Low)') {
+          return [...items].sort((a, b) => parseChapter(a.latestChapter) - parseChapter(b.latestChapter));
+        }
+        if (globalFilters.sort === 'Title') {
+          return [...items].sort((a, b) => a.title.localeCompare(b.title));
+        }
+        return items;
+      };
+
       let results: Series[] = [];
       if (globalSearchSource === 'AsuraScans') {
         const meta = await api.searchProviderSeriesMeta(globalSearchQuery, globalSearchSource, page);
-        results = meta.results;
+        results = sortProviderResults(meta.results);
         setSearchResults(results);
         setSearchHasMore(meta.hasNextPage);
       } else {
@@ -612,7 +631,24 @@ const Home: React.FC<HomeProps> = ({
     const cache = searchPageCacheRef.current[searchContextKey]?.[page];
     setSearchPage(page);
     if (cache) {
-      setSearchResults(cache);
+      if (globalSearchSource === 'AsuraScans') {
+        const parseChapter = (value?: string) => {
+          if (!value) return 0;
+          const match = value.match(/(\d+(?:\.\d+)?)/);
+          return match ? Number.parseFloat(match[1]) : 0;
+        };
+        let nextResults = cache;
+        if (globalFilters.sort === 'Chapters (High)') {
+          nextResults = [...cache].sort((a, b) => parseChapter(b.latestChapter) - parseChapter(a.latestChapter));
+        } else if (globalFilters.sort === 'Chapters (Low)') {
+          nextResults = [...cache].sort((a, b) => parseChapter(a.latestChapter) - parseChapter(b.latestChapter));
+        } else if (globalFilters.sort === 'Title') {
+          nextResults = [...cache].sort((a, b) => a.title.localeCompare(b.title));
+        }
+        setSearchResults(nextResults);
+      } else {
+        setSearchResults(cache);
+      }
       if (globalSearchSource === 'AsuraScans') {
         const meta = api.peekProviderSearchCache(globalSearchQuery, globalSearchSource, page);
         setSearchHasMore(meta?.hasNextPage ?? cache.length > 0);
@@ -834,15 +870,24 @@ const Home: React.FC<HomeProps> = ({
 
                {/* Results Title (Discovery Mode) */}
                {isDiscoveryMode && (
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
                      <div>
                          <h2 className="text-2xl font-bold text-white">
                             {globalSearchQuery ? `Results for "${globalSearchQuery}"` : 'Filtered Results'}
                          </h2>
                          {searchResults.length > 0 && <span className="text-sm text-gray-500">{searchResults.length} matches found</span>}
                      </div>
-                     <div className="text-sm text-gray-500 font-bold px-3 py-1 bg-surfaceHighlight rounded-lg border border-white/5">
-                        Source: {globalSearchSource}
+                     <div className="flex items-center gap-2 flex-wrap">
+                        <button
+                          onClick={toggleFilters}
+                          className="flex items-center gap-2 text-xs font-bold px-3 py-1 rounded-full bg-primary/10 text-primary border border-primary/30 hover:border-primary/60 transition-colors"
+                        >
+                          <SortIcon className="w-3.5 h-3.5" />
+                          Sort: {globalFilters.sort}
+                        </button>
+                        <div className="text-xs text-gray-500 font-bold px-3 py-1 bg-surfaceHighlight rounded-full border border-white/5">
+                          Source: {globalSearchSource}
+                        </div>
                      </div>
                   </div>
                )}

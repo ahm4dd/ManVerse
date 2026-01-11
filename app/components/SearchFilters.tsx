@@ -14,6 +14,8 @@ interface SearchFiltersProps {
   filters: FilterState;
   onChange: (filters: FilterState) => void;
   availableGenres: string[];
+  sortOptions?: string[];
+  defaultSort?: string;
   layout?: 'row' | 'column';
 }
 
@@ -21,9 +23,21 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
   filters, 
   onChange, 
   availableGenres,
+  sortOptions,
+  defaultSort,
   layout = 'row' 
 }) => {
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
+  const resolvedSortOptions = sortOptions ?? [
+    'Popularity',
+    'Title',
+    'Score',
+    'Progress',
+    'Last Updated',
+    'Last Added',
+    'Start Date',
+  ];
+  const resolvedDefaultSort = defaultSort ?? resolvedSortOptions[0] ?? 'Popularity';
 
   // Close dropdowns when clicking outside
   const containerRef = useRef<HTMLDivElement>(null);
@@ -48,7 +62,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
       status: 'All',
       genre: 'All',
       country: 'All',
-      sort: 'Popularity'
+      sort: resolvedDefaultSort,
     });
   };
 
@@ -56,23 +70,34 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
     label, 
     filterKey, 
     options, 
-    value 
+    value,
+    defaultValue = 'All',
+    icon,
+    highlight = false,
   }: { 
     label: string, 
     filterKey: keyof FilterState, 
     options: string[], 
-    value: string 
+    value: string,
+    defaultValue?: string,
+    icon?: React.ReactNode,
+    highlight?: boolean,
   }) => (
     <div className="relative group min-w-[140px] flex-1">
-      <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5 block ml-1">{label}</label>
+      <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5 block ml-1 flex items-center gap-1.5">
+        {icon && <span className="text-primary/80">{icon}</span>}
+        {label}
+      </label>
       <button
         onClick={() => setActiveDropdown(activeDropdown === filterKey ? null : filterKey)}
         className={`w-full flex items-center justify-between px-3 py-2.5 bg-[#1a1a1a] border rounded-lg transition-all ${
           activeDropdown === filterKey 
             ? 'border-primary text-white ring-1 ring-primary/20' 
-            : value !== 'All' && value !== 'Popularity' && value !== 'Last Updated'
-              ? 'border-gray-600 text-white' 
-              : 'border-[#333] text-gray-400 hover:border-gray-500 hover:text-gray-200'
+            : value !== defaultValue
+              ? 'border-gray-600 text-white'
+              : highlight
+                ? 'border-primary/40 text-white hover:border-primary/70'
+                : 'border-[#333] text-gray-400 hover:border-gray-500 hover:text-gray-200'
         }`}
       >
         <span className="text-sm font-medium truncate pr-2">{value}</span>
@@ -123,10 +148,19 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
       
       {/* Filters Container */}
       <div className={
-        layout === 'row' 
+         layout === 'row' 
           ? "flex-1 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 w-full"
           : "flex flex-col gap-4 w-full"
       }>
+         <FilterDropdown 
+            label="Sort" 
+            filterKey="sort" 
+            value={filters.sort} 
+            options={resolvedSortOptions} 
+            defaultValue={resolvedDefaultSort}
+            icon={<SortIcon className="w-3.5 h-3.5" />}
+            highlight={true}
+         />
          <FilterDropdown 
             label="Genres" 
             filterKey="genre" 
@@ -150,12 +184,6 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
             filterKey="country" 
             value={filters.country} 
             options={['All', 'JP', 'KR', 'CN', 'TW']} 
-         />
-         <FilterDropdown 
-            label="Sort By" 
-            filterKey="sort" 
-            value={filters.sort} 
-            options={['Popularity', 'Title', 'Score', 'Progress', 'Last Updated', 'Last Added', 'Start Date']} 
          />
       </div>
 
