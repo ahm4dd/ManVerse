@@ -457,7 +457,7 @@ const AppContent: React.FC = () => {
         <nav className="sticky top-0 z-[60] bg-surface/95 backdrop-blur-md border-b border-white/5 shadow-sm">
           <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8">
             {/* Grid Layout: [Left Content] [Search Bar] [Right Actions] */}
-            <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(0,1fr)] items-center gap-3 md:gap-4 py-3 md:py-0 md:h-20">
+            <div className="grid grid-cols-1 md:grid-cols-[minmax(340px,1.6fr)_minmax(320px,1.4fr)_minmax(240px,1fr)] items-center gap-3 md:gap-4 py-3 md:py-0 md:h-20">
               
               {/* Left Section: Logo & Links */}
               <div className="flex items-center gap-4 md:gap-6 justify-start min-w-0 w-full">
@@ -476,7 +476,7 @@ const AppContent: React.FC = () => {
                 </div>
 
                 {/* Hide navigation links earlier (xl) to prioritize search bar space */}
-                <div className="hidden xl:flex items-center gap-6 flex-shrink-0">
+                <div className="hidden xl:flex items-center gap-5 min-w-0">
                   <button 
                     onClick={() => navigate('home')} 
                     className={`text-[15px] font-bold transition-colors ${currentView === 'home' && !searchQuery ? 'text-white' : 'text-gray-400 hover:text-white'}`}
@@ -645,7 +645,7 @@ const AppContent: React.FC = () => {
                       <img
                         src={user?.avatar?.large || '/logo.png'}
                         alt="avatar"
-                        className="w-10 h-10 rounded-full border border-surfaceHighlight cursor-pointer hover:ring-2 ring-primary transition-all"
+                        className="w-10 h-10 rounded-full border border-surfaceHighlight cursor-pointer hover:ring-2 ring-primary transition-all object-cover aspect-square"
                       />
                       <ChevronDown className="w-4 h-4 text-gray-400 hidden sm:block" />
                     </button>
