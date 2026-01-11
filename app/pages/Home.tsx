@@ -129,6 +129,13 @@ const Home: React.FC<HomeProps> = ({
 
       try {
         const saved = JSON.parse(raw);
+        const canRestoreSearch =
+          saved.searchContextKey === searchContextKey && Array.isArray(saved.searchResults);
+        const canRestoreDefault =
+          !isDiscoveryMode &&
+          (Array.isArray(saved.trending) ||
+            Array.isArray(saved.popular) ||
+            Array.isArray(saved.topRated));
         if (saved?.activeTab) {
           setActiveTab(saved.activeTab);
         }
@@ -141,7 +148,7 @@ const Home: React.FC<HomeProps> = ({
           tabPageCacheRef.current = saved.tabPageCache;
         }
 
-        if (saved.searchContextKey === searchContextKey && Array.isArray(saved.searchResults)) {
+        if (canRestoreSearch) {
           setSearchResults(saved.searchResults);
           setSearchPage(saved.searchPage || 1);
           setSearchHasMore(saved.searchHasMore ?? true);
@@ -160,6 +167,10 @@ const Home: React.FC<HomeProps> = ({
 
         if (!isDiscoveryMode && (!saved.trending || saved.trending.length === 0)) {
           await loadDefaultData();
+        }
+
+        if (canRestoreSearch || canRestoreDefault) {
+          setLoading(false);
         }
       } catch {
         if (!isDiscoveryMode) {
