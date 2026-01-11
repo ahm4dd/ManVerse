@@ -2,14 +2,13 @@ import React, { useState } from 'react';
 import { Providers, providerShortLabel } from '../lib/providers';
 import { anilistApi } from '../lib/anilist';
 import { ChevronRight, StarIcon } from '../components/Icons';
-import AniListSetupModal from '../components/AniListSetupModal';
 
 interface LoginProps {
   onLoginSuccess?: () => void;
+  onOpenSetup?: () => void;
 }
 
-const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
-  const [showSetup, setShowSetup] = useState(false);
+const Login: React.FC<LoginProps> = ({ onLoginSuccess, onOpenSetup }) => {
   const [loginError, setLoginError] = useState<string | null>(null);
 
   const handleLoginClick = async () => {
@@ -19,7 +18,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
       window.location.href = authUrl;
     } catch (error) {
       setLoginError('AniList is not configured yet. Follow the setup guide to continue.');
-      setShowSetup(true);
+      onOpenSetup?.();
     }
   };
   
@@ -101,7 +100,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
                 </p>
               </div>
               <button
-                onClick={() => setShowSetup(true)}
+                onClick={() => onOpenSetup?.()}
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-black text-xs font-bold shadow-lg shadow-primary/30 hover:brightness-110 transition"
               >
                 Open setup guide
@@ -158,7 +157,6 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
 
       </div>
 
-      <AniListSetupModal open={showSetup} onClose={() => setShowSetup(false)} />
     </div>
   );
 };

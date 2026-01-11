@@ -9,6 +9,7 @@ import RecentReads from './pages/RecentReads';
 import Settings from './pages/Settings';
 import { PaletteIcon, BellIcon, SearchIcon, FilterIcon, XIcon, ChevronDown, SyncIcon, MenuIcon } from './components/Icons';
 import NotificationsMenu from './components/NotificationsMenu';
+import AniListSetupModal from './components/AniListSetupModal';
 import { anilistApi } from './lib/anilist';
 import { Chapter } from './types';
 import { ThemeProvider, useTheme, themes } from './lib/theme';
@@ -97,6 +98,7 @@ const AppContent: React.FC = () => {
   const [syncLoading, setSyncLoading] = useState(false);
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
   const [updateBannerDismissed, setUpdateBannerDismissed] = useState(false);
+  const [showSetupGuide, setShowSetupGuide] = useState(false);
 
   // Global Search State
   const [searchQuery, setSearchQuery] = useState('');
@@ -756,6 +758,15 @@ const AppContent: React.FC = () => {
                             Settings
                           </button>
                           <button
+                            onClick={() => {
+                              setShowProfileMenu(false);
+                              setShowSetupGuide(true);
+                            }}
+                            className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
+                          >
+                            AniList setup guide
+                          </button>
+                          <button
                             onClick={handleLogout}
                             className="w-full text-left px-4 py-2.5 text-sm text-red-300 hover:text-red-200 hover:bg-red-500/10 transition-colors"
                           >
@@ -802,6 +813,15 @@ const AppContent: React.FC = () => {
                             className="w-full text-left px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
                           >
                             Try demo account
+                          </button>
+                          <button
+                            onClick={() => {
+                              setShowLoginMenu(false);
+                              setShowSetupGuide(true);
+                            }}
+                            className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
+                          >
+                            AniList setup guide
                           </button>
                           <button
                             onClick={() => {
@@ -901,6 +921,15 @@ const AppContent: React.FC = () => {
                       Library
                     </button>
                   )}
+                  <button
+                    onClick={() => {
+                      setShowNavMenu(false);
+                      setShowSetupGuide(true);
+                    }}
+                    className="w-full rounded-xl px-4 py-3 text-left transition-colors bg-white/5 hover:bg-white/10"
+                  >
+                    AniList setup guide
+                  </button>
                 </div>
               </div>
             </div>
@@ -969,7 +998,7 @@ const AppContent: React.FC = () => {
           )}
           {currentView === 'settings' && (
             <PageTransition key="settings">
-              <Settings onBack={handleBack} />
+              <Settings onBack={handleBack} onOpenSetup={() => setShowSetupGuide(true)} />
             </PageTransition>
           )}
 
@@ -997,11 +1026,16 @@ const AppContent: React.FC = () => {
 
           {currentView === 'login' && (
             <PageTransition key="login">
-              <Login onLoginSuccess={handleLoginSuccess} />
+              <Login
+                onLoginSuccess={handleLoginSuccess}
+                onOpenSetup={() => setShowSetupGuide(true)}
+              />
             </PageTransition>
           )}
         </AnimatePresence>
       </main>
+
+      <AniListSetupModal open={showSetupGuide} onClose={() => setShowSetupGuide(false)} />
     </div>
   );
 };

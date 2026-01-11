@@ -4,9 +4,10 @@ import { desktopApi, type DesktopSettings, type UpdateStatus } from '../lib/desk
 
 interface SettingsProps {
   onBack: () => void;
+  onOpenSetup?: () => void;
 }
 
-const Settings: React.FC<SettingsProps> = ({ onBack }) => {
+const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup }) => {
   const [desktopSettings, setDesktopSettings] = useState<DesktopSettings | null>(null);
   const [loading, setLoading] = useState(false);
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
@@ -73,6 +74,22 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
         </div>
 
         <div className="space-y-6">
+          <div className="bg-surface border border-white/10 rounded-2xl p-6 shadow-xl">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-white">AniList setup</h2>
+                <p className="text-sm text-gray-400 mt-1">
+                  One-time setup to connect your AniList account and sync progress.
+                </p>
+              </div>
+              <button
+                onClick={() => onOpenSetup?.()}
+                className="px-4 py-2 rounded-lg text-xs font-bold bg-primary text-black shadow-lg shadow-primary/30 transition hover:brightness-110"
+              >
+                Open setup guide
+              </button>
+            </div>
+          </div>
           {desktopApi.isAvailable && updateReady && (
             <div className="bg-surface border border-white/10 rounded-2xl p-6 shadow-xl">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
