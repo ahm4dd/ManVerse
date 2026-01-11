@@ -88,13 +88,26 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
               </div>
             )}
 
-            <button
-              onClick={() => setShowSetup(true)}
-              className="inline-flex items-center gap-2 text-xs font-semibold text-primary hover:text-primary/80 transition-colors"
-            >
-              AniList setup guide
-              <ChevronRight className="w-3 h-3" />
-            </button>
+            <div className="rounded-2xl border border-primary/30 bg-primary/10 px-4 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <p className="text-[11px] uppercase tracking-widest text-primary/80 font-semibold">
+                  New here?
+                </p>
+                <p className="text-sm font-semibold text-white">
+                  Set up AniList in about 2 minutes
+                </p>
+                <p className="text-xs text-gray-400 mt-1">
+                  One-time setup to unlock sync, stats, and personalized recommendations.
+                </p>
+              </div>
+              <button
+                onClick={() => setShowSetup(true)}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-black text-xs font-bold shadow-lg shadow-primary/30 hover:brightness-110 transition"
+              >
+                Open setup guide
+                <ChevronRight className="w-3 h-3" />
+              </button>
+            </div>
             
             <p className="text-xs text-gray-500 max-w-[400px] leading-snug text-center sm:text-left">
               The demo account lets you test the dashboard and library features without logging in.

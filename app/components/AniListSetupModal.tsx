@@ -6,10 +6,29 @@ interface AniListSetupModalProps {
   onClose: () => void;
 }
 
+type SetupSection = {
+  title: string;
+  description?: string;
+  bullets?: string[];
+};
+
+type SetupStep = {
+  title: string;
+  description: string;
+  bullets?: string[];
+  code?: string;
+  note?: string;
+  sections?: SetupSection[];
+  cta?: {
+    label: string;
+    href: string;
+  };
+};
+
 const AniListSetupModal: React.FC<AniListSetupModalProps> = ({ open, onClose }) => {
   const [stepIndex, setStepIndex] = useState(0);
 
-  const steps = useMemo(
+  const steps = useMemo<SetupStep[]>(
     () => [
       {
         title: 'Create an AniList application',
@@ -36,10 +55,23 @@ const AniListSetupModal: React.FC<AniListSetupModalProps> = ({ open, onClose }) 
       },
       {
         title: 'Add your credentials',
-        description: 'Copy the client ID and secret into ManVerse.',
-        bullets: [
-          'Dev setup: add them to api/.env and restart the API.',
-          'Desktop app: set them as system environment variables, then relaunch ManVerse.',
+        description: 'Copy the client ID and secret into ManVerse. You only do this once.',
+        note:
+          'An environment variable is just a saved setting your computer gives ManVerse when it starts.',
+        sections: [
+          {
+            title: 'Desktop app (recommended)',
+            description: 'Set once, then relaunch ManVerse.',
+            bullets: [
+              'Windows: Start > search “Environment Variables” > add User variables.',
+              'Linux: create ~/.config/environment.d/manverse.conf with the two lines below, then log out and back in.',
+            ],
+          },
+          {
+            title: 'Developer setup',
+            description: 'If you run the API manually during development.',
+            bullets: ['Add to api/.env and restart with bun run dev:api.'],
+          },
         ],
         code: 'ANILIST_CLIENT_ID=...\nANILIST_CLIENT_SECRET=...',
       },
@@ -87,12 +119,41 @@ const AniListSetupModal: React.FC<AniListSetupModalProps> = ({ open, onClose }) 
             <p className="text-sm text-gray-400 mt-2">{step.description}</p>
           </div>
 
+          {step.note && (
+            <div className="rounded-xl border border-white/10 bg-surfaceHighlight/40 px-4 py-3 text-xs text-gray-300">
+              {step.note}
+            </div>
+          )}
+
           {step.bullets && (
             <ul className="space-y-2 text-sm text-gray-300 list-disc list-inside">
               {step.bullets.map((item) => (
                 <li key={item}>{item}</li>
               ))}
             </ul>
+          )}
+
+          {step.sections && (
+            <div className="space-y-4">
+              {step.sections.map((section) => (
+                <div
+                  key={section.title}
+                  className="rounded-xl border border-white/10 bg-surfaceHighlight/30 p-4"
+                >
+                  <div className="text-sm font-semibold text-white">{section.title}</div>
+                  {section.description && (
+                    <p className="text-xs text-gray-400 mt-1">{section.description}</p>
+                  )}
+                  {section.bullets && (
+                    <ul className="mt-2 space-y-1 text-xs text-gray-300 list-disc list-inside">
+                      {section.bullets.map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ))}
+            </div>
           )}
 
           {step.code && (
