@@ -31,4 +31,5 @@ bun run --cwd app build
 bun run --cwd desktop build
 ```
 
-Note: Packaging is a work-in-progress; the current build expects Bun to be available on the host machine.
+The build step downloads a Bun runtime for the current platform and bundles it into the app. If you
+want to force a specific Bun binary (or use your system install), set `BUN_PATH` when launching.

@@ -26,6 +26,9 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      - name: Bundle Bun runtime
+        run: bun ./scripts/bundle-bun.ts
+
       - name: Build desktop app
         run: bun run --cwd desktop build
         env:

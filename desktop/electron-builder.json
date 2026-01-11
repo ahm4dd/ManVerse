@@ -29,6 +29,10 @@
   ],
   "extraResources": [
     {
+      "from": "../desktop/bundled-bun",
+      "to": "bun"
+    },
+    {
       "from": "../app/dist",
       "to": "app/dist"
     },
