@@ -19,6 +19,7 @@ tmp
 *.tsbuildinfo
 legacy/
 desktop/bundled-bun/
+desktop/runtime/
 
 # Editor directories and files
 .vscode/*

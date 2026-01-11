@@ -7,6 +7,7 @@ const path = require('node:path');
 
 const isDev = process.env.MANVERSE_DEV === 'true' || !app.isPackaged;
 const rootDir = path.resolve(__dirname, '..');
+const resourcesDir = app.isPackaged ? process.resourcesPath : rootDir;
 
 const apiPort = Number(process.env.MANVERSE_API_PORT || 3001);
 const uiPort = Number(process.env.MANVERSE_UI_PORT || 3000);
@@ -276,9 +277,11 @@ function killProcessTree(child, label) {
 }
 
 function startApi() {
-  const apiDir = path.join(rootDir, 'api');
+  const apiDir = path.join(resourcesDir, 'api');
   const args = isDev ? ['run', 'dev'] : ['src/index.ts'];
   const bunDir = path.dirname(bunPath);
+  const apiLogPath = path.join(app.getPath('userData'), 'api.log');
+  const apiLogStream = fs.createWriteStream(apiLogPath, { flags: 'a' });
   const env = {
     ...process.env,
     PORT: String(apiPort),
@@ -286,21 +289,26 @@ function startApi() {
     FRONTEND_AUTH_PATH: process.env.FRONTEND_AUTH_PATH || '/',
     CORS_ORIGIN: uiUrl,
     PATH: bunDir + path.delimiter + (process.env.PATH || ''),
-    NODE_PATH: path.join(rootDir, 'node_modules'),
+    NODE_PATH: path.join(resourcesDir, 'node_modules'),
   };
 
   apiProcess = spawnProcess(bunPath, args, {
     cwd: apiDir,
     env,
-    stdio: 'inherit',
+    stdio: isDev ? 'inherit' : ['ignore', 'pipe', 'pipe'],
     detached: process.platform !== 'win32',
   });
+
+  if (!isDev && apiProcess.stdout && apiProcess.stderr) {
+    apiProcess.stdout.pipe(apiLogStream);
+    apiProcess.stderr.pipe(apiLogStream);
+  }
 
   apiProcess.on('exit', (code) => {
     if (!app.isQuitting) {
       dialog.showErrorBox(
         'ManVerse API stopped',
-        `The API process exited with code ${code ?? 'unknown'}.`,
+        `The API process exited with code ${code ?? 'unknown'}. Check api.log in your app data folder.`,
       );
     }
   });

@@ -37,23 +37,19 @@
       "to": "bun"
     },
     {
-      "from": "../node_modules",
+      "from": "runtime/node_modules",
       "to": "node_modules"
     },
     {
-      "from": "../app/dist",
+      "from": "runtime/app/dist",
       "to": "app/dist"
     },
     {
-      "from": "../api",
+      "from": "runtime/api",
       "to": "api"
     },
     {
-      "from": "../packages",
-      "to": "packages"
-    },
-    {
-      "from": "../shared",
+      "from": "runtime/shared",
       "to": "shared"
     }
   ]
