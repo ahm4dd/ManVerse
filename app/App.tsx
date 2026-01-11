@@ -6,6 +6,7 @@ import Login from './pages/Login';
 import Library from './pages/Library';
 import Recommendations from './pages/Recommendations';
 import RecentReads from './pages/RecentReads';
+import Settings from './pages/Settings';
 import { PaletteIcon, BellIcon, SearchIcon, FilterIcon, XIcon, ChevronDown, SyncIcon, MenuIcon } from './components/Icons';
 import NotificationsMenu from './components/NotificationsMenu';
 import { anilistApi } from './lib/anilist';
@@ -18,7 +19,15 @@ import SearchFilters, { FilterState } from './components/SearchFilters';
 import { providerOptions, type Source, isProviderSource } from './lib/providers';
 import { desktopApi, type UpdateStatus } from './lib/desktop';
 
-type View = 'home' | 'details' | 'reader' | 'login' | 'library' | 'recommendations' | 'recent-reads';
+type View =
+  | 'home'
+  | 'details'
+  | 'reader'
+  | 'login'
+  | 'library'
+  | 'recommendations'
+  | 'recent-reads'
+  | 'settings';
 
 interface ReaderViewData {
   chapterId: string;
@@ -178,6 +187,7 @@ const AppContent: React.FC = () => {
       'library',
       'recommendations',
       'recent-reads',
+      'settings',
     ];
 
     if (!allowedViews.includes(view)) {
@@ -737,6 +747,15 @@ const AppContent: React.FC = () => {
                             Recent Reads
                           </button>
                           <button
+                            onClick={() => {
+                              setShowProfileMenu(false);
+                              navigate('settings');
+                            }}
+                            className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
+                          >
+                            Settings
+                          </button>
+                          <button
                             onClick={handleLogout}
                             className="w-full text-left px-4 py-2.5 text-sm text-red-300 hover:text-red-200 hover:bg-red-500/10 transition-colors"
                           >
@@ -946,6 +965,11 @@ const AppContent: React.FC = () => {
           {currentView === 'recent-reads' && (
             <PageTransition key="recent-reads">
               <RecentReads onNavigate={navigate} onBack={handleBack} />
+            </PageTransition>
+          )}
+          {currentView === 'settings' && (
+            <PageTransition key="settings">
+              <Settings onBack={handleBack} />
             </PageTransition>
           )}
 
