@@ -3,6 +3,10 @@ export type DesktopSettings = {
   launchOnStartup: boolean;
   pollBaseMinutes: number;
   pollJitterMinutes: number;
+  jwtSecret?: string;
+  anilistClientId?: string;
+  anilistClientSecret?: string;
+  anilistRedirectUri?: string;
 };
 
 export type UpdateStatus = {

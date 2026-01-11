@@ -13,7 +13,7 @@ import AniListSetupModal from './components/AniListSetupModal';
 import { anilistApi } from './lib/anilist';
 import { Chapter } from './types';
 import { ThemeProvider, useTheme, themes } from './lib/theme';
-import { NotificationProvider } from './lib/notifications';
+import { NotificationProvider, useNotification } from './lib/notifications';
 import { AnimatePresence, motion } from 'framer-motion';
 import PageTransition from './components/PageTransition';
 import SearchFilters, { FilterState } from './components/SearchFilters';
@@ -87,6 +87,7 @@ const AppContent: React.FC = () => {
   const [user, setUser] = useState<any>(null);
   const [isVerifying, setIsVerifying] = useState(false);
   const { theme, setTheme } = useTheme();
+  const { notify } = useNotification();
   
   // Menus
   const [showThemeMenu, setShowThemeMenu] = useState(false);
@@ -463,6 +464,8 @@ const AppContent: React.FC = () => {
       window.location.href = authUrl;
     } catch (error) {
       console.error('Failed to start AniList login', error);
+      notify('AniList is not configured yet. Open the setup guide to continue.', 'warning');
+      setShowSetupGuide(true);
     }
   };
 

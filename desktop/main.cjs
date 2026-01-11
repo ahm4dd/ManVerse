@@ -1,6 +1,7 @@
 const { app, BrowserWindow, dialog, Notification, ipcMain } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const { spawn, spawnSync } = require('node:child_process');
+const crypto = require('node:crypto');
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -13,6 +14,7 @@ const apiPort = Number(process.env.MANVERSE_API_PORT || 3001);
 const uiPort = Number(process.env.MANVERSE_UI_PORT || 3000);
 const apiUrl = `http://localhost:${apiPort}`;
 const uiUrl = `http://localhost:${uiPort}`;
+const defaultRedirectUri = `http://localhost:${apiPort}/api/auth/anilist/callback`;
 
 const getBundledBunPath = () => {
   if (!app.isPackaged) return null;
@@ -39,6 +41,10 @@ const defaultSettings = {
   launchOnStartup: false,
   pollBaseMinutes: 60,
   pollJitterMinutes: 15,
+  jwtSecret: '',
+  anilistClientId: '',
+  anilistClientSecret: '',
+  anilistRedirectUri: '',
 };
 let appSettings = null;
 let notifierTimer = null;
@@ -75,12 +81,18 @@ function loadSettings() {
     if (fs.existsSync(settingsPath)) {
       const raw = fs.readFileSync(settingsPath, 'utf8');
       appSettings = { ...defaultSettings, ...JSON.parse(raw) };
+      if (!appSettings.jwtSecret) {
+        appSettings.jwtSecret = crypto.randomBytes(32).toString('hex');
+        saveSettings(appSettings);
+      }
       return appSettings;
     }
   } catch {
     // ignore
   }
   appSettings = { ...defaultSettings };
+  appSettings.jwtSecret = crypto.randomBytes(32).toString('hex');
+  saveSettings(appSettings);
   return appSettings;
 }
 
@@ -282,6 +294,11 @@ function startApi() {
   const bunDir = path.dirname(bunPath);
   const apiLogPath = path.join(app.getPath('userData'), 'api.log');
   const apiLogStream = fs.createWriteStream(apiLogPath, { flags: 'a' });
+  const settings = getSettings();
+  const redirectUri =
+    settings.anilistRedirectUri && settings.anilistRedirectUri.trim().length > 0
+      ? settings.anilistRedirectUri.trim()
+      : defaultRedirectUri;
   const env = {
     ...process.env,
     PORT: String(apiPort),
@@ -290,6 +307,10 @@ function startApi() {
     CORS_ORIGIN: uiUrl,
     PATH: bunDir + path.delimiter + (process.env.PATH || ''),
     NODE_PATH: path.join(apiDir, 'node_modules'),
+    JWT_SECRET: settings.jwtSecret,
+    ANILIST_CLIENT_ID: settings.anilistClientId || process.env.ANILIST_CLIENT_ID || '',
+    ANILIST_CLIENT_SECRET: settings.anilistClientSecret || process.env.ANILIST_CLIENT_SECRET || '',
+    ANILIST_REDIRECT_URI: redirectUri,
   };
 
   apiProcess = spawnProcess(bunPath, args, {
