@@ -13,7 +13,17 @@ const uiPort = Number(process.env.MANVERSE_UI_PORT || 3000);
 const apiUrl = `http://localhost:${apiPort}`;
 const uiUrl = `http://localhost:${uiPort}`;
 
-const bunPath = process.env.BUN_PATH || 'bun';
+const getBundledBunPath = () => {
+  if (!app.isPackaged) return null;
+  const platformDir =
+    process.platform === 'win32' ? 'windows-x64' : process.platform === 'linux' ? 'linux-x64' : null;
+  if (!platformDir) return null;
+  const binaryName = process.platform === 'win32' ? 'bun.exe' : 'bun';
+  const candidate = path.join(process.resourcesPath, 'bun', platformDir, binaryName);
+  return fs.existsSync(candidate) ? candidate : null;
+};
+
+const bunPath = process.env.BUN_PATH || getBundledBunPath() || 'bun';
 let apiProcess = null;
 let uiProcess = null;
 let uiServer = null;

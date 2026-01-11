@@ -18,6 +18,7 @@ coverage
 tmp
 *.tsbuildinfo
 legacy/
+desktop/bundled-bun/
 
 # Editor directories and files
 .vscode/*
