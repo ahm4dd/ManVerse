@@ -8,14 +8,18 @@
     "main.cjs",
     "preload.cjs",
     "package.json",
-    "node_modules/**"
+    "node_modules/**",
+    "assets/**"
   ],
+  "icon": "assets/icon.png",
   "win": {
+    "icon": "assets/icon.ico",
     "target": [
       "nsis"
     ]
   },
   "linux": {
+    "icon": "assets/icon.png",
     "target": [
       "AppImage"
     ]
@@ -31,6 +35,10 @@
     {
       "from": "../desktop/bundled-bun",
       "to": "bun"
+    },
+    {
+      "from": "../node_modules",
+      "to": "node_modules"
     },
     {
       "from": "../app/dist",

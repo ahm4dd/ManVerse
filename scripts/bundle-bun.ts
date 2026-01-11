@@ -1,6 +1,14 @@
-import { chmodSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 type PlatformTarget = 'linux-x64' | 'windows-x64';
 
@@ -18,7 +26,8 @@ const runtimeVersion =
   typeof Bun !== 'undefined' && typeof Bun.version === 'string' ? Bun.version : null;
 const version = (providedVersion || runtimeVersion || '1.3.5').replace(/^v/, '');
 
-const root = process.cwd();
+const scriptDir = dirname(fileURLToPath(import.meta.url));
+const root = resolve(scriptDir, '..');
 const bundleRoot = resolve(root, 'desktop', 'bundled-bun');
 
 const normalizePlatform = (platform: string): PlatformTarget => {
@@ -74,6 +83,8 @@ const platformToUrl = (target: PlatformTarget) => {
 const platformToBinary = (target: PlatformTarget) =>
   target === 'windows-x64' ? 'bun.exe' : 'bun';
 
+const platformToFolder = (target: PlatformTarget) => `bun-${target}`;
+
 const bundleFor = async (target: PlatformTarget) => {
   const outputDir = resolve(bundleRoot, target);
   if (existsSync(outputDir)) {
@@ -90,7 +101,19 @@ const bundleFor = async (target: PlatformTarget) => {
   console.log(`[manverse] extracting ${zipPath}`);
   unzip(zipPath, outputDir);
 
-  const bunPath = resolve(outputDir, platformToBinary(target));
+  let bunPath = resolve(outputDir, platformToBinary(target));
+  if (!existsSync(bunPath)) {
+    const nested = resolve(outputDir, platformToFolder(target), platformToBinary(target));
+    if (existsSync(nested)) {
+      bunPath = resolve(outputDir, platformToBinary(target));
+      renameSync(nested, bunPath);
+      const nestedDir = resolve(outputDir, platformToFolder(target));
+      if (existsSync(nestedDir)) {
+        rmSync(nestedDir, { recursive: true, force: true });
+      }
+    }
+  }
+
   if (!existsSync(bunPath)) {
     throw new Error(`bun binary not found after extraction: ${bunPath}`);
   }

@@ -13,12 +13,12 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [theme, setTheme] = useState<Theme>(() => {
     if (typeof window !== 'undefined') {
       const stored = localStorage.getItem('manverse_theme') as Theme;
-      // Validate stored theme is valid, otherwise fallback to cyberpunk
+      // Validate stored theme is valid, otherwise fallback to luxury
       if (['cosmic', 'paper', 'cyberpunk', 'luxury'].includes(stored)) {
         return stored;
       }
     }
-    return 'cyberpunk';
+    return 'luxury';
   });
 
   useEffect(() => {

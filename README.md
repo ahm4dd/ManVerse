@@ -134,6 +134,7 @@ bun run dev:api
 ## Configuration
 
 These files are created automatically on first `bun install` if missing. Edit them anytime.
+Full configuration reference: `docs/configuration.md`.
 
 ### API (`api/.env`)
 

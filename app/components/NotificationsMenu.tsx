@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { anilistApi } from '../lib/anilist';
 import { Notification } from '../types';
+import { desktopApi, type NotifierEvent } from '../lib/desktop';
 
 interface NotificationsMenuProps {
   onClose: () => void;
@@ -10,27 +11,60 @@ interface NotificationsMenuProps {
 const NotificationsMenu: React.FC<NotificationsMenuProps> = ({ onClose, user }) => {
   const [activeTab, setActiveTab] = useState<'app' | 'user'>('user');
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [systemNotifications, setSystemNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(false);
 
   // Mock App Notifications
-  const appNotifications: Notification[] = [
-    {
-      id: 999,
-      type: 'APP_UPDATE',
-      title: 'New Feature: Library',
-      message: 'You can now view your entire AniList library in a dedicated dashboard.',
-      time: '2 hours ago',
-      read: false
-    },
-    {
-      id: 998,
-      type: 'APP_UPDATE',
-      title: 'Welcome to ManVerse',
-      message: 'Experience the new immersive reading mode.',
-      time: '1 day ago',
-      read: true
-    }
-  ];
+  const appNotifications = useMemo<Notification[]>(
+    () => [
+      {
+        id: 999,
+        type: 'APP_UPDATE',
+        title: 'New Feature: Library',
+        message: 'You can now view your entire AniList library in a dedicated dashboard.',
+        time: '2 hours ago',
+        read: false,
+      },
+      {
+        id: 998,
+        type: 'APP_UPDATE',
+        title: 'Welcome to ManVerse',
+        message: 'Experience the new immersive reading mode.',
+        time: '1 day ago',
+        read: true,
+      },
+    ],
+    [],
+  );
+
+  const formatTimeAgo = (timestamp?: number, fallback?: string) => {
+    if (!timestamp) return fallback || '';
+    const seconds = Math.floor((Date.now() - timestamp) / 1000);
+    if (seconds < 60) return 'Just now';
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    if (days < 7) return `${days}d ago`;
+    const weeks = Math.floor(days / 7);
+    if (weeks < 4) return `${weeks}w ago`;
+    const months = Math.floor(days / 30);
+    if (months < 12) return `${months}mo ago`;
+    const years = Math.floor(months / 12);
+    return `${years}y ago`;
+  };
+
+  const mapNotifierEvents = (events: NotifierEvent[]): Notification[] =>
+    events.map((event) => ({
+      id: event.id,
+      type: 'CHAPTER_RELEASE',
+      title: event.title,
+      message: event.message,
+      time: formatTimeAgo(event.timestamp, event.time),
+      read: event.read,
+      timestamp: event.timestamp,
+    }));
 
   useEffect(() => {
     const load = async () => {
@@ -54,7 +88,29 @@ const NotificationsMenu: React.FC<NotificationsMenuProps> = ({ onClose, user }) 
     load();
   }, [user]);
 
-  const displayList = activeTab === 'app' ? appNotifications : notifications;
+  useEffect(() => {
+    if (!desktopApi.isAvailable) {
+      setSystemNotifications(appNotifications);
+      return;
+    }
+    let unsubscribe = () => {};
+    desktopApi
+      .getNotifierEvents()
+      .then((events) => {
+        setSystemNotifications([...mapNotifierEvents(events), ...appNotifications]);
+      })
+      .catch(() => {
+        setSystemNotifications(appNotifications);
+      });
+    unsubscribe = desktopApi.onNotifierEvents((events) => {
+      setSystemNotifications([...mapNotifierEvents(events), ...appNotifications]);
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, [appNotifications]);
+
+  const displayList = activeTab === 'app' ? systemNotifications : notifications;
 
   return (
     <>
@@ -114,7 +170,21 @@ const NotificationsMenu: React.FC<NotificationsMenuProps> = ({ onClose, user }) 
         </div>
         
         <div className="p-2 border-t border-white/5 bg-surfaceHighlight/30 text-center">
-           <button className="text-[10px] text-gray-400 hover:text-white uppercase tracking-wider font-bold">Mark all as read</button>
+          <button
+            onClick={() => {
+              if (activeTab === 'app' && desktopApi.isAvailable) {
+                desktopApi
+                  .markAllNotifierRead()
+                  .then((events) => {
+                    setSystemNotifications([...mapNotifierEvents(events), ...appNotifications]);
+                  })
+                  .catch(() => {});
+              }
+            }}
+            className="text-[10px] text-gray-400 hover:text-white uppercase tracking-wider font-bold"
+          >
+            Mark all as read
+          </button>
         </div>
       </div>
     </>

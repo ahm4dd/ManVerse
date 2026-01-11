@@ -1,16 +1,25 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Providers, providerShortLabel } from '../lib/providers';
 import { anilistApi } from '../lib/anilist';
 import { ChevronRight, StarIcon } from '../components/Icons';
 
 interface LoginProps {
   onLoginSuccess?: () => void;
+  onOpenSetup?: () => void;
 }
 
-const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
+const Login: React.FC<LoginProps> = ({ onLoginSuccess, onOpenSetup }) => {
+  const [loginError, setLoginError] = useState<string | null>(null);
+
   const handleLoginClick = async () => {
-    const authUrl = await anilistApi.getLoginUrl();
-    window.location.href = authUrl;
+    setLoginError(null);
+    try {
+      const authUrl = await anilistApi.getLoginUrl();
+      window.location.href = authUrl;
+    } catch (error) {
+      setLoginError('AniList is not configured yet. Follow the setup guide to continue.');
+      onOpenSetup?.();
+    }
   };
   
   const handleDemoClick = () => {
@@ -71,6 +80,33 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
                 <span>Try Demo Account</span>
               </button>
             </div>
+
+            {loginError && (
+              <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-200">
+                {loginError}
+              </div>
+            )}
+
+            <div className="rounded-2xl border border-primary/30 bg-primary/10 px-4 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <p className="text-[11px] uppercase tracking-widest text-primary/80 font-semibold">
+                  New here?
+                </p>
+                <p className="text-sm font-semibold text-white">
+                  Set up AniList in about 2 minutes
+                </p>
+                <p className="text-xs text-gray-400 mt-1">
+                  One-time setup to unlock sync, stats, and personalized recommendations.
+                </p>
+              </div>
+              <button
+                onClick={() => onOpenSetup?.()}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-black text-xs font-bold shadow-lg shadow-primary/30 hover:brightness-110 transition"
+              >
+                Open setup guide
+                <ChevronRight className="w-3 h-3" />
+              </button>
+            </div>
             
             <p className="text-xs text-gray-500 max-w-[400px] leading-snug text-center sm:text-left">
               The demo account lets you test the dashboard and library features without logging in.
@@ -120,6 +156,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
         </div>
 
       </div>
+
     </div>
   );
 };

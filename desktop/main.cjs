@@ -1,6 +1,6 @@
-const { app, BrowserWindow, dialog } = require('electron');
+const { app, BrowserWindow, dialog, Notification, ipcMain } = require('electron');
 const { autoUpdater } = require('electron-updater');
-const { spawn } = require('node:child_process');
+const { spawn, spawnSync } = require('node:child_process');
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -28,6 +28,37 @@ let apiProcess = null;
 let uiProcess = null;
 let uiServer = null;
 let mainWindow = null;
+let isShuttingDown = false;
+
+const settingsPath = path.join(app.getPath('userData'), 'settings.json');
+const notifierEventsPath = path.join(app.getPath('userData'), 'notifier-events.json');
+const NOTIFIER_EVENTS_LIMIT = 80;
+const defaultSettings = {
+  notifierEnabled: true,
+  launchOnStartup: false,
+  pollBaseMinutes: 60,
+  pollJitterMinutes: 15,
+};
+let appSettings = null;
+let notifierTimer = null;
+let notifierRunning = false;
+let notifierEvents = null;
+let updateStatus = {
+  state: 'idle',
+  version: null,
+  message: null,
+};
+
+function broadcastUpdateStatus() {
+  BrowserWindow.getAllWindows().forEach((win) => {
+    win.webContents.send('manverse:update-status', updateStatus);
+  });
+}
+
+function setUpdateStatus(next) {
+  updateStatus = { ...updateStatus, ...next };
+  broadcastUpdateStatus();
+}
 
 function spawnProcess(command, args, options) {
   const child = spawn(command, args, options);
@@ -37,21 +68,232 @@ function spawnProcess(command, args, options) {
   return child;
 }
 
+function loadSettings() {
+  if (appSettings) return appSettings;
+  try {
+    if (fs.existsSync(settingsPath)) {
+      const raw = fs.readFileSync(settingsPath, 'utf8');
+      appSettings = { ...defaultSettings, ...JSON.parse(raw) };
+      return appSettings;
+    }
+  } catch {
+    // ignore
+  }
+  appSettings = { ...defaultSettings };
+  return appSettings;
+}
+
+function saveSettings(settings) {
+  appSettings = settings;
+  try {
+    fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+  } catch {
+    // ignore
+  }
+}
+
+function loadNotifierEvents() {
+  if (notifierEvents) return notifierEvents;
+  try {
+    if (fs.existsSync(notifierEventsPath)) {
+      const raw = fs.readFileSync(notifierEventsPath, 'utf8');
+      const parsed = JSON.parse(raw);
+      notifierEvents = Array.isArray(parsed) ? parsed : [];
+      return notifierEvents;
+    }
+  } catch {
+    // ignore
+  }
+  notifierEvents = [];
+  return notifierEvents;
+}
+
+function saveNotifierEvents(list) {
+  notifierEvents = list;
+  try {
+    fs.mkdirSync(path.dirname(notifierEventsPath), { recursive: true });
+    fs.writeFileSync(notifierEventsPath, JSON.stringify(list, null, 2));
+  } catch {
+    // ignore
+  }
+}
+
+function broadcastNotifierEvents() {
+  const list = loadNotifierEvents();
+  BrowserWindow.getAllWindows().forEach((win) => {
+    win.webContents.send('manverse:notifier-events', list);
+  });
+}
+
+function addNotifierEvents(updates) {
+  if (!updates?.length) return loadNotifierEvents();
+  const existing = loadNotifierEvents();
+  const seen = new Set(existing.map((item) => item.id));
+  const timestamp = Date.now();
+  const next = [...existing];
+
+  updates.forEach((update, index) => {
+    const chapterLabel = update.chapterNumber ? `Chapter ${update.chapterNumber}` : 'New chapter';
+    const id = `${update.providerMangaId}-${update.chapterNumber}-${update.releaseDate || ''}`;
+    if (seen.has(id)) return;
+    seen.add(id);
+    next.unshift({
+      id,
+      type: 'CHAPTER_RELEASE',
+      title: update.seriesTitle || 'New chapter available',
+      message: update.chapterTitle ? `${chapterLabel} — ${update.chapterTitle}` : chapterLabel,
+      time: new Date(timestamp + index).toISOString(),
+      timestamp: timestamp + index,
+      read: false,
+      provider: update.provider,
+      providerMangaId: update.providerMangaId,
+    });
+  });
+
+  const limited = next.slice(0, NOTIFIER_EVENTS_LIMIT);
+  saveNotifierEvents(limited);
+  broadcastNotifierEvents();
+  return limited;
+}
+
+function markAllNotifierRead() {
+  const next = loadNotifierEvents().map((item) => ({ ...item, read: true }));
+  saveNotifierEvents(next);
+  broadcastNotifierEvents();
+  return next;
+}
+
+function setLinuxAutoStart(enabled) {
+  const autostartDir = path.join(app.getPath('home'), '.config', 'autostart');
+  const desktopFile = path.join(autostartDir, 'manverse.desktop');
+  if (!enabled) {
+    if (fs.existsSync(desktopFile)) {
+      fs.unlinkSync(desktopFile);
+    }
+    return;
+  }
+  fs.mkdirSync(autostartDir, { recursive: true });
+  const content = [
+    '[Desktop Entry]',
+    'Type=Application',
+    'Name=ManVerse',
+    'Comment=ManVerse background notifier',
+    `Exec=${process.execPath}`,
+    'Terminal=false',
+    'X-GNOME-Autostart-enabled=true',
+  ].join('\n');
+  fs.writeFileSync(desktopFile, content);
+}
+
+function applyStartupSetting(enabled) {
+  if (process.platform === 'win32') {
+    app.setLoginItemSettings({
+      openAtLogin: enabled,
+      path: process.execPath,
+    });
+    return;
+  }
+  if (process.platform === 'linux') {
+    setLinuxAutoStart(enabled);
+  }
+}
+
+function getSettings() {
+  return loadSettings();
+}
+
+function updateSetting(key, value) {
+  const settings = { ...loadSettings(), [key]: value };
+  saveSettings(settings);
+  if (key === 'launchOnStartup') {
+    applyStartupSetting(Boolean(value));
+  }
+  if (key === 'notifierEnabled' && !value && BrowserWindow.getAllWindows().length === 0) {
+    app.quit();
+  }
+  if (key === 'notifierEnabled') {
+    if (value) {
+      scheduleNotifierCheck(5 * 60 * 1000);
+    } else {
+      clearNotifierTimer();
+    }
+  }
+  return settings;
+}
+
+function killProcessTree(child, label) {
+  if (!child || child.killed || !child.pid) {
+    return Promise.resolve();
+  }
+
+  const pid = child.pid;
+
+  return new Promise((resolve) => {
+    let resolved = false;
+    const finish = () => {
+      if (resolved) return;
+      resolved = true;
+      resolve();
+    };
+
+    const timeout = setTimeout(() => {
+      if (process.platform === 'win32') {
+        spawnSync('taskkill', ['/PID', String(pid), '/T', '/F']);
+      } else {
+        try {
+          process.kill(-pid, 'SIGKILL');
+        } catch {
+          try {
+            process.kill(pid, 'SIGKILL');
+          } catch {
+            // ignore
+          }
+        }
+      }
+      finish();
+    }, 2500);
+
+    child.once('exit', () => {
+      clearTimeout(timeout);
+      finish();
+    });
+
+    try {
+      if (process.platform === 'win32') {
+        child.kill('SIGTERM');
+      } else {
+        process.kill(-pid, 'SIGTERM');
+      }
+    } catch {
+      try {
+        child.kill('SIGTERM');
+      } catch {
+        // ignore
+      }
+    }
+  });
+}
+
 function startApi() {
   const apiDir = path.join(rootDir, 'api');
-  const args = ['run', isDev ? 'dev' : 'start'];
+  const args = isDev ? ['run', 'dev'] : ['src/index.ts'];
+  const bunDir = path.dirname(bunPath);
   const env = {
     ...process.env,
     PORT: String(apiPort),
     FRONTEND_URL: uiUrl,
     FRONTEND_AUTH_PATH: process.env.FRONTEND_AUTH_PATH || '/',
     CORS_ORIGIN: uiUrl,
+    PATH: bunDir + path.delimiter + (process.env.PATH || ''),
+    NODE_PATH: path.join(rootDir, 'node_modules'),
   };
 
   apiProcess = spawnProcess(bunPath, args, {
     cwd: apiDir,
     env,
     stdio: 'inherit',
+    detached: process.platform !== 'win32',
   });
 
   apiProcess.on('exit', (code) => {
@@ -79,7 +321,57 @@ function startUiDevServer() {
     cwd: appDir,
     env,
     stdio: 'inherit',
+    detached: process.platform !== 'win32',
   });
+}
+
+function clearNotifierTimer() {
+  if (notifierTimer) {
+    clearTimeout(notifierTimer);
+    notifierTimer = null;
+  }
+}
+
+function scheduleNotifierCheck(delayMs) {
+  clearNotifierTimer();
+  if (!getSettings().notifierEnabled) return;
+  notifierTimer = setTimeout(runNotifierCheck, delayMs);
+}
+
+async function runNotifierCheck() {
+  if (notifierRunning || !getSettings().notifierEnabled) {
+    return;
+  }
+  notifierRunning = true;
+  try {
+    const response = await fetch(`${apiUrl}/api/notifications/chapters`);
+    if (response.ok) {
+      const payload = await response.json();
+      const updates = payload?.data ?? [];
+      const iconPath = path.join(__dirname, 'assets', 'icon.png');
+      addNotifierEvents(updates);
+      updates.forEach((update) => {
+        const title = update.seriesTitle || 'New chapter available';
+        const chapterLabel = update.chapterNumber ? `Chapter ${update.chapterNumber}` : 'New chapter';
+        const body = update.releaseDate
+          ? `${chapterLabel} • ${update.releaseDate}`
+          : chapterLabel;
+        new Notification({
+          title,
+          body,
+          icon: fs.existsSync(iconPath) ? iconPath : undefined,
+        }).show();
+      });
+    }
+  } catch (error) {
+    console.warn('Notifier check failed:', error?.message || error);
+  } finally {
+    notifierRunning = false;
+    const { pollBaseMinutes, pollJitterMinutes } = getSettings();
+    const jitter = Math.floor(Math.random() * Math.max(1, pollJitterMinutes));
+    const delayMs = (pollBaseMinutes + jitter) * 60 * 1000;
+    scheduleNotifierCheck(delayMs);
+  }
 }
 
 function startUiStaticServer() {
@@ -147,6 +439,7 @@ async function waitForUrl(url, timeoutMs = 30000) {
 }
 
 async function createWindow() {
+  const iconPath = path.join(__dirname, 'assets', 'icon.png');
   const win = new BrowserWindow({
     width: 1280,
     height: 900,
@@ -157,6 +450,7 @@ async function createWindow() {
     fullscreenable: true,
     backgroundColor: '#0b0b0f',
     autoHideMenuBar: true,
+    icon: fs.existsSync(iconPath) ? iconPath : undefined,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -170,6 +464,10 @@ async function createWindow() {
 
   await win.loadURL(uiUrl);
   mainWindow = win;
+  win.webContents.on('did-finish-load', () => {
+    broadcastUpdateStatus();
+    broadcastNotifierEvents();
+  });
   win.on('closed', () => {
     mainWindow = null;
   });
@@ -183,7 +481,20 @@ function initAutoUpdates() {
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
 
-  autoUpdater.on('update-downloaded', async () => {
+  autoUpdater.on('checking-for-update', () => {
+    setUpdateStatus({ state: 'checking', message: null });
+  });
+
+  autoUpdater.on('update-available', (info) => {
+    setUpdateStatus({ state: 'available', version: info?.version ?? null, message: null });
+  });
+
+  autoUpdater.on('update-not-available', () => {
+    setUpdateStatus({ state: 'idle', version: null, message: null });
+  });
+
+  autoUpdater.on('update-downloaded', async (info) => {
+    setUpdateStatus({ state: 'downloaded', version: info?.version ?? updateStatus.version });
     const response = await dialog.showMessageBox(mainWindow ?? undefined, {
       type: 'info',
       buttons: ['Restart now', 'Later'],
@@ -201,6 +512,10 @@ function initAutoUpdates() {
 
   autoUpdater.on('error', (error) => {
     console.warn('Auto-update error:', error?.message || error);
+    setUpdateStatus({
+      state: 'error',
+      message: error?.message || 'Update failed',
+    });
   });
 
   autoUpdater.checkForUpdatesAndNotify();
@@ -214,17 +529,50 @@ async function bootstrap() {
   await Promise.all([waitForUrl(`${apiUrl}/health`), waitForUrl(uiUrl)]);
   await createWindow();
   initAutoUpdates();
+  const settings = getSettings();
+  applyStartupSetting(settings.launchOnStartup);
+  if (settings.notifierEnabled) {
+    scheduleNotifierCheck(5 * 60 * 1000);
+  }
 }
 
-app.on('before-quit', () => {
+app.on('before-quit', (event) => {
+  if (isShuttingDown) return;
+  event.preventDefault();
+  isShuttingDown = true;
   app.isQuitting = true;
-  if (apiProcess) apiProcess.kill();
-  if (uiProcess) uiProcess.kill();
-  if (uiServer) uiServer.close();
+
+  const shutdownTasks = [];
+  if (uiServer) {
+    shutdownTasks.push(
+      new Promise((resolve) => {
+        uiServer.close(() => resolve());
+      }),
+    );
+  }
+  shutdownTasks.push(killProcessTree(apiProcess, 'API'));
+  shutdownTasks.push(killProcessTree(uiProcess, 'UI'));
+
+  Promise.all(shutdownTasks)
+    .catch(() => {})
+    .finally(() => {
+      app.exit(0);
+    });
 });
 
 app.whenReady().then(() => {
   app.setAppUserModelId('com.ahm4dd.manverse');
+  ipcMain.handle('manverse:getSettings', () => getSettings());
+  ipcMain.handle('manverse:updateSetting', (_event, payload) =>
+    updateSetting(payload?.key, payload?.value),
+  );
+  ipcMain.handle('manverse:getUpdateStatus', () => updateStatus);
+  ipcMain.handle('manverse:installUpdate', () => {
+    autoUpdater.quitAndInstall();
+    return { ok: true };
+  });
+  ipcMain.handle('manverse:getNotifierEvents', () => loadNotifierEvents());
+  ipcMain.handle('manverse:markAllNotifierRead', () => markAllNotifierRead());
   bootstrap().catch((error) => {
     dialog.showErrorBox('ManVerse startup failed', error.message || String(error));
     app.quit();
@@ -233,7 +581,9 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
-    app.quit();
+    if (!getSettings().notifierEnabled) {
+      app.quit();
+    }
   }
 });
 

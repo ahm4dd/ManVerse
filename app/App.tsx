@@ -6,8 +6,10 @@ import Login from './pages/Login';
 import Library from './pages/Library';
 import Recommendations from './pages/Recommendations';
 import RecentReads from './pages/RecentReads';
+import Settings from './pages/Settings';
 import { PaletteIcon, BellIcon, SearchIcon, FilterIcon, XIcon, ChevronDown, SyncIcon, MenuIcon } from './components/Icons';
 import NotificationsMenu from './components/NotificationsMenu';
+import AniListSetupModal from './components/AniListSetupModal';
 import { anilistApi } from './lib/anilist';
 import { Chapter } from './types';
 import { ThemeProvider, useTheme, themes } from './lib/theme';
@@ -16,8 +18,17 @@ import { AnimatePresence, motion } from 'framer-motion';
 import PageTransition from './components/PageTransition';
 import SearchFilters, { FilterState } from './components/SearchFilters';
 import { providerOptions, type Source, isProviderSource } from './lib/providers';
+import { desktopApi, type UpdateStatus } from './lib/desktop';
 
-type View = 'home' | 'details' | 'reader' | 'login' | 'library' | 'recommendations' | 'recent-reads';
+type View =
+  | 'home'
+  | 'details'
+  | 'reader'
+  | 'login'
+  | 'library'
+  | 'recommendations'
+  | 'recent-reads'
+  | 'settings';
 
 interface ReaderViewData {
   chapterId: string;
@@ -85,6 +96,9 @@ const AppContent: React.FC = () => {
   const [showNavMenu, setShowNavMenu] = useState(false);
   const [syncPending, setSyncPending] = useState(0);
   const [syncLoading, setSyncLoading] = useState(false);
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
+  const [updateBannerDismissed, setUpdateBannerDismissed] = useState(false);
+  const [showSetupGuide, setShowSetupGuide] = useState(false);
 
   // Global Search State
   const [searchQuery, setSearchQuery] = useState('');
@@ -175,6 +189,7 @@ const AppContent: React.FC = () => {
       'library',
       'recommendations',
       'recent-reads',
+      'settings',
     ];
 
     if (!allowedViews.includes(view)) {
@@ -265,6 +280,10 @@ const AppContent: React.FC = () => {
     filters.genre !== 'All' || 
     filters.country !== 'All' || 
     filters.sort !== defaultSort;
+  const showUpdateBanner =
+    desktopApi.isAvailable &&
+    updateStatus?.state === 'downloaded' &&
+    !updateBannerDismissed;
 
   // Load User Function (Extracted for re-use)
   const loadUser = async () => {
@@ -299,6 +318,15 @@ const AppContent: React.FC = () => {
     setSyncLoading(false);
   };
 
+  const handleInstallUpdate = async () => {
+    if (!desktopApi.isAvailable) return;
+    try {
+      await desktopApi.installUpdate();
+    } catch (error) {
+      console.warn('Failed to install update', error);
+    }
+  };
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const token = params.get('token');
@@ -322,6 +350,25 @@ const AppContent: React.FC = () => {
     window.history.replaceState(initialState, '', buildUrl(initialState.view, initialState.data));
 
     loadUser();
+  }, []);
+
+  useEffect(() => {
+    if (!desktopApi.isAvailable) return;
+    let unsubscribe = () => {};
+    desktopApi
+      .getUpdateStatus()
+      .then((status) => {
+        if (status) {
+          setUpdateStatus(status);
+        }
+      })
+      .catch(() => {});
+    unsubscribe = desktopApi.onUpdateStatus((status) => {
+      setUpdateStatus(status);
+    });
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -702,6 +749,24 @@ const AppContent: React.FC = () => {
                             Recent Reads
                           </button>
                           <button
+                            onClick={() => {
+                              setShowProfileMenu(false);
+                              navigate('settings');
+                            }}
+                            className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
+                          >
+                            Settings
+                          </button>
+                          <button
+                            onClick={() => {
+                              setShowProfileMenu(false);
+                              setShowSetupGuide(true);
+                            }}
+                            className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
+                          >
+                            AniList setup guide
+                          </button>
+                          <button
                             onClick={handleLogout}
                             className="w-full text-left px-4 py-2.5 text-sm text-red-300 hover:text-red-200 hover:bg-red-500/10 transition-colors"
                           >
@@ -752,6 +817,15 @@ const AppContent: React.FC = () => {
                           <button
                             onClick={() => {
                               setShowLoginMenu(false);
+                              setShowSetupGuide(true);
+                            }}
+                            className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
+                          >
+                            AniList setup guide
+                          </button>
+                          <button
+                            onClick={() => {
+                              setShowLoginMenu(false);
                               navigate('login');
                             }}
                             className="w-full text-left px-4 py-2.5 text-xs text-gray-500 hover:text-gray-300 hover:bg-white/5 transition-colors"
@@ -764,8 +838,37 @@ const AppContent: React.FC = () => {
                   </div>
                 )}
               </div>
-            </div>
           </div>
+          </div>
+
+          {showUpdateBanner && (
+            <div className="border-t border-white/10 bg-primary/10">
+              <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="text-sm text-gray-200">
+                  <span className="font-semibold text-white">Update ready.</span>
+                  <span className="text-gray-400 ml-2">
+                    {updateStatus?.version
+                      ? `Version ${updateStatus.version} is ready to install.`
+                      : 'A new version is ready to install.'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={handleInstallUpdate}
+                    className="px-4 py-2 rounded-lg text-xs font-bold bg-primary text-black shadow-lg shadow-primary/30 transition hover:brightness-110"
+                  >
+                    Restart now
+                  </button>
+                  <button
+                    onClick={() => setUpdateBannerDismissed(true)}
+                    className="px-3 py-2 rounded-lg text-xs font-semibold text-gray-300 border border-white/10 hover:text-white hover:bg-white/5 transition"
+                  >
+                    Later
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
           
           {/* Nav Menu (Responsive) */}
           {showNavMenu && (
@@ -818,6 +921,15 @@ const AppContent: React.FC = () => {
                       Library
                     </button>
                   )}
+                  <button
+                    onClick={() => {
+                      setShowNavMenu(false);
+                      setShowSetupGuide(true);
+                    }}
+                    className="w-full rounded-xl px-4 py-3 text-left transition-colors bg-white/5 hover:bg-white/10"
+                  >
+                    AniList setup guide
+                  </button>
                 </div>
               </div>
             </div>
@@ -884,6 +996,11 @@ const AppContent: React.FC = () => {
               <RecentReads onNavigate={navigate} onBack={handleBack} />
             </PageTransition>
           )}
+          {currentView === 'settings' && (
+            <PageTransition key="settings">
+              <Settings onBack={handleBack} onOpenSetup={() => setShowSetupGuide(true)} />
+            </PageTransition>
+          )}
 
           {currentView === 'details' && (
             <PageTransition key={`details-${viewData ?? 'empty'}`}>
@@ -909,11 +1026,16 @@ const AppContent: React.FC = () => {
 
           {currentView === 'login' && (
             <PageTransition key="login">
-              <Login onLoginSuccess={handleLoginSuccess} />
+              <Login
+                onLoginSuccess={handleLoginSuccess}
+                onOpenSetup={() => setShowSetupGuide(true)}
+              />
             </PageTransition>
           )}
         </AnimatePresence>
       </main>
+
+      <AniListSetupModal open={showSetupGuide} onClose={() => setShowSetupGuide(false)} />
     </div>
   );
 };
