@@ -22,4 +22,15 @@ contextBridge.exposeInMainWorld('manverse', {
       ipcRenderer.removeListener('manverse:notifier-events', listener);
     };
   },
+  minimizeWindow: () => ipcRenderer.invoke('manverse:window-minimize'),
+  toggleMaximize: () => ipcRenderer.invoke('manverse:window-toggle-maximize'),
+  closeWindow: () => ipcRenderer.invoke('manverse:window-close'),
+  getWindowState: () => ipcRenderer.invoke('manverse:getWindowState'),
+  onWindowState: (callback) => {
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on('manverse:window-state', listener);
+    return () => {
+      ipcRenderer.removeListener('manverse:window-state', listener);
+    };
+  },
 });

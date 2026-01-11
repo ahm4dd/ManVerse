@@ -27,6 +27,10 @@ export type NotifierEvent = {
   providerMangaId?: number;
 };
 
+export type DesktopWindowState = {
+  isMaximized: boolean;
+};
+
 type DesktopBridge = {
   getSettings: () => Promise<DesktopSettings>;
   updateSetting: (key: keyof DesktopSettings, value: unknown) => Promise<DesktopSettings>;
@@ -36,6 +40,11 @@ type DesktopBridge = {
   getNotifierEvents?: () => Promise<NotifierEvent[]>;
   markAllNotifierRead?: () => Promise<NotifierEvent[]>;
   onNotifierEvents?: (callback: (events: NotifierEvent[]) => void) => () => void;
+  minimizeWindow?: () => Promise<{ ok: boolean }>;
+  toggleMaximize?: () => Promise<{ ok: boolean; isMaximized: boolean }>;
+  closeWindow?: () => Promise<{ ok: boolean }>;
+  getWindowState?: () => Promise<DesktopWindowState>;
+  onWindowState?: (callback: (state: DesktopWindowState) => void) => () => void;
 };
 
 const bridge = typeof window !== 'undefined' ? (window as any).manverse : null;
@@ -92,5 +101,27 @@ export const desktopApi = {
       return () => {};
     }
     return bridge.onNotifierEvents(callback);
+  },
+  minimizeWindow: async (): Promise<void> => {
+    if (!bridge?.minimizeWindow) return;
+    await bridge.minimizeWindow();
+  },
+  toggleMaximize: async (): Promise<DesktopWindowState | null> => {
+    if (!bridge?.toggleMaximize) return null;
+    return bridge.toggleMaximize();
+  },
+  closeWindow: async (): Promise<void> => {
+    if (!bridge?.closeWindow) return;
+    await bridge.closeWindow();
+  },
+  getWindowState: async (): Promise<DesktopWindowState | null> => {
+    if (!bridge?.getWindowState) return null;
+    return bridge.getWindowState();
+  },
+  onWindowState: (callback: (state: DesktopWindowState) => void): (() => void) => {
+    if (!bridge?.onWindowState) {
+      return () => {};
+    }
+    return bridge.onWindowState(callback);
   },
 };

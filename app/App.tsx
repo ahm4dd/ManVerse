@@ -10,6 +10,7 @@ import Settings from './pages/Settings';
 import { PaletteIcon, BellIcon, SearchIcon, FilterIcon, XIcon, ChevronDown, SyncIcon, MenuIcon } from './components/Icons';
 import NotificationsMenu from './components/NotificationsMenu';
 import AniListSetupModal from './components/AniListSetupModal';
+import DesktopTitleBar from './components/DesktopTitleBar';
 import { anilistApi } from './lib/anilist';
 import { Chapter } from './types';
 import { ThemeProvider, useTheme, themes } from './lib/theme';
@@ -506,11 +507,24 @@ const AppContent: React.FC = () => {
     );
   }
 
+  const isDesktop =
+    desktopApi.isAvailable &&
+    !(typeof navigator !== 'undefined' && navigator.platform.toLowerCase().includes('mac'));
+
   return (
-    <div className="bg-background text-white min-h-screen font-sans selection:bg-primary/30 transition-colors duration-300 flex flex-col">
+    <div
+      className={`bg-background text-white min-h-screen font-sans selection:bg-primary/30 transition-colors duration-300 flex flex-col ${
+        isDesktop ? 'pt-9' : ''
+      }`}
+    >
+      <DesktopTitleBar />
       {/* Top Navigation Bar - Global - Hidden in Reader Mode */}
       {currentView !== 'reader' && (
-        <nav className="sticky top-0 z-[60] bg-surface/95 backdrop-blur-md border-b border-white/5 shadow-sm relative">
+        <nav
+          className={`sticky z-[60] bg-surface/95 backdrop-blur-md border-b border-white/5 shadow-sm relative ${
+            isDesktop ? 'top-9' : 'top-0'
+          }`}
+        >
           <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8">
             {/* Grid Layout: [Left Content] [Search Bar] [Right Actions] */}
             <div className="flex flex-col gap-3 py-3 md:flex-row md:items-center md:gap-4 md:py-0 md:h-20 [@media(min-width:1800px)]:grid [@media(min-width:1800px)]:grid-cols-[minmax(420px,1.6fr)_minmax(520px,2.1fr)_minmax(240px,1fr)]">

@@ -1,19 +1,61 @@
-const { app, BrowserWindow, dialog, Notification, ipcMain } = require('electron');
-const { autoUpdater } = require('electron-updater');
 const { spawn, spawnSync } = require('node:child_process');
 const crypto = require('node:crypto');
 const http = require('node:http');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
+
+const preflightTempDir = path.join(os.homedir(), '.config', 'ManVerse', 'tmp');
+if (process.platform === 'linux') {
+  try {
+    fs.mkdirSync(preflightTempDir, { recursive: true });
+    process.env.TMPDIR = preflightTempDir;
+    process.env.TEMP = preflightTempDir;
+    process.env.TMP = preflightTempDir;
+  } catch {
+    // ignore
+  }
+}
+
+const { app, BrowserWindow, dialog, Notification, ipcMain } = require('electron');
+const { autoUpdater } = require('electron-updater');
 
 const isDev = process.env.MANVERSE_DEV === 'true' || !app.isPackaged;
 const rootDir = path.resolve(__dirname, '..');
 const resourcesDir = app.isPackaged ? process.resourcesPath : rootDir;
 
 const apiPort = Number(process.env.MANVERSE_API_PORT || 3001);
-const uiPort = Number(process.env.MANVERSE_UI_PORT || 3000);
 const apiUrl = `http://localhost:${apiPort}`;
-const uiUrl = `http://localhost:${uiPort}`;
+
+const normalizeHost = (raw, fallbackHost, fallbackPort) => {
+  if (!raw) return { host: fallbackHost, port: fallbackPort };
+  const trimmed = String(raw).trim();
+  try {
+    if (trimmed.includes('://')) {
+      const parsed = new URL(trimmed);
+      return {
+        host: parsed.hostname || fallbackHost,
+        port: parsed.port ? Number(parsed.port) : fallbackPort,
+      };
+    }
+  } catch {
+    // ignore
+  }
+  const noProtocol = trimmed.replace(/^https?:\/\//, '');
+  const hostPort = noProtocol.split('/')[0];
+  if (hostPort.includes(':')) {
+    const [host, port] = hostPort.split(':');
+    return { host: host || fallbackHost, port: Number(port) || fallbackPort };
+  }
+  return { host: hostPort || fallbackHost, port: fallbackPort };
+};
+
+const defaultUiHost = '127.0.0.1';
+const defaultUiPort = Number(process.env.MANVERSE_UI_PORT || 3000);
+const normalizedUi = normalizeHost(process.env.MANVERSE_UI_HOST, defaultUiHost, defaultUiPort);
+const uiHost = normalizedUi.host;
+let uiPort = normalizedUi.port;
+let uiUrl = `http://${uiHost}:${uiPort}`;
 const defaultRedirectUri = `http://localhost:${apiPort}/api/auth/anilist/callback`;
 
 const getBundledBunPath = () => {
@@ -34,6 +76,97 @@ let mainWindow = null;
 let isShuttingDown = false;
 let allowBackgroundClose = false;
 let apiRestarting = false;
+let isMaximized = false;
+
+const shouldDisableSandbox =
+  process.platform === 'linux' &&
+  app.isPackaged &&
+  process.env.MANVERSE_DISABLE_SANDBOX !== 'false';
+
+if (shouldDisableSandbox) {
+  app.commandLine.appendSwitch('no-sandbox');
+  app.commandLine.appendSwitch('disable-setuid-sandbox');
+}
+if (process.platform === 'linux' && app.isPackaged) {
+  app.commandLine.appendSwitch('disable-dev-shm-usage');
+}
+
+function ensureWritableTemp() {
+  let fallbackBase = null;
+  try {
+    fallbackBase = app.getPath('userData');
+  } catch {
+    fallbackBase = path.join(os.homedir(), '.config', 'ManVerse');
+  }
+  const tempDir = path.join(fallbackBase, 'tmp');
+  try {
+    fs.mkdirSync(tempDir, { recursive: true });
+  } catch {
+    // ignore
+  }
+  app.setPath('temp', tempDir);
+  process.env.TMPDIR = tempDir;
+  process.env.TEMP = tempDir;
+  process.env.TMP = tempDir;
+  return tempDir;
+}
+
+if (process.platform === 'linux' && app.isPackaged) {
+  ensureWritableTemp();
+}
+
+const readDirSafe = (target) => {
+  try {
+    return fs.readdirSync(target, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+};
+
+const firstExisting = (paths) => paths.find((candidate) => candidate && fs.existsSync(candidate));
+
+function resolvePuppeteerExecutable(cacheDir) {
+  if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+    return process.env.PUPPETEER_EXECUTABLE_PATH;
+  }
+
+  const cacheDirs = [cacheDir].filter(Boolean);
+  for (const base of cacheDirs) {
+    const chromeRoot = path.join(base, 'chrome');
+    const entries = readDirSafe(chromeRoot).filter((entry) => entry.isDirectory());
+    for (const entry of entries) {
+      const name = entry.name;
+      const platformPath =
+        process.platform === 'win32'
+          ? path.join(chromeRoot, name, 'chrome-win64', 'chrome.exe')
+          : path.join(chromeRoot, name, 'chrome-linux', 'chrome');
+      if (fs.existsSync(platformPath)) {
+        return platformPath;
+      }
+    }
+  }
+
+  if (process.platform === 'win32') {
+    return firstExisting([
+      'C:\\\\Program Files\\\\Google\\\\Chrome\\\\Application\\\\chrome.exe',
+      'C:\\\\Program Files (x86)\\\\Google\\\\Chrome\\\\Application\\\\chrome.exe',
+      'C:\\\\Program Files\\\\Microsoft\\\\Edge\\\\Application\\\\msedge.exe',
+      'C:\\\\Program Files (x86)\\\\Microsoft\\\\Edge\\\\Application\\\\msedge.exe',
+    ]);
+  }
+
+  if (process.platform === 'linux') {
+    return firstExisting([
+      '/usr/bin/google-chrome',
+      '/usr/bin/google-chrome-stable',
+      '/usr/bin/chromium',
+      '/usr/bin/chromium-browser',
+      '/usr/bin/brave-browser',
+    ]);
+  }
+
+  return null;
+}
 
 const settingsPath = path.join(app.getPath('userData'), 'settings.json');
 const notifierEventsPath = path.join(app.getPath('userData'), 'notifier-events.json');
@@ -314,6 +447,8 @@ function startApi() {
   const apiLogPath = path.join(app.getPath('userData'), 'api.log');
   const apiLogStream = fs.createWriteStream(apiLogPath, { flags: 'a' });
   const settings = getSettings();
+  const puppeteerCacheDir = path.join(app.getPath('userData'), 'puppeteer');
+  const puppeteerExecutable = resolvePuppeteerExecutable(puppeteerCacheDir);
   const redirectUri =
     settings.anilistRedirectUri && settings.anilistRedirectUri.trim().length > 0
       ? settings.anilistRedirectUri.trim()
@@ -330,6 +465,9 @@ function startApi() {
     ANILIST_CLIENT_ID: settings.anilistClientId || process.env.ANILIST_CLIENT_ID || '',
     ANILIST_CLIENT_SECRET: settings.anilistClientSecret || process.env.ANILIST_CLIENT_SECRET || '',
     ANILIST_REDIRECT_URI: redirectUri,
+    PUPPETEER_CACHE_DIR: puppeteerCacheDir,
+    ...(puppeteerExecutable ? { PUPPETEER_EXECUTABLE_PATH: puppeteerExecutable } : {}),
+    ...(process.platform === 'win32' ? { PUPPETEER_DISABLE_GPU: 'true' } : {}),
   };
 
   apiProcess = spawnProcess(bunPath, args, {
@@ -422,10 +560,10 @@ async function runNotifierCheck() {
   }
 }
 
-function startUiStaticServer() {
+async function startUiStaticServer() {
   if (isDev) return;
 
-  const distDir = path.join(rootDir, 'app', 'dist');
+  const distDir = path.join(resourcesDir, 'app', 'dist');
   if (!fs.existsSync(distDir)) {
     dialog.showErrorBox(
       'Missing build',
@@ -469,7 +607,40 @@ function startUiStaticServer() {
     res.end(fs.readFileSync(filePath));
   });
 
-  uiServer.listen(uiPort, '127.0.0.1');
+  const listenOnPort = (port, host) =>
+    new Promise((resolve, reject) => {
+      const onError = (error) => {
+        uiServer.off('listening', onListening);
+        reject(error);
+      };
+      const onListening = () => {
+        uiServer.off('error', onError);
+        const address = uiServer.address();
+        if (address && typeof address === 'object') {
+          uiPort = address.port;
+          uiUrl = `http://${uiHost}:${uiPort}`;
+        }
+        resolve();
+      };
+      uiServer.once('error', onError);
+      uiServer.once('listening', onListening);
+      uiServer.listen(port, host);
+    });
+
+  try {
+    await listenOnPort(uiPort, uiHost);
+  } catch (error) {
+    if (error && error.code === 'EADDRINUSE') {
+      await listenOnPort(0, uiHost);
+      return;
+    }
+    if (error && (error.code === 'EADDRNOTAVAIL' || error.code === 'EAFNOSUPPORT')) {
+      await listenOnPort(0, '127.0.0.1');
+      return;
+    }
+    dialog.showErrorBox('ManVerse UI failed', error.message || String(error));
+    throw error;
+  }
 }
 
 async function waitForUrl(url, timeoutMs = 30000) {
@@ -496,6 +667,7 @@ async function createWindow() {
     resizable: true,
     maximizable: true,
     fullscreenable: true,
+    frame: process.platform === 'darwin',
     backgroundColor: '#0b0b0f',
     autoHideMenuBar: true,
     icon: fs.existsSync(iconPath) ? iconPath : undefined,
@@ -515,6 +687,7 @@ async function createWindow() {
   win.webContents.on('did-finish-load', () => {
     broadcastUpdateStatus();
     broadcastNotifierEvents();
+    win.webContents.send('manverse:window-state', { isMaximized: win.isMaximized() });
   });
   win.on('close', async (event) => {
     if (app.isQuitting || allowBackgroundClose) return;
@@ -540,6 +713,15 @@ async function createWindow() {
   });
   win.on('closed', () => {
     mainWindow = null;
+  });
+
+  win.on('maximize', () => {
+    isMaximized = true;
+    win.webContents.send('manverse:window-state', { isMaximized });
+  });
+  win.on('unmaximize', () => {
+    isMaximized = false;
+    win.webContents.send('manverse:window-state', { isMaximized });
   });
 }
 
@@ -592,9 +774,10 @@ function initAutoUpdates() {
 }
 
 async function bootstrap() {
-  startApi();
+  ensureWritableTemp();
   startUiDevServer();
-  startUiStaticServer();
+  await startUiStaticServer();
+  startApi();
 
   await Promise.all([waitForUrl(`${apiUrl}/health`), waitForUrl(uiUrl)]);
   await createWindow();
@@ -636,6 +819,26 @@ app.whenReady().then(() => {
   ipcMain.handle('manverse:updateSetting', async (_event, payload) =>
     updateSetting(payload?.key, payload?.value),
   );
+  ipcMain.handle('manverse:window-minimize', () => {
+    mainWindow?.minimize();
+    return { ok: true };
+  });
+  ipcMain.handle('manverse:window-toggle-maximize', () => {
+    if (!mainWindow) return { ok: false, isMaximized: false };
+    if (mainWindow.isMaximized()) {
+      mainWindow.unmaximize();
+      return { ok: true, isMaximized: false };
+    }
+    mainWindow.maximize();
+    return { ok: true, isMaximized: true };
+  });
+  ipcMain.handle('manverse:window-close', () => {
+    mainWindow?.close();
+    return { ok: true };
+  });
+  ipcMain.handle('manverse:getWindowState', () => ({
+    isMaximized: mainWindow?.isMaximized() ?? false,
+  }));
   ipcMain.handle('manverse:getUpdateStatus', () => updateStatus);
   ipcMain.handle('manverse:installUpdate', () => {
     autoUpdater.quitAndInstall();

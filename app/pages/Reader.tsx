@@ -10,6 +10,7 @@ import { api } from "../lib/api";
 import { anilistApi } from "../lib/anilist";
 import { history } from "../lib/history";
 import { Providers, type Source, isProviderSource } from "../lib/providers";
+import { desktopApi } from "../lib/desktop";
 import {
   ChevronLeft,
   ChevronRight,
@@ -86,6 +87,9 @@ const Reader: React.FC<ReaderProps> = ({
   const [showChapterList, setShowChapterList] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const lastScrollY = useRef(0);
+  const isDesktop =
+    desktopApi.isAvailable &&
+    !(typeof navigator !== "undefined" && navigator.platform.toLowerCase().includes("mac"));
 
   // Settings (Persisted)
   const [maxWidth, setMaxWidth] = useState<"100%" | "75%" | "50%">(() => {
@@ -667,7 +671,9 @@ const Reader: React.FC<ReaderProps> = ({
 
       {/* --- Top Header (Floating) --- */}
       <div
-        className={`fixed top-0 left-0 right-0 z-50 bg-black/90 backdrop-blur-md border-b border-white/10 px-4 py-3 transition-transform duration-300 ease-in-out ${
+        className={`fixed ${
+          isDesktop ? "top-9" : "top-0"
+        } left-0 right-0 z-50 bg-black/90 backdrop-blur-md border-b border-white/10 px-4 py-3 transition-transform duration-300 ease-in-out ${
           controlsVisible ? "translate-y-0" : "-translate-y-full"
         }`}
         onClick={(e) => e.stopPropagation()}

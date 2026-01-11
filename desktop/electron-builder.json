@@ -24,6 +24,7 @@
       "AppImage"
     ]
   },
+  "afterPack": "after-pack.cjs",
   "publish": [
     {
       "provider": "github",
