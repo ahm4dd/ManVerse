@@ -104,9 +104,9 @@ const Reader: React.FC<ReaderProps> = ({
 
   const [prefetchEnabled, setPrefetchEnabled] = useState<boolean>(() => {
     if (typeof window !== "undefined") {
-      return localStorage.getItem("reader_prefetch_enabled") !== "false";
+      return localStorage.getItem("reader_prefetch_enabled") === "true";
     }
-    return true;
+    return false;
   });
 
   const [prefetchCount, setPrefetchCount] = useState<number>(() => {
