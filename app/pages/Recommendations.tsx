@@ -16,6 +16,7 @@ const Recommendations: React.FC<RecommendationsProps> = ({ onNavigate }) => {
   const [hasMore, setHasMore] = useState({ trending: true, popular: true, topRated: true });
   const [loadingMore, setLoadingMore] = useState({ trending: false, popular: false, topRated: false });
   const [recommendationsHydrated, setRecommendationsHydrated] = useState(false);
+  const [pageInputs, setPageInputs] = useState({ trending: '1', popular: '1', topRated: '1' });
   const sectionCacheRef = useRef<Record<string, Record<number, Series[]>>>({
     trending: {},
     popular: {},
@@ -129,6 +130,14 @@ const Recommendations: React.FC<RecommendationsProps> = ({ onNavigate }) => {
     };
   }, [trending, popular, topRated, pages, hasMore, recommendationsHydrated]);
 
+  useEffect(() => {
+    setPageInputs({
+      trending: String(pages.trending),
+      popular: String(pages.popular),
+      topRated: String(pages.topRated),
+    });
+  }, [pages]);
+
   const handlePageChange = async (section: 'trending' | 'popular' | 'topRated', page: number) => {
     if (page < 1) return;
     if (loadingMore[section]) return;
@@ -164,6 +173,15 @@ const Recommendations: React.FC<RecommendationsProps> = ({ onNavigate }) => {
     }
   };
 
+  const handleJumpToPage = async (section: 'trending' | 'popular' | 'topRated', value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    const target = Number(trimmed);
+    if (!Number.isFinite(target) || target < 1) return;
+    if (target === pages[section]) return;
+    await handlePageChange(section, target);
+  };
+
   const Section = ({
     title,
     data,
@@ -185,6 +203,13 @@ const Recommendations: React.FC<RecommendationsProps> = ({ onNavigate }) => {
         </h2>
         <div className="flex items-center gap-2">
           <button
+            onClick={() => handlePageChange(section, 1)}
+            disabled={!canPrev || loadingMore[section]}
+            className="text-xs font-semibold text-gray-300 px-3 py-1.5 rounded-full border border-white/10 hover:bg-white/5 disabled:opacity-50"
+          >
+            First
+          </button>
+          <button
             onClick={() => handlePageChange(section, page - 1)}
             disabled={!canPrev || loadingMore[section]}
             className="text-xs font-semibold text-gray-300 px-3 py-1.5 rounded-full border border-white/10 hover:bg-white/5 disabled:opacity-50"
@@ -192,6 +217,34 @@ const Recommendations: React.FC<RecommendationsProps> = ({ onNavigate }) => {
             Prev
           </button>
           <span className="text-xs font-semibold text-gray-500">Page {page}</span>
+          <div className="flex items-center gap-1">
+            <input
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              value={pageInputs[section]}
+              onChange={(event) =>
+                setPageInputs((prev) => ({
+                  ...prev,
+                  [section]: event.target.value.replace(/[^\d]/g, ''),
+                }))
+              }
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  void handleJumpToPage(section, pageInputs[section]);
+                }
+              }}
+              className="w-14 px-2 py-1 rounded-full bg-white/5 border border-white/10 text-xs font-semibold text-white text-center focus:outline-none focus:border-primary/60"
+              placeholder="1"
+            />
+            <button
+              onClick={() => handleJumpToPage(section, pageInputs[section])}
+              disabled={loadingMore[section]}
+              className="text-xs font-semibold text-gray-300 px-2 py-1 rounded-full border border-white/10 hover:bg-white/5 disabled:opacity-50"
+            >
+              Go
+            </button>
+          </div>
           <button
             onClick={() => handlePageChange(section, page + 1)}
             disabled={!canNext || loadingMore[section]}

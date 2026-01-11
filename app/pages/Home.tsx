@@ -61,6 +61,7 @@ const Home: React.FC<HomeProps> = ({
   const [searchHasMore, setSearchHasMore] = useState(true);
   const [searchLoadingMore, setSearchLoadingMore] = useState(false);
   const [homeHydrated, setHomeHydrated] = useState(false);
+  const [pageInput, setPageInput] = useState('1');
   const searchPageCacheRef = useRef<Record<string, Record<number, Series[]>>>({});
   const tabPageCacheRef = useRef<Record<string, Record<number, Series[]>>>({
     Newest: {},
@@ -634,6 +635,7 @@ const Home: React.FC<HomeProps> = ({
   const isLoadingMore = isDiscoveryMode ? searchLoadingMore : tabLoadingMore[activeTabKey];
   const currentPage = isDiscoveryMode ? searchPage : tabPages[activeTabKey];
   const canGoPrev = currentPage > 1;
+  const canGoFirst = currentPage > 1;
 
   useEffect(() => {
     if (!homeHydrated) return;
@@ -641,6 +643,23 @@ const Home: React.FC<HomeProps> = ({
     const page = tabPages[activeTabKey] || 1;
     void loadTabPage(activeTab, page);
   }, [activeTab, homeHydrated]);
+
+  useEffect(() => {
+    setPageInput(String(currentPage));
+  }, [currentPage]);
+
+  const handleJumpToPage = async (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    const target = Number(trimmed);
+    if (!Number.isFinite(target) || target < 1) return;
+    if (target === currentPage) return;
+    if (isDiscoveryMode) {
+      await handleSearchPageChange(target);
+    } else {
+      await handleTabPageChange(target);
+    }
+  };
 
   return (
     <div className="min-h-screen pb-20 px-4 sm:px-6 lg:px-8 max-w-[1800px] mx-auto pt-6">
@@ -855,16 +874,53 @@ const Home: React.FC<HomeProps> = ({
                         <button
                           onClick={() =>
                             isDiscoveryMode
+                              ? handleSearchPageChange(1)
+                              : handleTabPageChange(1)
+                          }
+                          disabled={!canGoFirst || isLoadingMore}
+                          className="px-4 py-2.5 rounded-xl bg-white/5 text-white font-semibold text-sm border border-white/10 hover:bg-white/10 disabled:opacity-50"
+                        >
+                          First
+                        </button>
+                        <button
+                          onClick={() =>
+                            isDiscoveryMode
                               ? handleSearchPageChange(currentPage - 1)
                               : handleTabPageChange(currentPage - 1)
                           }
                           disabled={!canGoPrev || isLoadingMore}
-                          className="px-5 py-2.5 rounded-xl bg-white/5 text-white font-semibold text-sm border border-white/10 hover:bg-white/10 disabled:opacity-50"
+                          className="px-4 py-2.5 rounded-xl bg-white/5 text-white font-semibold text-sm border border-white/10 hover:bg-white/10 disabled:opacity-50"
                         >
                           Previous
                         </button>
                         <div className="text-sm font-semibold text-gray-400">
                           Page {currentPage}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <label className="text-xs font-semibold text-gray-500 uppercase tracking-widest">
+                            Jump
+                          </label>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            value={pageInput}
+                            onChange={(event) => setPageInput(event.target.value.replace(/[^\d]/g, ''))}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter') {
+                                void handleJumpToPage(pageInput);
+                              }
+                            }}
+                            className="w-16 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm font-semibold text-white text-center focus:outline-none focus:border-primary/60"
+                            placeholder="1"
+                          />
+                          <button
+                            onClick={() => handleJumpToPage(pageInput)}
+                            disabled={isLoadingMore}
+                            className="px-3 py-2 rounded-lg bg-white/5 text-white text-xs font-bold border border-white/10 hover:bg-white/10 disabled:opacity-50"
+                          >
+                            Go
+                          </button>
                         </div>
                         <button
                           onClick={() =>
@@ -873,7 +929,7 @@ const Home: React.FC<HomeProps> = ({
                               : handleTabPageChange(currentPage + 1)
                           }
                           disabled={!canLoadMore || isLoadingMore}
-                          className="px-5 py-2.5 rounded-xl bg-white/5 text-white font-semibold text-sm border border-white/10 hover:bg-white/10 disabled:opacity-50"
+                          className="px-4 py-2.5 rounded-xl bg-white/5 text-white font-semibold text-sm border border-white/10 hover:bg-white/10 disabled:opacity-50"
                         >
                           {isLoadingMore ? 'Loading...' : 'Next'}
                         </button>
