@@ -416,6 +416,17 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     return asciiRatio * 0.6 + lengthScore * 0.35 + digitBoost;
   };
 
+  const expandSynonymTerms = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+    const variants = new Set<string>([trimmed]);
+    const decomma = trimmed.replace(/[,:]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (decomma && decomma !== trimmed) {
+      variants.add(decomma);
+    }
+    return Array.from(variants);
+  };
+
   const buildProviderSearchTerms = () => {
     if (!data) return [];
     const candidates = new Map<string, { term: string; score: number }>();
@@ -435,7 +446,9 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     push(data.title, 3.0);
     push(data.titles?.romaji, 2.6);
     push(data.titles?.native, 1.6);
-    (data.synonyms ?? []).forEach((synonym) => push(synonym, 3.4));
+    (data.synonyms ?? []).forEach((synonym) => {
+      expandSynonymTerms(synonym).forEach((term) => push(term, 3.4));
+    });
 
     return Array.from(candidates.values())
       .sort((a, b) => b.score - a.score)
@@ -2433,7 +2446,16 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
                     {data.synonyms && data.synonyms.length > 0 && (
                       <div>
                         <span className="text-gray-500 uppercase tracking-wide text-[11px]">Synonyms</span>
-                        <div className="text-white font-semibold text-[14px]">{data.synonyms.join(', ')}</div>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {data.synonyms.map((synonym, index) => (
+                            <span
+                              key={`${synonym}-${index}`}
+                              className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-white/90"
+                            >
+                              {synonym}
+                            </span>
+                          ))}
+                        </div>
                       </div>
                     )}
                   </div>
