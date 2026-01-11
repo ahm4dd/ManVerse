@@ -1,4 +1,5 @@
 const { app, BrowserWindow, dialog } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const { spawn } = require('node:child_process');
 const http = require('node:http');
 const fs = require('node:fs');
@@ -16,6 +17,7 @@ const bunPath = process.env.BUN_PATH || 'bun';
 let apiProcess = null;
 let uiProcess = null;
 let uiServer = null;
+let mainWindow = null;
 
 function spawnProcess(command, args, options) {
   const child = spawn(command, args, options);
@@ -157,6 +159,41 @@ async function createWindow() {
   }
 
   await win.loadURL(uiUrl);
+  mainWindow = win;
+  win.on('closed', () => {
+    mainWindow = null;
+  });
+}
+
+function initAutoUpdates() {
+  if (isDev || process.env.MANVERSE_DISABLE_UPDATES === 'true') {
+    return;
+  }
+
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on('update-downloaded', async () => {
+    const response = await dialog.showMessageBox(mainWindow ?? undefined, {
+      type: 'info',
+      buttons: ['Restart now', 'Later'],
+      defaultId: 0,
+      cancelId: 1,
+      title: 'Update ready',
+      message: 'A new version of ManVerse is ready to install.',
+      detail: 'Restart to apply the update.',
+    });
+
+    if (response.response === 0) {
+      autoUpdater.quitAndInstall();
+    }
+  });
+
+  autoUpdater.on('error', (error) => {
+    console.warn('Auto-update error:', error?.message || error);
+  });
+
+  autoUpdater.checkForUpdatesAndNotify();
 }
 
 async function bootstrap() {
@@ -166,6 +203,7 @@ async function bootstrap() {
 
   await Promise.all([waitForUrl(`${apiUrl}/health`), waitForUrl(uiUrl)]);
   await createWindow();
+  initAutoUpdates();
 }
 
 app.on('before-quit', () => {
@@ -176,6 +214,7 @@ app.on('before-quit', () => {
 });
 
 app.whenReady().then(() => {
+  app.setAppUserModelId('com.ahm4dd.manverse');
   bootstrap().catch((error) => {
     dialog.showErrorBox('ManVerse startup failed', error.message || String(error));
     app.quit();

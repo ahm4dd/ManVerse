@@ -1,5 +1,6 @@
 {
   "name": "manverse",
+  "version": "1.0.0",
   "private": true,
   "license": "Apache-2.0",
   "workspaces": [
@@ -15,7 +16,8 @@
     "dev:desktop": "bun run --cwd desktop dev",
     "build:desktop": "bun run --cwd desktop build",
     "setup": "bun ./scripts/bootstrap.ts",
-    "postinstall": "bun ./scripts/bootstrap.ts"
+    "postinstall": "bun ./scripts/bootstrap.ts",
+    "version:sync": "bun ./scripts/version.ts"
   },
   "devDependencies": {
     "concurrently": "^9.2.0"
