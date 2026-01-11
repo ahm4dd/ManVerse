@@ -61,8 +61,22 @@ const MAX_PROVIDER_SEARCH_CACHE = 40;
 const PROVIDER_SEARCH_TTL_MS = 10 * 60 * 1000;
 const providerDetailsCache = new Map<string, SeriesDetails>();
 const mappedProviderCache = new Map<string, SeriesDetails>();
-const providerSearchCache = new Map<string, { results: Series[]; expiresAt: number }>();
+type ProviderSearchCacheEntry = {
+  results: Series[];
+  expiresAt: number;
+  hasNextPage?: boolean;
+  currentPage?: number;
+};
+
+type ProviderSearchMeta = {
+  results: Series[];
+  hasNextPage: boolean;
+  currentPage: number;
+};
+
+const providerSearchCache = new Map<string, ProviderSearchCacheEntry>();
 const providerSearchInFlight = new Map<string, Promise<Series[]>>();
+const providerSearchMetaInFlight = new Map<string, Promise<ProviderSearchMeta>>();
 
 function loadCacheFromSession(key: string) {
   if (typeof window === 'undefined') return {};
@@ -89,9 +103,7 @@ function loadSearchCacheFromSession() {
   if (typeof window === 'undefined') return {};
   try {
     const raw = sessionStorage.getItem(PROVIDER_SEARCH_CACHE_KEY);
-    return raw
-      ? (JSON.parse(raw) as Record<string, { results: Series[]; expiresAt: number }>)
-      : {};
+    return raw ? (JSON.parse(raw) as Record<string, ProviderSearchCacheEntry>) : {};
   } catch {
     return {};
   }
@@ -254,13 +266,35 @@ function peekProviderSearchCache(query: string, provider: Source, page = 1) {
   if (!entry) return null;
   return {
     results: entry.results,
+    hasNextPage: entry.hasNextPage,
+    currentPage: entry.currentPage,
     stale: entry.expiresAt <= Date.now(),
     expiresAt: entry.expiresAt,
   };
 }
 
-function setCachedProviderSearch(key: string, results: Series[]) {
-  providerSearchCache.set(key, { results, expiresAt: Date.now() + PROVIDER_SEARCH_TTL_MS });
+function getCachedProviderSearchMeta(key: string): ProviderSearchMeta | null {
+  const entry = providerSearchCache.get(key);
+  if (!entry) return null;
+  if (entry.expiresAt <= Date.now()) return null;
+  return {
+    results: entry.results,
+    hasNextPage: entry.hasNextPage ?? entry.results.length > 0,
+    currentPage: entry.currentPage ?? 1,
+  };
+}
+
+function setCachedProviderSearch(
+  key: string,
+  results: Series[],
+  meta?: { hasNextPage?: boolean; currentPage?: number },
+) {
+  providerSearchCache.set(key, {
+    results,
+    expiresAt: Date.now() + PROVIDER_SEARCH_TTL_MS,
+    hasNextPage: meta?.hasNextPage,
+    currentPage: meta?.currentPage,
+  });
   persistSearchCacheToSession();
 }
 
@@ -304,7 +338,10 @@ export const api = {
     )
       .then((res) => {
         const results = res.results.map(formatSeriesResult);
-        setCachedProviderSearch(cacheKey, results);
+        setCachedProviderSearch(cacheKey, results, {
+          hasNextPage: res.hasNextPage,
+          currentPage: res.currentPage,
+        });
         return results;
       })
       .finally(() => {
@@ -332,7 +369,10 @@ export const api = {
     )
       .then((res) => {
         const results = res.results.map(formatSeriesResult);
-        setCachedProviderSearch(cacheKey, results);
+        setCachedProviderSearch(cacheKey, results, {
+          hasNextPage: res.hasNextPage,
+          currentPage: res.currentPage,
+        });
         return results;
       })
       .finally(() => {
@@ -343,6 +383,47 @@ export const api = {
   },
 
   peekProviderSearchCache,
+
+  searchProviderSeriesMeta: async (
+    query: string,
+    provider: Source = 'AsuraScans',
+    page = 1,
+  ): Promise<ProviderSearchMeta> => {
+    const trimmed = query.trim();
+    if (!trimmed) return { results: [], hasNextPage: false, currentPage: page };
+    const cacheKey = normalizeProviderSearchKey(provider, trimmed, page);
+    const cached = getCachedProviderSearchMeta(cacheKey);
+    if (cached) {
+      return cached;
+    }
+    const inFlight = providerSearchMetaInFlight.get(cacheKey);
+    if (inFlight) {
+      return inFlight;
+    }
+
+    const request = apiRequest<ProviderSearchResult>(
+      `/api/manga/search?source=asura&query=${encodeURIComponent(trimmed)}&page=${page}`,
+    )
+      .then((res) => {
+        const results = res.results.map(formatSeriesResult);
+        const payload = {
+          results,
+          hasNextPage: res.hasNextPage,
+          currentPage: res.currentPage,
+        };
+        setCachedProviderSearch(cacheKey, results, {
+          hasNextPage: res.hasNextPage,
+          currentPage: res.currentPage,
+        });
+        return payload;
+      })
+      .finally(() => {
+        providerSearchMetaInFlight.delete(cacheKey);
+      });
+
+    providerSearchMetaInFlight.set(cacheKey, request);
+    return request;
+  },
 
   prefetchProviderSearch: (queries: string[], provider: Source = 'AsuraScans') => {
     if (typeof window === 'undefined') return;

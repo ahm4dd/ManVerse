@@ -500,13 +500,21 @@ const Home: React.FC<HomeProps> = ({
          sort: apiSort
       };
 
-      const data = await api.searchSeries(globalSearchQuery, globalSearchSource, apiFilters, page);
-      setSearchResults(data);
-      setSearchHasMore(data.length > 0);
+      let results: Series[] = [];
+      if (globalSearchSource === 'AsuraScans') {
+        const meta = await api.searchProviderSeriesMeta(globalSearchQuery, globalSearchSource, page);
+        results = meta.results;
+        setSearchResults(results);
+        setSearchHasMore(meta.hasNextPage);
+      } else {
+        results = await api.searchSeries(globalSearchQuery, globalSearchSource, apiFilters, page);
+        setSearchResults(results);
+        setSearchHasMore(results.length > 0);
+      }
       if (!searchPageCacheRef.current[searchContextKey]) {
         searchPageCacheRef.current[searchContextKey] = {};
       }
-      searchPageCacheRef.current[searchContextKey][page] = data;
+      searchPageCacheRef.current[searchContextKey][page] = results;
     } finally {
       if (!append) setLoading(false);
       setSearchLoadingMore(false);
@@ -605,7 +613,12 @@ const Home: React.FC<HomeProps> = ({
     setSearchPage(page);
     if (cache) {
       setSearchResults(cache);
-      setSearchHasMore(cache.length > 0);
+      if (globalSearchSource === 'AsuraScans') {
+        const meta = api.peekProviderSearchCache(globalSearchQuery, globalSearchSource, page);
+        setSearchHasMore(meta?.hasNextPage ?? cache.length > 0);
+      } else {
+        setSearchHasMore(cache.length > 0);
+      }
       return;
     }
     setSearchLoadingMore(true);
