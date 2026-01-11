@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { Series } from '../types';
-import { api, Source } from '../lib/api';
+import { api } from '../lib/api';
 import { anilistApi, SearchFilters as ISearchFilters } from '../lib/anilist';
 import { history } from '../lib/history';
 import SeriesCard from '../components/SeriesCard';
@@ -11,6 +11,7 @@ import SidebarList from '../components/SidebarList';
 import { FilterState } from '../components/SearchFilters';
 import { motion } from 'framer-motion';
 import { SortIcon } from '../components/Icons';
+import { Providers, type Source, isProviderSource } from '../lib/providers';
 
 interface HomeProps {
   onNavigate: (view: string, data?: any) => void;
@@ -31,7 +32,7 @@ interface ContinueItem {
   chapterNumber: string | number;
   chapterId?: string; // If available (Local History)
   timestamp: number;
-  source: 'AniList' | 'AsuraScans';
+  source: Source;
   progressSource: 'AniList' | 'Local';
 }
 
@@ -272,16 +273,19 @@ const Home: React.FC<HomeProps> = ({
 
     const warmCache = async () => {
       for (const item of sorted) {
-        const key = item.anilistId ? `anilist:${item.anilistId}` : `provider:${item.providerSeriesId || item.id}`;
+        const provider = isProviderSource(item.source) ? item.source : Providers.AsuraScans;
+        const key = item.anilistId
+          ? `anilist:${item.anilistId}`
+          : `provider:${provider}:${item.providerSeriesId || item.id}`;
         if (!shouldPrefetch(key)) continue;
 
         try {
           if (item.providerSeriesId) {
-            await api.getSeriesDetails(item.providerSeriesId, 'AsuraScans');
+            await api.getSeriesDetails(item.providerSeriesId, provider);
           } else if (item.anilistId) {
-            await api.getMappedProviderDetails(item.anilistId, 'AsuraScans');
-          } else if (item.source === 'AsuraScans') {
-            await api.getSeriesDetails(item.id, 'AsuraScans');
+            await api.getMappedProviderDetails(item.anilistId, provider);
+          } else if (isProviderSource(item.source)) {
+            await api.getSeriesDetails(item.id, provider);
           }
           markPrefetched(key);
         } catch (error) {
@@ -419,7 +423,7 @@ const Home: React.FC<HomeProps> = ({
           let progressSource: 'AniList' | 'Local' = 'AniList';
           let timestamp = entry.updatedAt * 1000;
           let providerSeriesId = undefined;
-          let source: 'AniList' | 'AsuraScans' = 'AniList';
+          let source: Source = 'AniList';
 
           if (localMatch) {
              const localNum = parseFloat(localMatch.chapterNumber.replace(/[^0-9.]/g, ''));
@@ -431,7 +435,7 @@ const Home: React.FC<HomeProps> = ({
              }
              providerSeriesId =
                localMatch.providerSeriesId || (!/^\d+$/.test(localMatch.seriesId) ? localMatch.seriesId : undefined);
-             source = localMatch.source === 'AsuraScans' ? 'AsuraScans' : 'AniList';
+             source = localMatch.source;
           }
 
           return {
@@ -482,7 +486,7 @@ const Home: React.FC<HomeProps> = ({
   };
 
   const handleGlobalSearch = async (page = 1, append = false) => {
-    if (globalSearchSource === 'AsuraScans' && !globalSearchQuery.trim()) {
+    if (isProviderSource(globalSearchSource) && !globalSearchQuery.trim()) {
       setSearchResults([]);
       setSearchHasMore(false);
       return;
@@ -520,7 +524,7 @@ const Home: React.FC<HomeProps> = ({
       };
 
       let results: Series[] = [];
-      if (globalSearchSource === 'AsuraScans') {
+      if (isProviderSource(globalSearchSource)) {
         const meta = await api.searchProviderSeriesMeta(globalSearchQuery, globalSearchSource, page);
         results = sortProviderResults(meta.results);
         setSearchResults(results);
@@ -550,12 +554,13 @@ const Home: React.FC<HomeProps> = ({
 
     try {
       let providerDetails = null;
+      const provider = isProviderSource(item.source) ? item.source : Providers.AsuraScans;
       if (item.providerSeriesId) {
-        providerDetails = await api.getSeriesDetails(item.providerSeriesId, 'AsuraScans');
-      } else if (!anilistId && item.source === 'AsuraScans') {
-        providerDetails = await api.getSeriesDetails(item.id, 'AsuraScans');
+        providerDetails = await api.getSeriesDetails(item.providerSeriesId, provider);
+      } else if (!anilistId && isProviderSource(item.source)) {
+        providerDetails = await api.getSeriesDetails(item.id, provider);
       } else if (anilistId) {
-        providerDetails = await api.getMappedProviderDetails(anilistId, 'AsuraScans');
+        providerDetails = await api.getMappedProviderDetails(anilistId, provider);
       }
 
       if (!providerDetails) {
@@ -631,7 +636,7 @@ const Home: React.FC<HomeProps> = ({
     const cache = searchPageCacheRef.current[searchContextKey]?.[page];
     setSearchPage(page);
     if (cache) {
-      if (globalSearchSource === 'AsuraScans') {
+      if (isProviderSource(globalSearchSource)) {
         const parseChapter = (value?: string) => {
           if (!value) return 0;
           const match = value.match(/(\d+(?:\.\d+)?)/);
@@ -649,7 +654,7 @@ const Home: React.FC<HomeProps> = ({
       } else {
         setSearchResults(cache);
       }
-      if (globalSearchSource === 'AsuraScans') {
+      if (isProviderSource(globalSearchSource)) {
         const meta = api.peekProviderSearchCache(globalSearchQuery, globalSearchSource, page);
         setSearchHasMore(meta?.hasNextPage ?? cache.length > 0);
       } else {

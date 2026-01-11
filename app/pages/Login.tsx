@@ -1,4 +1,5 @@
 import React from 'react';
+import { Providers, providerShortLabel } from '../lib/providers';
 import { anilistApi } from '../lib/anilist';
 import { ChevronRight, StarIcon } from '../components/Icons';
 
@@ -110,7 +111,9 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
                 </div>
                 <div>
                   <h3 className="font-bold text-white text-lg">Smart Discovery</h3>
-                  <p className="text-sm text-gray-400 mt-1">Find new series on AsuraScans or AniList instantly with one search bar.</p>
+                  <p className="text-sm text-gray-400 mt-1">
+                    Find new series on {providerShortLabel(Providers.AsuraScans)} or AniList instantly with one search bar.
+                  </p>
                 </div>
              </div>
           </div>

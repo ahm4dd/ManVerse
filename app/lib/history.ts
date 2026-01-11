@@ -1,3 +1,5 @@
+import type { Source } from './providers';
+
 export interface HistoryItem {
   seriesId: string;
   anilistId?: string;
@@ -8,7 +10,7 @@ export interface HistoryItem {
   chapterNumber: string;
   chapterTitle: string;
   timestamp: number;
-  source: 'AniList' | 'AsuraScans';
+  source: Source;
   page?: number;
   readChapters?: string[];
 }
@@ -34,7 +36,7 @@ type ToggleReadInput = {
   chapterId: string;
   chapterNumber: string;
   chapterTitle: string;
-  source: 'AniList' | 'AsuraScans';
+  source: Source;
 };
 
 type AttachAnilistInput = {

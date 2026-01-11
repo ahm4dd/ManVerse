@@ -7,6 +7,16 @@ import { ChevronLeft, StarIcon, ChevronDown, SearchIcon, LibraryIcon } from '../
 import SeriesCard from '../components/SeriesCard';
 import { useNotification } from '../lib/notifications';
 import { motion } from 'framer-motion';
+import {
+  Providers,
+  type ProviderType,
+  type Source,
+  isProviderSource,
+  providerBaseUrl,
+  providerLabel,
+  providerOptions,
+  providerShortLabel,
+} from '../lib/providers';
 
 interface DetailsProps {
   seriesId: string;
@@ -15,11 +25,12 @@ interface DetailsProps {
   user?: any;
 }
 
-const PROVIDERS = [
-  { id: 'AsuraScans', name: 'Asura Scans', enabled: true },
-  { id: 'MangaDex', name: 'MangaDex (Soon)', enabled: false },
-  { id: 'FlameScans', name: 'Flame Scans (Soon)', enabled: false },
-];
+const PROVIDERS = providerOptions.map((provider) => ({
+  id: provider.id,
+  name: providerLabel(provider.id),
+  enabled: true,
+}));
+const DEFAULT_PROVIDER = providerOptions[0]?.id ?? Providers.AsuraScans;
 
 const formatTimeAgo = (timestamp?: number) => {
   if (!timestamp) return '';
@@ -110,7 +121,7 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
   const [providerCacheHit, setProviderCacheHit] = useState(false);
   const [providerResults, setProviderResults] = useState<Series[] | null>(null);
   const [activeProviderSeries, setActiveProviderSeries] = useState<SeriesDetails | null>(null);
-  const [selectedProvider, setSelectedProvider] = useState<string>('AsuraScans');
+  const [selectedProvider, setSelectedProvider] = useState<ProviderType>(DEFAULT_PROVIDER);
   const [showProviderMenu, setShowProviderMenu] = useState(false);
   const [manualQuery, setManualQuery] = useState('');
   const [manualProviderUrl, setManualProviderUrl] = useState('');
@@ -118,6 +129,7 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
   const [readChapterIds, setReadChapterIds] = useState<Set<string>>(new Set());
   const [downloadedChapterIds, setDownloadedChapterIds] = useState<Set<string>>(new Set());
   const [downloadedChaptersByNumber, setDownloadedChaptersByNumber] = useState<Record<string, number>>({});
+  const dataSource: Source = data?.source ?? 'AniList';
   const [queuedChapterIds, setQueuedChapterIds] = useState<Set<string>>(new Set());
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedChapterIds, setSelectedChapterIds] = useState<Set<string>>(new Set());
@@ -180,13 +192,13 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
       setReconcileLoading(false);
       try {
         // Determine source based on ID format (Numeric = AniList, String = Provider)
-        const source = /^\d+$/.test(seriesId) ? 'AniList' : 'AsuraScans';
+        const source: Source = /^\d+$/.test(seriesId) ? 'AniList' : DEFAULT_PROVIDER;
         const details = await api.getSeriesDetails(seriesId, source);
         setData(details);
         setUserStatus(details.userListStatus || null);
 
         // If we loaded directly from provider (e.g. from Home provider search), set it as active for reading
-        if (source === 'AsuraScans') {
+        if (isProviderSource(source)) {
            setActiveProviderSeries(details);
         }
       } catch (e) {
@@ -201,14 +213,14 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
 
   useEffect(() => {
     if (!data) return;
-    if (data.source !== 'AniList') return;
+    if (dataSource !== 'AniList') return;
     if (activeProviderSeries) return;
 
     let cancelled = false;
     setProviderLoading(true);
 
     api
-      .getMappedProviderDetails(data.id, 'AsuraScans')
+      .getMappedProviderDetails(data.id, selectedProvider)
       .then((details) => {
         if (cancelled) return;
         setActiveProviderSeries(details);
@@ -225,17 +237,22 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     return () => {
       cancelled = true;
     };
-  }, [data, activeProviderSeries]);
+  }, [data, activeProviderSeries, selectedProvider]);
 
   useEffect(() => {
     if (!data) return;
-    if (data.source !== 'AsuraScans') return;
+    if (!isProviderSource(dataSource)) return;
 
     const providerId = activeProviderSeries?.id || data.id;
+    const activeProviderSource = activeProviderSeries?.source;
+    const provider =
+      activeProviderSource && isProviderSource(activeProviderSource)
+        ? activeProviderSource
+        : dataSource;
     let cancelled = false;
 
     api
-      .getProviderMappingByProviderId(providerId, 'AsuraScans')
+      .getProviderMappingByProviderId(providerId, provider)
       .then((mapping) => {
         if (cancelled) return;
         if (mapping.anilist) {
@@ -262,7 +279,7 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
   useEffect(() => {
     if (!data) return;
     let match =
-      data.source === 'AniList'
+      dataSource === 'AniList'
         ? history.getItem({ seriesId: data.id, anilistId: data.id, title: data.title })
         : history.getItem({ seriesId: data.id, providerSeriesId: data.id, title: data.title });
     if (!match && data.title) {
@@ -270,15 +287,15 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     }
     setHistoryMatch(match);
 
-      const providerIdFallback =
+    const providerIdFallback =
       activeProviderSeries?.id ||
       match?.providerSeriesId ||
       (match && !/^\d+$/.test(match.seriesId) ? match.seriesId : undefined) ||
-      (data.source === 'AsuraScans' ? data.id : undefined);
+      (isProviderSource(dataSource) ? data.id : undefined);
     const readIds = new Set(
       history.getReadChapters({
         seriesId: data.id,
-        anilistId: data.source === 'AniList' ? data.id : undefined,
+        anilistId: dataSource === 'AniList' ? data.id : undefined,
         providerSeriesId: providerIdFallback,
         title: data.title,
       }),
@@ -324,23 +341,26 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     setSelectedChapterIds(new Set());
   }, [activeProviderSeries?.id]);
 
-  const normalizeAsuraInput = (input: string) => {
+  const normalizeProviderInput = (provider: ProviderType, input: string) => {
     const trimmed = input.trim();
     if (!trimmed) return '';
     if (/^https?:\/\//i.test(trimmed)) return trimmed;
+    const baseUrl = providerBaseUrl(provider).replace(/\/+$/, '');
+    if (!baseUrl) return trimmed;
+    const baseHost = baseUrl.replace(/^https?:\/\//i, '');
     const cleaned = trimmed.replace(/^\/+/, '');
     if (cleaned.startsWith('series/')) {
-      return `https://asuracomic.net/${cleaned}`;
+      return `${baseUrl}/${cleaned}`;
     }
-    if (cleaned.startsWith('asuracomic.net/')) {
+    if (baseHost && cleaned.startsWith(`${baseHost}/`)) {
       return `https://${cleaned}`;
     }
-    return `https://asuracomic.net/series/${cleaned}`;
+    return `${baseUrl}/series/${cleaned}`;
   };
 
-  const searchProvider = async (providerId: string, query: string) => {
+  const searchProvider = async (providerId: ProviderType, query: string) => {
     if (!data) return;
-    if (providerId !== 'AsuraScans') return; // Only Asura supported for now
+    if (!providerBaseUrl(providerId)) return;
 
     setProviderLoading(true);
     setProviderRefreshing(false);
@@ -350,18 +370,19 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     setSelectedProvider(providerId);
 
     try {
-      const cached = api.peekProviderSearchCache(query, 'AsuraScans');
+      const providerName = providerLabel(providerId);
+      const cached = api.peekProviderSearchCache(query, providerId);
       let autoSelected = false;
       if (cached) {
         setProviderResults(cached.results);
         setProviderCacheHit(true);
-        prefetchProviderDetails(cached.results);
+        prefetchProviderDetails(providerId, cached.results);
         if (cached.results.length === 1) {
           autoSelected = true;
           handleSelectProviderSeries(cached.results[0].id);
-          notify(`Found match on ${providerId} (cached).`, 'success');
+          notify(`Found match on ${providerName} (cached).`, 'success');
         } else if (cached.results.length === 0) {
-          notify(`No matches found on ${providerId}.`, 'warning');
+          notify(`No matches found on ${providerName}.`, 'warning');
         }
         if (cached.stale && !autoSelected) {
           setProviderRefreshing(true);
@@ -372,14 +393,14 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
         }
       }
 
-      const results = await api.refreshProviderSearch(query, 'AsuraScans');
+      const results = await api.refreshProviderSearch(query, providerId);
       applyProviderResults(results);
 
       if (results.length === 1) {
         handleSelectProviderSeries(results[0].id);
-        notify(`Found match on ${providerId}`, 'success');
+        notify(`Found match on ${providerName}`, 'success');
       } else if (results.length === 0) {
-        notify(`No matches found on ${providerId}.`, 'warning');
+        notify(`No matches found on ${providerName}.`, 'warning');
       }
     } catch (e) {
       console.error(e);
@@ -483,32 +504,31 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     return best;
   };
 
-  const prefetchProviderDetails = (results: Series[]) => {
+  const prefetchProviderDetails = (providerId: ProviderType, results: Series[]) => {
     if (!results.length) return;
     const candidates = results.slice(0, 2);
     candidates.forEach((series) => {
-      const normalized = normalizeAsuraInput(series.id);
-      api.getSeriesDetails(normalized, 'AsuraScans').catch(() => {});
+      const normalized = normalizeProviderInput(providerId, series.id);
+      api.getSeriesDetails(normalized, providerId).catch(() => {});
     });
   };
 
   const applyProviderResults = (results: Series[]) => {
     setProviderResults(results);
     setProviderCacheHit(false);
-    prefetchProviderDetails(results);
+    prefetchProviderDetails(selectedProvider, results);
   };
 
   useEffect(() => {
-    if (!data || data.source !== 'AniList') return;
+    if (!data || dataSource !== 'AniList') return;
     if (providerLoading || providerResults !== null) return;
     const terms = buildProviderSearchTerms();
     if (terms.length === 0) return;
-    api.prefetchProviderSearch(terms, 'AsuraScans');
-  }, [data?.id]);
+    api.prefetchProviderSearch(terms, selectedProvider);
+  }, [data?.id, selectedProvider]);
 
-  const searchProviderWithFallback = async (providerId: string, queries: string[]) => {
+  const searchProviderWithFallback = async (providerId: ProviderType, queries: string[]) => {
     if (!data) return;
-    if (providerId !== 'AsuraScans') return;
 
     setProviderLoading(true);
     setProviderRefreshing(false);
@@ -522,7 +542,7 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
       const searchTerms = uniqueQueries.slice(0, 3);
       const cachedEntries = searchTerms.map((term) => ({
         term,
-        cache: api.peekProviderSearchCache(term, 'AsuraScans'),
+        cache: api.peekProviderSearchCache(term, providerId),
       }));
 
       const cachedMerged = new Map<string, { series: Series; score: number }>();
@@ -544,7 +564,7 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
       if (cachedRanked.length > 0) {
         setProviderResults(cachedRanked);
         setProviderCacheHit(true);
-        prefetchProviderDetails(cachedRanked);
+        prefetchProviderDetails(providerId, cachedRanked);
         setProviderLoading(false);
         if (cachedEntries.some((entry) => entry.cache?.stale)) {
           setProviderRefreshing(true);
@@ -571,7 +591,7 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
       const resultsByQuery = await Promise.all(
         queriesToFetch.map(async (query) => {
           try {
-            const results = await api.refreshProviderSearch(query, 'AsuraScans');
+            const results = await api.refreshProviderSearch(query, providerId);
             return { query, results };
           } catch {
             return { query, results: [] as Series[] };
@@ -606,7 +626,7 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
 
       if (ranked.length === 0) {
         setProviderResults([]);
-        notify(`No matches found on ${providerId}.`, 'warning');
+        notify(`No matches found on ${providerLabel(providerId)}.`, 'warning');
         return;
       }
 
@@ -632,9 +652,8 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     }
   };
 
-  const handleSearchOnProvider = async (providerId: string) => {
+  const handleSearchOnProvider = async (providerId: ProviderType) => {
     if (!data) return;
-    if (providerId !== 'AsuraScans') return;
     if (!showProviderRemap) {
       if (activeProviderSeries?.chapters?.length) {
         setShowProviderMenu(false);
@@ -646,7 +665,7 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
         setProviderResults(null);
         setShowProviderMenu(false);
         setSelectedProvider(providerId);
-        const mapped = await api.getMappedProviderDetails(data.id, 'AsuraScans');
+        const mapped = await api.getMappedProviderDetails(data.id, providerId);
         if (mapped?.chapters?.length) {
           setActiveProviderSeries(mapped);
           setProviderResults(null);
@@ -667,11 +686,11 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     await searchProviderWithFallback(providerId, terms);
   };
 
-  const handleSelectProviderSeries = async (id: string) => {
+  const handleSelectProviderSeries = async (id: string, providerId: ProviderType = selectedProvider) => {
     setProviderLoading(true);
-    const normalizedId = normalizeAsuraInput(id);
+    const normalizedId = normalizeProviderInput(providerId, id);
     try {
-      const details = await api.getSeriesDetails(normalizedId, 'AsuraScans');
+      const details = await api.getSeriesDetails(normalizedId, providerId);
       setActiveProviderSeries(details);
       setProviderResults(null); // Clear list to show chapters
 
@@ -711,6 +730,7 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
               rating: details.rating,
             },
             details.providerMangaId,
+            providerId,
           );
           history.attachAnilistId({
             providerSeriesId: normalizedId,
@@ -754,12 +774,12 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
   };
 
   const handleManualUrlMap = async () => {
-    const normalized = normalizeAsuraInput(manualProviderUrl);
+    const normalized = normalizeProviderInput(selectedProvider, manualProviderUrl);
     if (!normalized) {
-      notify('Paste a valid Asura series URL.', 'warning');
+      notify(`Paste a valid ${providerLabel(selectedProvider)} series URL.`, 'warning');
       return;
     }
-    await handleSelectProviderSeries(normalized);
+    await handleSelectProviderSeries(normalized, selectedProvider);
   };
 
   const handleAniListSearch = async () => {
@@ -789,8 +809,14 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     if (!data) return;
 
     const providerId = activeProviderSeries?.id || data.id;
-    const normalizedProviderId =
-      data.source === 'AsuraScans' ? normalizeAsuraInput(providerId) : providerId;
+    const activeProviderSource = activeProviderSeries?.source;
+    const providerSource =
+      activeProviderSource && isProviderSource(activeProviderSource)
+        ? activeProviderSource
+        : isProviderSource(dataSource)
+          ? dataSource
+          : selectedProvider;
+    const normalizedProviderId = normalizeProviderInput(providerSource, providerId);
 
     if (!normalizedProviderId) {
       notify('Provider series is missing. Load a provider series first.', 'warning');
@@ -828,6 +854,7 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
           rating: data.rating,
         },
         activeProviderSeries?.providerMangaId,
+        providerSource,
       );
 
       history.attachAnilistId({
@@ -911,11 +938,17 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
             rating: data.rating,
           };
 
+      const reconcileSource = reconcileContext.providerDetails?.source;
+      const reconcileProvider =
+        reconcileSource && isProviderSource(reconcileSource)
+          ? reconcileSource
+          : selectedProvider;
       await api.mapProviderSeries(
         reconcileContext.anilistId,
         reconcileContext.providerId,
         mappingDetails,
         reconcileContext.providerMangaId,
+        reconcileProvider,
       );
 
       history.attachAnilistId({
@@ -971,7 +1004,7 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
           chapterId: targetChapter.id,
           chapterNumber: targetChapter.number,
           chapterTitle: targetChapter.title,
-          source: reconcileContext.providerDetails.source || 'AsuraScans',
+          source: reconcileContext.providerDetails.source || selectedProvider,
           readChapters: readIds,
         });
 
@@ -1112,7 +1145,7 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
       chapters: activeProviderSeries.chapters, // Pass the full chapter list for navigation
       seriesTitle: data?.title,
       seriesImage: data?.image,
-      source: activeProviderSeries.source || 'AsuraScans',
+      source: activeProviderSeries.source || selectedProvider,
       seriesStatus: activeProviderSeries.status,
     });
   };
@@ -1155,15 +1188,15 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
   const handleToggleChapterRead = (chapter: any) => {
     if (!data || !activeProviderSeries) return;
     const updated = history.toggleRead({
-      seriesId: data.source === 'AniList' ? data.id : activeProviderSeries.id,
-      anilistId: data.source === 'AniList' ? data.id : linkedAniList?.id,
+      seriesId: dataSource === 'AniList' ? data.id : activeProviderSeries.id,
+      anilistId: dataSource === 'AniList' ? data.id : linkedAniList?.id,
       providerSeriesId: activeProviderSeries.id,
       seriesTitle: data.title,
       seriesImage: data.image,
       chapterId: chapter.id,
       chapterNumber: chapter.number,
       chapterTitle: chapter.title,
-      source: activeProviderSeries.source || 'AsuraScans',
+      source: activeProviderSeries.source || selectedProvider,
     });
     setReadChapterIds(new Set(updated));
   };
@@ -1194,8 +1227,8 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
 
     setReadChapterIds(new Set(ids));
 
-    const seriesId = data.source === 'AniList' ? data.id : activeProviderSeries.id;
-    const anilistId = data.source === 'AniList' ? data.id : linkedAniList?.id;
+    const seriesId = dataSource === 'AniList' ? data.id : activeProviderSeries.id;
+    const anilistId = dataSource === 'AniList' ? data.id : linkedAniList?.id;
 
     history.add({
       seriesId,
@@ -1206,7 +1239,7 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
       chapterId: chapter.id,
       chapterNumber: chapter.number,
       chapterTitle: chapter.title,
-      source: activeProviderSeries.source || 'AsuraScans',
+      source: activeProviderSeries.source || selectedProvider,
       readChapters: ids,
     });
 
@@ -1254,8 +1287,8 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
 
       const targetChapter =
         getChapterByProgress(chapters, to) || chapters.find((chapter) => ids.includes(chapter.id));
-      const seriesId = data.source === 'AniList' ? data.id : activeProviderSeries.id;
-      const anilistId = data.source === 'AniList' ? data.id : linkedAniList?.id;
+      const seriesId = dataSource === 'AniList' ? data.id : activeProviderSeries.id;
+      const anilistId = dataSource === 'AniList' ? data.id : linkedAniList?.id;
 
       history.add({
         seriesId,
@@ -1266,7 +1299,7 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
         chapterId: targetChapter?.id || ids[ids.length - 1],
         chapterNumber: targetChapter?.number || rangeEnd,
         chapterTitle: targetChapter?.title,
-        source: activeProviderSeries.source || 'AsuraScans',
+        source: activeProviderSeries.source || selectedProvider,
         readChapters: Array.from(merged),
       });
 
@@ -1294,8 +1327,8 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     const confirmed = window.confirm('Clear read history for this series?');
     if (!confirmed) return;
     history.clearSeries({
-      seriesId: data.source === 'AniList' ? data.id : activeProviderSeries.id,
-      anilistId: data.source === 'AniList' ? data.id : linkedAniList?.id,
+      seriesId: dataSource === 'AniList' ? data.id : activeProviderSeries.id,
+      anilistId: dataSource === 'AniList' ? data.id : linkedAniList?.id,
       providerSeriesId: activeProviderSeries.id,
       title: data.title,
     });
@@ -1510,7 +1543,13 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     );
   }
 
-  const isAniListSource = data.source === 'AniList';
+  const isAniListSource = dataSource === 'AniList';
+  const providerDisplay = providerLabel(selectedProvider);
+  const providerShort = providerShortLabel(selectedProvider);
+  const providerBase = providerBaseUrl(selectedProvider).replace(/\/+$/, '');
+  const providerBadge = isProviderSource(dataSource)
+    ? providerShortLabel(dataSource)
+    : providerShort;
   const countryLabel = formatCountryLabel(data.countryOfOrigin);
   const formatLabel = data.format ? formatEnumLabel(data.format) : 'Unknown';
   const formatDisplay = countryLabel ? `${formatLabel} (${countryLabel})` : formatLabel;
@@ -1614,7 +1653,7 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
                 <span className="px-3 py-1 rounded-lg bg-surfaceHighlight text-white border border-white/5">{data.status}</span>
                 <span className="text-gray-300">{data.author}</span>
                 <span className={`px-3 py-1 rounded-lg text-[11px] font-bold uppercase tracking-wide border ${isAniListSource ? 'bg-blue-500/10 border-blue-500/20 text-blue-400' : 'bg-green-500/10 border-green-500/20 text-green-400'}`}>
-                  {isAniListSource ? 'AniList' : 'AsuraScans'}
+                  {isAniListSource ? 'AniList' : providerBadge}
                 </span>
               </div>
             </motion.div>
@@ -1927,7 +1966,7 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
               {providerLoading && !providerResults && (
                 <div className="space-y-8">
                   <div className="text-center py-8 text-gray-400 font-medium animate-pulse text-lg">
-                    Searching {selectedProvider} repository...
+                    Searching {providerDisplay} repository...
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
                     {Array.from({ length: 10 }).map((_, index) => (
@@ -1951,12 +1990,12 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
                   <div>
                     <h4 className="text-lg font-bold text-white">Resume from your last read</h4>
                     <p className="text-sm text-gray-400 mt-1">
-                      We found your progress on Asura. Attach once and skip future searches.
+                      We found your progress on {providerShort}. Attach once and skip future searches.
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-3">
                     <button
-                      onClick={() => handleSelectProviderSeries(resumeProviderId)}
+                      onClick={() => handleSelectProviderSeries(resumeProviderId, selectedProvider)}
                       className="px-5 py-2.5 rounded-xl bg-primary text-onPrimary font-bold text-sm shadow-lg shadow-primary/20"
                     >
                       Resume Ch {historyMatch?.chapterNumber}
@@ -1976,7 +2015,7 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
                 <div className="animate-fade-in">
                   <div className="flex flex-wrap items-center gap-3 mb-3">
                     <h3 className="text-2xl font-extrabold text-white">
-                      {showProviderRemap ? 'Remap Provider Series' : `Select Series from ${selectedProvider}`}
+                      {showProviderRemap ? 'Remap Provider Series' : `Select Series from ${providerDisplay}`}
                     </h3>
                     {providerRefreshing && (
                       <span className="text-[11px] font-semibold uppercase tracking-wide px-2 py-1 rounded-full bg-yellow-500/10 text-yellow-300 border border-yellow-500/30">
@@ -1999,14 +2038,14 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
                      <div className="p-10 rounded-2xl bg-surfaceHighlight/30 text-center text-gray-400 border border-dashed border-white/10 font-medium">
                         {showProviderRemap
                           ? 'Start a new search or paste the provider URL below.'
-                          : `No matching series found on ${selectedProvider} for "${data.title}".`}
+                          : `No matching series found on ${providerDisplay} for "${data.title}".`}
                      </div>
                   ) : (
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
                       {providerList.map((res) => (
                         <div 
                           key={res.id} 
-                          onClick={() => handleSelectProviderSeries(res.id)}
+                          onClick={() => handleSelectProviderSeries(res.id, selectedProvider)}
                           className="cursor-pointer group bg-surfaceHighlight rounded-2xl overflow-hidden hover:ring-2 ring-primary transition-all shadow-lg"
                         >
                           <div className="aspect-[2/3] relative">
@@ -2033,7 +2072,7 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
                           <input
                             value={manualQuery}
                             onChange={(e) => setManualQuery(e.target.value)}
-                            placeholder="Search Asura by title..."
+                            placeholder={`Search ${providerShort} by title...`}
                             className="flex-1 bg-surfaceHighlight border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary"
                           />
                           <button
@@ -2054,7 +2093,7 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
                           <input
                             value={manualProviderUrl}
                             onChange={(e) => setManualProviderUrl(e.target.value)}
-                            placeholder="https://asuracomic.net/series/..."
+                            placeholder={providerBase ? `${providerBase}/series/...` : 'Provider URL'}
                             className="flex-1 bg-surfaceHighlight border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary"
                           />
                           <button
