@@ -64,7 +64,7 @@ app.doc('/api/openapi.json', {
   openapi: '3.0.0',
   info: {
     title: 'ManVerse API',
-    version: '1.0.1',
+    version: '1.1.0',
   },
   servers: [
     {

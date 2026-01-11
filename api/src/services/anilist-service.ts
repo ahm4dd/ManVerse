@@ -49,10 +49,12 @@ export class AniListService {
   }
 
   private getAuthClient(): AniListAuth {
+    const port = Bun.env.PORT || '3001';
+    const defaultRedirectUri = `http://localhost:${port}/api/auth/anilist/callback`;
     return new AniListAuth({
       clientId: requireEnv('ANILIST_CLIENT_ID'),
       clientSecret: requireEnv('ANILIST_CLIENT_SECRET'),
-      redirectUri: Bun.env.ANILIST_REDIRECT_URI,
+      redirectUri: Bun.env.ANILIST_REDIRECT_URI || defaultRedirectUri,
     });
   }
 

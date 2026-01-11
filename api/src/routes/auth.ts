@@ -85,19 +85,26 @@ auth.openapi(callbackRoute, async (c) => {
     );
   }
 
-  const token = await service.exchangeCodeForToken(code);
-  const user = await service.getCurrentUser(token);
-  const jwt = await signUser({
-    id: user.id,
-    username: user.name,
-    anilistToken: token.accessToken,
-  });
+  try {
+    const token = await service.exchangeCodeForToken(code);
+    const user = await service.getCurrentUser(token);
+    const jwt = await signUser({
+      id: user.id,
+      username: user.name,
+      anilistToken: token.accessToken,
+    });
 
-  const redirectUrl = new URL(getFrontendBaseUrl());
-  redirectUrl.pathname = getFrontendAuthPath();
-  redirectUrl.searchParams.set('token', jwt);
+    const redirectUrl = new URL(getFrontendBaseUrl());
+    redirectUrl.pathname = getFrontendAuthPath();
+    redirectUrl.searchParams.set('token', jwt);
 
-  return c.redirect(redirectUrl.toString());
+    return c.redirect(redirectUrl.toString());
+  } catch {
+    const redirectUrl = new URL(getFrontendBaseUrl());
+    redirectUrl.pathname = getFrontendAuthPath();
+    redirectUrl.searchParams.set('error', 'AUTH_ERROR');
+    return c.redirect(redirectUrl.toString());
+  }
 });
 
 const guestRoute = createRoute({

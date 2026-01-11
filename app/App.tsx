@@ -829,6 +829,15 @@ const AppContent: React.FC = () => {
                           <button
                             onClick={() => {
                               setShowLoginMenu(false);
+                              navigate('settings');
+                            }}
+                            className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
+                          >
+                            Settings
+                          </button>
+                          <button
+                            onClick={() => {
+                              setShowLoginMenu(false);
                               navigate('login');
                             }}
                             className="w-full text-left px-4 py-2.5 text-xs text-gray-500 hover:text-gray-300 hover:bg-white/5 transition-colors"
@@ -924,6 +933,16 @@ const AppContent: React.FC = () => {
                       Library
                     </button>
                   )}
+                  <button
+                    onClick={() => navigate('settings')}
+                    className={`w-full rounded-xl px-4 py-3 text-left transition-colors ${
+                      currentView === 'settings'
+                        ? 'bg-primary/15 text-white'
+                        : 'bg-white/5 hover:bg-white/10'
+                    }`}
+                  >
+                    Settings
+                  </button>
                   <button
                     onClick={() => {
                       setShowNavMenu(false);
@@ -1038,7 +1057,11 @@ const AppContent: React.FC = () => {
         </AnimatePresence>
       </main>
 
-      <AniListSetupModal open={showSetupGuide} onClose={() => setShowSetupGuide(false)} />
+      <AniListSetupModal
+        open={showSetupGuide}
+        onClose={() => setShowSetupGuide(false)}
+        onOpenSettings={() => navigate('settings')}
+      />
     </div>
   );
 };

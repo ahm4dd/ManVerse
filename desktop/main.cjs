@@ -32,6 +32,8 @@ let uiProcess = null;
 let uiServer = null;
 let mainWindow = null;
 let isShuttingDown = false;
+let allowBackgroundClose = false;
+let apiRestarting = false;
 
 const settingsPath = path.join(app.getPath('userData'), 'settings.json');
 const notifierEventsPath = path.join(app.getPath('userData'), 'notifier-events.json');
@@ -218,8 +220,10 @@ function getSettings() {
 
 async function restartApiProcess() {
   if (apiProcess) {
+    apiRestarting = true;
     await killProcessTree(apiProcess, 'API');
     apiProcess = null;
+    apiRestarting = false;
   }
   startApi();
 }
@@ -341,7 +345,7 @@ function startApi() {
   }
 
   apiProcess.on('exit', (code) => {
-    if (!app.isQuitting) {
+    if (!app.isQuitting && !apiRestarting) {
       dialog.showErrorBox(
         'ManVerse API stopped',
         `The API process exited with code ${code ?? 'unknown'}. Check api.log in your app data folder.`,
@@ -511,6 +515,28 @@ async function createWindow() {
   win.webContents.on('did-finish-load', () => {
     broadcastUpdateStatus();
     broadcastNotifierEvents();
+  });
+  win.on('close', async (event) => {
+    if (app.isQuitting || allowBackgroundClose) return;
+    if (!getSettings().notifierEnabled) return;
+    event.preventDefault();
+    const response = await dialog.showMessageBox(win, {
+      type: 'question',
+      buttons: ['Keep running', 'Quit'],
+      defaultId: 0,
+      cancelId: 0,
+      title: 'Keep ManVerse running?',
+      message: 'Chapter release checks are enabled.',
+      detail:
+        'If you quit, background checks will stop until you reopen ManVerse.',
+    });
+    if (response.response === 0) {
+      allowBackgroundClose = true;
+      win.close();
+      allowBackgroundClose = false;
+      return;
+    }
+    app.quit();
   });
   win.on('closed', () => {
     mainWindow = null;

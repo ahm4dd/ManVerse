@@ -4,6 +4,7 @@ import { XIcon, ChevronRight, ChevronLeft } from './Icons';
 interface AniListSetupModalProps {
   open: boolean;
   onClose: () => void;
+  onOpenSettings?: () => void;
 }
 
 type SetupSection = {
@@ -25,7 +26,11 @@ type SetupStep = {
   };
 };
 
-const AniListSetupModal: React.FC<AniListSetupModalProps> = ({ open, onClose }) => {
+const AniListSetupModal: React.FC<AniListSetupModalProps> = ({
+  open,
+  onClose,
+  onOpenSettings,
+}) => {
   const [stepIndex, setStepIndex] = useState(0);
 
   const steps = useMemo<SetupStep[]>(
@@ -57,20 +62,31 @@ const AniListSetupModal: React.FC<AniListSetupModalProps> = ({ open, onClose }) 
         title: 'Add your credentials',
         description: 'Copy the client ID and secret into ManVerse. You only do this once.',
         note:
-          'An environment variable is just a saved setting your computer gives ManVerse when it starts.',
+          'If you are using the desktop app, you can enter everything inside ManVerse — no environment variables needed.',
+        cta: onOpenSettings
+          ? {
+              label: 'Open Settings now',
+              href: '#settings',
+            }
+          : undefined,
         sections: [
           {
             title: 'Desktop app (recommended)',
-            description: 'Set once, then relaunch ManVerse.',
+            description: 'Set once inside ManVerse.',
             bullets: [
-              'Windows: Start > search “Environment Variables” > add User variables.',
-              'Linux: create ~/.config/environment.d/manverse.conf with the two lines below, then log out and back in.',
+              'Open Settings → AniList setup.',
+              'Paste your Client ID and Client Secret, then click Save credentials.',
+              'Return here and click “Continue with AniList”.',
             ],
           },
           {
-            title: 'Developer setup',
-            description: 'If you run the API manually during development.',
-            bullets: ['Add to api/.env and restart with bun run dev:api.'],
+            title: 'Environment variables (advanced)',
+            description: 'Use these if you run the API yourself.',
+            bullets: [
+              'Linux: create ~/.config/environment.d/manverse.conf, then log out and back in.',
+              'Windows: Start > search “Environment Variables” > add User variables.',
+              'Developer: add to api/.env and restart with bun run dev:api.',
+            ],
           },
         ],
         code: 'ANILIST_CLIENT_ID=...\nANILIST_CLIENT_SECRET=...',
@@ -103,7 +119,7 @@ const AniListSetupModal: React.FC<AniListSetupModalProps> = ({ open, onClose }) 
             <p className="text-[11px] uppercase tracking-[0.2em] text-gray-500">
               Step {stepIndex + 1} of {steps.length}
             </p>
-            <h2 className="text-lg font-bold text-white">AniList setup</h2>
+            <h2 className="text-2xl font-bold text-white">AniList setup</h2>
           </div>
           <button
             onClick={onClose}
@@ -115,18 +131,18 @@ const AniListSetupModal: React.FC<AniListSetupModalProps> = ({ open, onClose }) 
 
         <div className="px-6 py-6 space-y-5">
           <div>
-            <h3 className="text-xl font-semibold text-white">{step.title}</h3>
-            <p className="text-sm text-gray-400 mt-2">{step.description}</p>
+            <h3 className="text-2xl font-semibold text-white">{step.title}</h3>
+            <p className="text-base text-gray-300 mt-2">{step.description}</p>
           </div>
 
           {step.note && (
-            <div className="rounded-xl border border-white/10 bg-surfaceHighlight/40 px-4 py-3 text-xs text-gray-300">
+            <div className="rounded-xl border border-white/10 bg-surfaceHighlight/40 px-4 py-3 text-sm text-gray-300">
               {step.note}
             </div>
           )}
 
           {step.bullets && (
-            <ul className="space-y-2 text-sm text-gray-300 list-disc list-inside">
+            <ul className="space-y-2 text-base text-gray-300 list-disc list-inside">
               {step.bullets.map((item) => (
                 <li key={item}>{item}</li>
               ))}
@@ -140,12 +156,12 @@ const AniListSetupModal: React.FC<AniListSetupModalProps> = ({ open, onClose }) 
                   key={section.title}
                   className="rounded-xl border border-white/10 bg-surfaceHighlight/30 p-4"
                 >
-                  <div className="text-sm font-semibold text-white">{section.title}</div>
+                  <div className="text-base font-semibold text-white">{section.title}</div>
                   {section.description && (
-                    <p className="text-xs text-gray-400 mt-1">{section.description}</p>
+                    <p className="text-sm text-gray-400 mt-1">{section.description}</p>
                   )}
                   {section.bullets && (
-                    <ul className="mt-2 space-y-1 text-xs text-gray-300 list-disc list-inside">
+                    <ul className="mt-2 space-y-1 text-sm text-gray-300 list-disc list-inside">
                       {section.bullets.map((item) => (
                         <li key={item}>{item}</li>
                       ))}
@@ -157,21 +173,37 @@ const AniListSetupModal: React.FC<AniListSetupModalProps> = ({ open, onClose }) 
           )}
 
           {step.code && (
-            <pre className="text-xs text-gray-200 bg-black/40 border border-white/10 rounded-xl p-4 whitespace-pre-wrap">
+            <pre className="text-sm text-gray-200 bg-black/40 border border-white/10 rounded-xl p-4 whitespace-pre-wrap">
 {step.code}
             </pre>
           )}
 
           {step.cta && (
-            <a
-              href={step.cta.href}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-black text-xs font-bold shadow-lg shadow-primary/30 hover:brightness-110 transition"
-            >
-              {step.cta.label}
-              <ChevronRight className="w-3 h-3" />
-            </a>
+            <>
+              {step.cta.href === '#settings' ? (
+                <button
+                  onClick={() => {
+                    onOpenSettings?.();
+                    onClose();
+                    setStepIndex(0);
+                  }}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-black text-xs font-bold shadow-lg shadow-primary/30 hover:brightness-110 transition"
+                >
+                  {step.cta.label}
+                  <ChevronRight className="w-3 h-3" />
+                </button>
+              ) : (
+                <a
+                  href={step.cta.href}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-black text-xs font-bold shadow-lg shadow-primary/30 hover:brightness-110 transition"
+                >
+                  {step.cta.label}
+                  <ChevronRight className="w-3 h-3" />
+                </a>
+              )}
+            </>
           )}
         </div>
 
