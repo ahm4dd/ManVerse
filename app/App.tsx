@@ -754,10 +754,11 @@ const AppContent: React.FC = () => {
           )}
 
           {currentView === 'details' && (
-            <PageTransition key="details">
-              <Details 
-                seriesId={viewData} 
-                onNavigate={navigate} 
+            <PageTransition key={`details-${viewData ?? 'empty'}`}>
+              <Details
+                key={viewData ?? 'details'}
+                seriesId={viewData}
+                onNavigate={navigate}
                 onBack={handleBack}
                 user={user}
               />

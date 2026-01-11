@@ -245,8 +245,18 @@ function getCachedProviderSearch(key: string): Series[] | null {
   if (entry.expiresAt > Date.now()) {
     return entry.results;
   }
-  providerSearchCache.delete(key);
   return null;
+}
+
+function peekProviderSearchCache(query: string, provider: Source) {
+  const cacheKey = normalizeProviderSearchKey(provider, query);
+  const entry = providerSearchCache.get(cacheKey);
+  if (!entry) return null;
+  return {
+    results: entry.results,
+    stale: entry.expiresAt <= Date.now(),
+    expiresAt: entry.expiresAt,
+  };
 }
 
 function setCachedProviderSearch(key: string, results: Series[]) {
@@ -300,6 +310,31 @@ export const api = {
     providerSearchInFlight.set(cacheKey, request);
     return request;
   },
+
+  refreshProviderSearch: async (query: string, provider: Source = 'AsuraScans'): Promise<Series[]> => {
+    const trimmed = query.trim();
+    if (!trimmed) return [];
+    const cacheKey = normalizeProviderSearchKey(provider, trimmed);
+    const inFlight = providerSearchInFlight.get(cacheKey);
+    if (inFlight) {
+      return inFlight;
+    }
+    const request = apiRequest<ProviderSearchResult>(
+      `/api/manga/search?source=asura&query=${encodeURIComponent(trimmed)}`,
+    )
+      .then((res) => {
+        const results = res.results.map(formatSeriesResult);
+        setCachedProviderSearch(cacheKey, results);
+        return results;
+      })
+      .finally(() => {
+        providerSearchInFlight.delete(cacheKey);
+      });
+    providerSearchInFlight.set(cacheKey, request);
+    return request;
+  },
+
+  peekProviderSearchCache,
 
   prefetchProviderSearch: (queries: string[], provider: Source = 'AsuraScans') => {
     if (typeof window === 'undefined') return;

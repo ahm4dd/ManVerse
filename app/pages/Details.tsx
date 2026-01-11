@@ -106,6 +106,8 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
 
   // Provider Reading State
   const [providerLoading, setProviderLoading] = useState(false);
+  const [providerRefreshing, setProviderRefreshing] = useState(false);
+  const [providerCacheHit, setProviderCacheHit] = useState(false);
   const [providerResults, setProviderResults] = useState<Series[] | null>(null);
   const [activeProviderSeries, setActiveProviderSeries] = useState<SeriesDetails | null>(null);
   const [selectedProvider, setSelectedProvider] = useState<string>('AsuraScans');
@@ -154,6 +156,8 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
       setActiveProviderSeries(null);
       setProviderResults(null);
       setProviderLoading(false);
+      setProviderRefreshing(false);
+      setProviderCacheHit(false);
       setManualQuery('');
       setManualProviderUrl('');
       setShowProviderMenu(false);
@@ -339,25 +343,50 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     if (providerId !== 'AsuraScans') return; // Only Asura supported for now
 
     setProviderLoading(true);
+    setProviderRefreshing(false);
+    setProviderCacheHit(false);
     setProviderResults(null);
     setShowProviderMenu(false);
     setSelectedProvider(providerId);
 
     try {
-      const results = await api.searchProviderSeries(query, 'AsuraScans');
-      setProviderResults(results);
+      const cached = api.peekProviderSearchCache(query, 'AsuraScans');
+      let autoSelected = false;
+      if (cached) {
+        setProviderResults(cached.results);
+        setProviderCacheHit(true);
+        prefetchProviderDetails(cached.results);
+        if (cached.results.length === 1) {
+          autoSelected = true;
+          handleSelectProviderSeries(cached.results[0].id);
+          notify(`Found match on ${providerId} (cached).`, 'success');
+        } else if (cached.results.length === 0) {
+          notify(`No matches found on ${providerId}.`, 'warning');
+        }
+        if (cached.stale && !autoSelected) {
+          setProviderRefreshing(true);
+        }
+        setProviderLoading(false);
+        if (!cached.stale || autoSelected) {
+          return;
+        }
+      }
+
+      const results = await api.refreshProviderSearch(query, 'AsuraScans');
+      applyProviderResults(results);
 
       if (results.length === 1) {
         handleSelectProviderSeries(results[0].id);
         notify(`Found match on ${providerId}`, 'success');
       } else if (results.length === 0) {
-        notify(`No matches found on ${providerId}`, 'warning');
+        notify(`No matches found on ${providerId}.`, 'warning');
       }
     } catch (e) {
       console.error(e);
       notify("Failed to search provider.", 'error');
     } finally {
       setProviderLoading(false);
+      setProviderRefreshing(false);
     }
   };
 
@@ -441,6 +470,21 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     return best;
   };
 
+  const prefetchProviderDetails = (results: Series[]) => {
+    if (!results.length) return;
+    const candidates = results.slice(0, 2);
+    candidates.forEach((series) => {
+      const normalized = normalizeAsuraInput(series.id);
+      api.getSeriesDetails(normalized, 'AsuraScans').catch(() => {});
+    });
+  };
+
+  const applyProviderResults = (results: Series[]) => {
+    setProviderResults(results);
+    setProviderCacheHit(false);
+    prefetchProviderDetails(results);
+  };
+
   useEffect(() => {
     if (!data || data.source !== 'AniList') return;
     if (providerLoading || providerResults !== null) return;
@@ -454,6 +498,8 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     if (providerId !== 'AsuraScans') return;
 
     setProviderLoading(true);
+    setProviderRefreshing(false);
+    setProviderCacheHit(false);
     setProviderResults(null);
     setShowProviderMenu(false);
     setSelectedProvider(providerId);
@@ -461,10 +507,58 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     try {
       const uniqueQueries = Array.from(new Set(queries.map((q) => q.trim()).filter(Boolean)));
       const searchTerms = uniqueQueries.slice(0, 3);
+      const cachedEntries = searchTerms.map((term) => ({
+        term,
+        cache: api.peekProviderSearchCache(term, 'AsuraScans'),
+      }));
+
+      const cachedMerged = new Map<string, { series: Series; score: number }>();
+      cachedEntries.forEach(({ term, cache }) => {
+        if (!cache?.results?.length) return;
+        cache.results.forEach((series) => {
+          const score = scoreTitleMatch(series.title, searchTerms);
+          const existing = cachedMerged.get(series.id);
+          if (!existing || score > existing.score) {
+            cachedMerged.set(series.id, { series, score });
+          }
+        });
+      });
+
+      const cachedRanked = Array.from(cachedMerged.values())
+        .sort((a, b) => b.score - a.score)
+        .map((entry) => entry.series);
+
+      if (cachedRanked.length > 0) {
+        setProviderResults(cachedRanked);
+        setProviderCacheHit(true);
+        prefetchProviderDetails(cachedRanked);
+        setProviderLoading(false);
+        if (cachedEntries.some((entry) => entry.cache?.stale)) {
+          setProviderRefreshing(true);
+        } else {
+          const bestScore = cachedMerged.get(cachedRanked[0].id)?.score ?? 0;
+          const runnerUpScore = cachedRanked.length > 1 ? cachedMerged.get(cachedRanked[1].id)?.score ?? 0 : 0;
+          const highConfidence = bestScore >= 0.92 && bestScore - runnerUpScore >= 0.12;
+          if (cachedRanked.length === 1 || highConfidence) {
+            handleSelectProviderSeries(cachedRanked[0].id);
+            notify(`Found match using "${searchTerms[0]}".`, 'success');
+            return;
+          }
+          if (searchTerms.length > 1) {
+            notify(`Found matches using ${searchTerms.slice(0, 2).join(' / ')}.`, 'success');
+          }
+          return;
+        }
+      }
+
+      const queriesToFetch = cachedEntries
+        .filter((entry) => !entry.cache || entry.cache.stale)
+        .map((entry) => entry.term);
+
       const resultsByQuery = await Promise.all(
-        searchTerms.map(async (query) => {
+        queriesToFetch.map(async (query) => {
           try {
-            const results = await api.searchProviderSeries(query, 'AsuraScans');
+            const results = await api.refreshProviderSearch(query, 'AsuraScans');
             return { query, results };
           } catch {
             return { query, results: [] as Series[] };
@@ -482,6 +576,16 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
           }
         });
       }
+      cachedEntries.forEach(({ cache }) => {
+        if (!cache?.results?.length) return;
+        cache.results.forEach((series) => {
+          const score = scoreTitleMatch(series.title, searchTerms);
+          const existing = merged.get(series.id);
+          if (!existing || score > existing.score) {
+            merged.set(series.id, { series, score });
+          }
+        });
+      });
 
       const ranked = Array.from(merged.values())
         .sort((a, b) => b.score - a.score)
@@ -493,7 +597,7 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
         return;
       }
 
-      setProviderResults(ranked);
+      applyProviderResults(ranked);
       const bestScore = merged.get(ranked[0].id)?.score ?? 0;
       const runnerUpScore = ranked.length > 1 ? merged.get(ranked[1].id)?.score ?? 0 : 0;
       const highConfidence = bestScore >= 0.92 && bestScore - runnerUpScore >= 0.12;
@@ -511,6 +615,7 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
       notify('Failed to search provider.', 'error');
     } finally {
       setProviderLoading(false);
+      setProviderRefreshing(false);
     }
   };
 
@@ -1807,7 +1912,25 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
           {activeTab === 'Chapters' && (
             <>
               {providerLoading && !providerResults && (
-                 <div className="text-center py-16 text-gray-400 font-medium animate-pulse text-lg">Searching {selectedProvider} repository...</div>
+                <div className="space-y-8">
+                  <div className="text-center py-8 text-gray-400 font-medium animate-pulse text-lg">
+                    Searching {selectedProvider} repository...
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
+                    {Array.from({ length: 10 }).map((_, index) => (
+                      <div
+                        key={`provider-skeleton-${index}`}
+                        className="rounded-2xl bg-surfaceHighlight/40 border border-white/5 overflow-hidden animate-pulse"
+                      >
+                        <div className="aspect-[2/3] bg-white/5" />
+                        <div className="p-4 space-y-3">
+                          <div className="h-3 bg-white/10 rounded w-4/5" />
+                          <div className="h-3 bg-white/10 rounded w-2/3" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
 
               {!showChapters && resumeProviderId && (
@@ -1838,9 +1961,21 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
               {/* Provider Search Results / Remap */}
               {showProviderSelection && (
                 <div className="animate-fade-in">
-                  <h3 className="text-2xl font-extrabold text-white mb-3">
-                    {showProviderRemap ? 'Remap Provider Series' : `Select Series from ${selectedProvider}`}
-                  </h3>
+                  <div className="flex flex-wrap items-center gap-3 mb-3">
+                    <h3 className="text-2xl font-extrabold text-white">
+                      {showProviderRemap ? 'Remap Provider Series' : `Select Series from ${selectedProvider}`}
+                    </h3>
+                    {providerRefreshing && (
+                      <span className="text-[11px] font-semibold uppercase tracking-wide px-2 py-1 rounded-full bg-yellow-500/10 text-yellow-300 border border-yellow-500/30">
+                        Refreshing
+                      </span>
+                    )}
+                    {providerCacheHit && !providerRefreshing && (
+                      <span className="text-[11px] font-semibold uppercase tracking-wide px-2 py-1 rounded-full bg-white/5 text-gray-300 border border-white/10">
+                        Cached
+                      </span>
+                    )}
+                  </div>
                   <p className="text-gray-400 mb-8 font-medium">
                     {showProviderRemap
                       ? 'Search for the correct provider series to replace the current mapping.'
