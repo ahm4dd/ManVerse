@@ -6,7 +6,7 @@ import Login from './pages/Login';
 import Library from './pages/Library';
 import Recommendations from './pages/Recommendations';
 import RecentReads from './pages/RecentReads';
-import { PaletteIcon, BellIcon, SearchIcon, FilterIcon, XIcon, ChevronDown, SyncIcon } from './components/Icons';
+import { PaletteIcon, BellIcon, SearchIcon, FilterIcon, XIcon, ChevronDown, SyncIcon, MenuIcon } from './components/Icons';
 import NotificationsMenu from './components/NotificationsMenu';
 import { anilistApi } from './lib/anilist';
 import { Chapter } from './types';
@@ -82,6 +82,7 @@ const AppContent: React.FC = () => {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showLoginMenu, setShowLoginMenu] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [showNavMenu, setShowNavMenu] = useState(false);
   const [syncPending, setSyncPending] = useState(0);
   const [syncLoading, setSyncLoading] = useState(false);
 
@@ -333,6 +334,7 @@ const AppContent: React.FC = () => {
       window.scrollTo(0, 0);
       return;
     }
+    setShowNavMenu(false);
     persistScrollForView(currentView);
     window.scrollTo(0, 0);
     const nextIndex = options.replace ? historyIndexRef.current : historyIndexRef.current + 1;
@@ -454,13 +456,13 @@ const AppContent: React.FC = () => {
     <div className="bg-background text-white min-h-screen font-sans selection:bg-primary/30 transition-colors duration-300 flex flex-col">
       {/* Top Navigation Bar - Global - Hidden in Reader Mode */}
       {currentView !== 'reader' && (
-        <nav className="sticky top-0 z-[60] bg-surface/95 backdrop-blur-md border-b border-white/5 shadow-sm">
+        <nav className="sticky top-0 z-[60] bg-surface/95 backdrop-blur-md border-b border-white/5 shadow-sm relative">
           <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8">
             {/* Grid Layout: [Left Content] [Search Bar] [Right Actions] */}
-            <div className="grid grid-cols-1 md:grid-cols-[minmax(340px,1.6fr)_minmax(320px,1.4fr)_minmax(240px,1fr)] items-center gap-3 md:gap-4 py-3 md:py-0 md:h-20">
+            <div className="flex flex-col gap-3 py-3 md:flex-row md:items-center md:gap-4 md:py-0 md:h-20 [@media(min-width:1800px)]:grid [@media(min-width:1800px)]:grid-cols-[minmax(420px,1.6fr)_minmax(520px,2.1fr)_minmax(240px,1fr)]">
               
               {/* Left Section: Logo & Links */}
-              <div className="flex items-center gap-4 md:gap-6 justify-start min-w-0 w-full">
+              <div className="flex items-center gap-4 md:gap-6 justify-start min-w-0 w-full md:w-auto md:flex-none">
                 <div 
                   className="flex items-center gap-3 cursor-pointer group flex-shrink-0"
                   onClick={() => navigate('home')}
@@ -476,29 +478,37 @@ const AppContent: React.FC = () => {
                 </div>
 
                 {/* Hide navigation links earlier (xl) to prioritize search bar space */}
-                <div className="hidden xl:flex items-center gap-5 min-w-0">
+                <button
+                  onClick={() => setShowNavMenu(!showNavMenu)}
+                  className="flex items-center gap-2 rounded-xl border border-white/10 bg-[#1a1a1a] px-3 py-2 text-sm font-semibold text-gray-300 hover:text-white hover:bg-white/5 transition-colors [@media(min-width:1800px)]:hidden"
+                >
+                  <MenuIcon className="w-4 h-4" />
+                  Menu
+                </button>
+
+                <div className="hidden [@media(min-width:1800px)]:flex items-center gap-5 min-w-0 flex-nowrap">
                   <button 
                     onClick={() => navigate('home')} 
-                    className={`text-[15px] font-bold transition-colors ${currentView === 'home' && !searchQuery ? 'text-white' : 'text-gray-400 hover:text-white'}`}
+                    className={`text-[16px] font-semibold transition-colors whitespace-nowrap ${currentView === 'home' && !searchQuery ? 'text-white' : 'text-gray-400 hover:text-white'}`}
                   >
                     Browse
                   </button>
                   <button 
                     onClick={() => navigate('recommendations')} 
-                    className={`text-[15px] font-bold transition-colors ${currentView === 'recommendations' ? 'text-white' : 'text-gray-400 hover:text-white'}`}
+                    className={`text-[16px] font-semibold transition-colors whitespace-nowrap ${currentView === 'recommendations' ? 'text-white' : 'text-gray-400 hover:text-white'}`}
                   >
                     Recommendations
                   </button>
                   <button 
                     onClick={() => navigate('recent-reads')} 
-                    className={`text-[15px] font-bold transition-colors ${currentView === 'recent-reads' ? 'text-white' : 'text-gray-400 hover:text-white'}`}
+                    className={`text-[16px] font-semibold transition-colors whitespace-nowrap ${currentView === 'recent-reads' ? 'text-white' : 'text-gray-400 hover:text-white'}`}
                   >
                     Recent Reads
                   </button>
                   {user && (
                     <button 
                       onClick={() => navigate('library')} 
-                      className={`text-[15px] font-bold transition-colors ${currentView === 'library' ? 'text-white' : 'text-gray-400 hover:text-white'}`}
+                      className={`text-[16px] font-semibold transition-colors whitespace-nowrap ${currentView === 'library' ? 'text-white' : 'text-gray-400 hover:text-white'}`}
                     >
                       Library
                     </button>
@@ -507,7 +517,7 @@ const AppContent: React.FC = () => {
               </div>
 
               {/* Center Section: Search Bar */}
-              <div className="flex items-center justify-center w-full max-w-2xl px-0 md:px-2">
+              <div className="flex items-center justify-center w-full md:flex-1 md:min-w-[320px] px-0 md:px-2 [@media(min-width:1800px)]:max-w-2xl">
                  <div className="relative w-full flex items-center gap-3">
                     <form onSubmit={handleSearchSubmit} className="relative w-full group flex items-center shadow-lg rounded-xl m-0">
                         <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-gray-500 group-focus-within:text-primary transition-colors z-10">
@@ -645,7 +655,7 @@ const AppContent: React.FC = () => {
                       <img
                         src={user?.avatar?.large || '/logo.png'}
                         alt="avatar"
-                        className="w-10 h-10 rounded-full border border-surfaceHighlight cursor-pointer hover:ring-2 ring-primary transition-all object-cover aspect-square"
+                        className="w-10 h-10 rounded-full border border-surfaceHighlight cursor-pointer hover:ring-2 ring-primary transition-all object-cover aspect-square shrink-0"
                       />
                       <ChevronDown className="w-4 h-4 text-gray-400 hidden sm:block" />
                     </button>
@@ -749,6 +759,62 @@ const AppContent: React.FC = () => {
             </div>
           </div>
           
+          {/* Nav Menu (Responsive) */}
+          {showNavMenu && (
+            <div className="2xl:hidden">
+              <div
+                className="fixed inset-0 z-20"
+                onClick={() => setShowNavMenu(false)}
+              />
+              <div className="absolute left-4 right-4 top-full mt-2 z-30 rounded-2xl border border-white/10 bg-[#0f0f12]/95 backdrop-blur-xl shadow-2xl">
+                <div className="p-4 grid gap-2 text-sm font-semibold text-gray-200">
+                  <button
+                    onClick={() => navigate('home')}
+                    className={`w-full rounded-xl px-4 py-3 text-left transition-colors ${
+                      currentView === 'home' && !searchQuery
+                        ? 'bg-primary/15 text-white'
+                        : 'bg-white/5 hover:bg-white/10'
+                    }`}
+                  >
+                    Browse
+                  </button>
+                  <button
+                    onClick={() => navigate('recommendations')}
+                    className={`w-full rounded-xl px-4 py-3 text-left transition-colors ${
+                      currentView === 'recommendations'
+                        ? 'bg-primary/15 text-white'
+                        : 'bg-white/5 hover:bg-white/10'
+                    }`}
+                  >
+                    Recommendations
+                  </button>
+                  <button
+                    onClick={() => navigate('recent-reads')}
+                    className={`w-full rounded-xl px-4 py-3 text-left transition-colors ${
+                      currentView === 'recent-reads'
+                        ? 'bg-primary/15 text-white'
+                        : 'bg-white/5 hover:bg-white/10'
+                    }`}
+                  >
+                    Recent Reads
+                  </button>
+                  {user && (
+                    <button
+                      onClick={() => navigate('library')}
+                      className={`w-full rounded-xl px-4 py-3 text-left transition-colors ${
+                        currentView === 'library'
+                          ? 'bg-primary/15 text-white'
+                          : 'bg-white/5 hover:bg-white/10'
+                      }`}
+                    >
+                      Library
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Horizontal Filter Bar (Sticky below Nav) */}
           <AnimatePresence>
              {showFilters && (
