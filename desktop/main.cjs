@@ -31,6 +31,8 @@ let mainWindow = null;
 let isShuttingDown = false;
 
 const settingsPath = path.join(app.getPath('userData'), 'settings.json');
+const notifierEventsPath = path.join(app.getPath('userData'), 'notifier-events.json');
+const NOTIFIER_EVENTS_LIMIT = 80;
 const defaultSettings = {
   notifierEnabled: true,
   launchOnStartup: false,
@@ -40,6 +42,7 @@ const defaultSettings = {
 let appSettings = null;
 let notifierTimer = null;
 let notifierRunning = false;
+let notifierEvents = null;
 let updateStatus = {
   state: 'idle',
   version: null,
@@ -88,6 +91,77 @@ function saveSettings(settings) {
   } catch {
     // ignore
   }
+}
+
+function loadNotifierEvents() {
+  if (notifierEvents) return notifierEvents;
+  try {
+    if (fs.existsSync(notifierEventsPath)) {
+      const raw = fs.readFileSync(notifierEventsPath, 'utf8');
+      const parsed = JSON.parse(raw);
+      notifierEvents = Array.isArray(parsed) ? parsed : [];
+      return notifierEvents;
+    }
+  } catch {
+    // ignore
+  }
+  notifierEvents = [];
+  return notifierEvents;
+}
+
+function saveNotifierEvents(list) {
+  notifierEvents = list;
+  try {
+    fs.mkdirSync(path.dirname(notifierEventsPath), { recursive: true });
+    fs.writeFileSync(notifierEventsPath, JSON.stringify(list, null, 2));
+  } catch {
+    // ignore
+  }
+}
+
+function broadcastNotifierEvents() {
+  const list = loadNotifierEvents();
+  BrowserWindow.getAllWindows().forEach((win) => {
+    win.webContents.send('manverse:notifier-events', list);
+  });
+}
+
+function addNotifierEvents(updates) {
+  if (!updates?.length) return loadNotifierEvents();
+  const existing = loadNotifierEvents();
+  const seen = new Set(existing.map((item) => item.id));
+  const timestamp = Date.now();
+  const next = [...existing];
+
+  updates.forEach((update, index) => {
+    const chapterLabel = update.chapterNumber ? `Chapter ${update.chapterNumber}` : 'New chapter';
+    const id = `${update.providerMangaId}-${update.chapterNumber}-${update.releaseDate || ''}`;
+    if (seen.has(id)) return;
+    seen.add(id);
+    next.unshift({
+      id,
+      type: 'CHAPTER_RELEASE',
+      title: update.seriesTitle || 'New chapter available',
+      message: update.chapterTitle ? `${chapterLabel} — ${update.chapterTitle}` : chapterLabel,
+      time: new Date(timestamp + index).toISOString(),
+      timestamp: timestamp + index,
+      read: false,
+      provider: update.provider,
+      providerMangaId: update.providerMangaId,
+    });
+  });
+
+  const limited = next.slice(0, NOTIFIER_EVENTS_LIMIT);
+  saveNotifierEvents(limited);
+  broadcastNotifierEvents();
+  return limited;
+}
+
+function markAllNotifierRead() {
+  const next = loadNotifierEvents().map((item) => ({ ...item, read: true }));
+  saveNotifierEvents(next);
+  broadcastNotifierEvents();
+  return next;
 }
 
 function setLinuxAutoStart(enabled) {
@@ -275,6 +349,7 @@ async function runNotifierCheck() {
       const payload = await response.json();
       const updates = payload?.data ?? [];
       const iconPath = path.join(__dirname, 'assets', 'icon.png');
+      addNotifierEvents(updates);
       updates.forEach((update) => {
         const title = update.seriesTitle || 'New chapter available';
         const chapterLabel = update.chapterNumber ? `Chapter ${update.chapterNumber}` : 'New chapter';
@@ -391,6 +466,7 @@ async function createWindow() {
   mainWindow = win;
   win.webContents.on('did-finish-load', () => {
     broadcastUpdateStatus();
+    broadcastNotifierEvents();
   });
   win.on('closed', () => {
     mainWindow = null;
@@ -495,6 +571,8 @@ app.whenReady().then(() => {
     autoUpdater.quitAndInstall();
     return { ok: true };
   });
+  ipcMain.handle('manverse:getNotifierEvents', () => loadNotifierEvents());
+  ipcMain.handle('manverse:markAllNotifierRead', () => markAllNotifierRead());
   bootstrap().catch((error) => {
     dialog.showErrorBox('ManVerse startup failed', error.message || String(error));
     app.quit();

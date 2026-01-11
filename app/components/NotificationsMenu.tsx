@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { anilistApi } from '../lib/anilist';
 import { Notification } from '../types';
-import { desktopApi, type DesktopSettings } from '../lib/desktop';
+import { desktopApi, type NotifierEvent } from '../lib/desktop';
 
 interface NotificationsMenuProps {
   onClose: () => void;
@@ -11,29 +11,60 @@ interface NotificationsMenuProps {
 const NotificationsMenu: React.FC<NotificationsMenuProps> = ({ onClose, user }) => {
   const [activeTab, setActiveTab] = useState<'app' | 'user'>('user');
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [systemNotifications, setSystemNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(false);
-  const [desktopSettings, setDesktopSettings] = useState<DesktopSettings | null>(null);
-  const [settingsLoading, setSettingsLoading] = useState(false);
 
   // Mock App Notifications
-  const appNotifications: Notification[] = [
-    {
-      id: 999,
-      type: 'APP_UPDATE',
-      title: 'New Feature: Library',
-      message: 'You can now view your entire AniList library in a dedicated dashboard.',
-      time: '2 hours ago',
-      read: false
-    },
-    {
-      id: 998,
-      type: 'APP_UPDATE',
-      title: 'Welcome to ManVerse',
-      message: 'Experience the new immersive reading mode.',
-      time: '1 day ago',
-      read: true
-    }
-  ];
+  const appNotifications = useMemo<Notification[]>(
+    () => [
+      {
+        id: 999,
+        type: 'APP_UPDATE',
+        title: 'New Feature: Library',
+        message: 'You can now view your entire AniList library in a dedicated dashboard.',
+        time: '2 hours ago',
+        read: false,
+      },
+      {
+        id: 998,
+        type: 'APP_UPDATE',
+        title: 'Welcome to ManVerse',
+        message: 'Experience the new immersive reading mode.',
+        time: '1 day ago',
+        read: true,
+      },
+    ],
+    [],
+  );
+
+  const formatTimeAgo = (timestamp?: number, fallback?: string) => {
+    if (!timestamp) return fallback || '';
+    const seconds = Math.floor((Date.now() - timestamp) / 1000);
+    if (seconds < 60) return 'Just now';
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    if (days < 7) return `${days}d ago`;
+    const weeks = Math.floor(days / 7);
+    if (weeks < 4) return `${weeks}w ago`;
+    const months = Math.floor(days / 30);
+    if (months < 12) return `${months}mo ago`;
+    const years = Math.floor(months / 12);
+    return `${years}y ago`;
+  };
+
+  const mapNotifierEvents = (events: NotifierEvent[]): Notification[] =>
+    events.map((event) => ({
+      id: event.id,
+      type: 'CHAPTER_RELEASE',
+      title: event.title,
+      message: event.message,
+      time: formatTimeAgo(event.timestamp, event.time),
+      read: event.read,
+      timestamp: event.timestamp,
+    }));
 
   useEffect(() => {
     const load = async () => {
@@ -58,17 +89,28 @@ const NotificationsMenu: React.FC<NotificationsMenuProps> = ({ onClose, user }) 
   }, [user]);
 
   useEffect(() => {
-    if (!desktopApi.isAvailable) return;
-    const loadSettings = async () => {
-      setSettingsLoading(true);
-      const settings = await desktopApi.getSettings();
-      setDesktopSettings(settings);
-      setSettingsLoading(false);
+    if (!desktopApi.isAvailable) {
+      setSystemNotifications(appNotifications);
+      return;
+    }
+    let unsubscribe = () => {};
+    desktopApi
+      .getNotifierEvents()
+      .then((events) => {
+        setSystemNotifications([...mapNotifierEvents(events), ...appNotifications]);
+      })
+      .catch(() => {
+        setSystemNotifications(appNotifications);
+      });
+    unsubscribe = desktopApi.onNotifierEvents((events) => {
+      setSystemNotifications([...mapNotifierEvents(events), ...appNotifications]);
+    });
+    return () => {
+      unsubscribe();
     };
-    void loadSettings();
-  }, []);
+  }, [appNotifications]);
 
-  const displayList = activeTab === 'app' ? appNotifications : notifications;
+  const displayList = activeTab === 'app' ? systemNotifications : notifications;
 
   return (
     <>
@@ -127,73 +169,20 @@ const NotificationsMenu: React.FC<NotificationsMenuProps> = ({ onClose, user }) 
           )}
         </div>
         
-        {activeTab === 'app' && desktopApi.isAvailable && (
-          <div className="px-4 py-3 border-t border-white/5 bg-surfaceHighlight/30 space-y-3">
-            <div className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">
-              Background Alerts
-            </div>
-            {settingsLoading ? (
-              <div className="text-xs text-gray-500">Loading settings…</div>
-            ) : (
-              <>
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <div className="text-sm font-semibold text-white">Chapter release checks</div>
-                    <div className="text-[11px] text-gray-500">
-                      Runs hourly in the background.
-                    </div>
-                  </div>
-                  <button
-                    onClick={async () => {
-                      const next = await desktopApi.updateSetting(
-                        'notifierEnabled',
-                        !desktopSettings?.notifierEnabled,
-                      );
-                      setDesktopSettings(next);
-                    }}
-                    className={`px-3 py-2 rounded-lg text-xs font-bold border transition-colors ${
-                      desktopSettings?.notifierEnabled
-                        ? 'bg-primary text-black border-primary'
-                        : 'bg-surface text-gray-300 border-white/10 hover:text-white'
-                    }`}
-                  >
-                    {desktopSettings?.notifierEnabled ? 'On' : 'Off'}
-                  </button>
-                </div>
-                <p className="text-[11px] text-amber-300/80">
-                  Leaving this on keeps ManVerse running in the background after you close the
-                  window.
-                </p>
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <div className="text-sm font-semibold text-white">Start on system login</div>
-                    <div className="text-[11px] text-gray-500">
-                      Appears in Windows startup and KDE autostart.
-                    </div>
-                  </div>
-                  <button
-                    onClick={async () => {
-                      const next = await desktopApi.updateSetting(
-                        'launchOnStartup',
-                        !desktopSettings?.launchOnStartup,
-                      );
-                      setDesktopSettings(next);
-                    }}
-                    className={`px-3 py-2 rounded-lg text-xs font-bold border transition-colors ${
-                      desktopSettings?.launchOnStartup
-                        ? 'bg-primary text-black border-primary'
-                        : 'bg-surface text-gray-300 border-white/10 hover:text-white'
-                    }`}
-                  >
-                    {desktopSettings?.launchOnStartup ? 'On' : 'Off'}
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        )}
         <div className="p-2 border-t border-white/5 bg-surfaceHighlight/30 text-center">
-          <button className="text-[10px] text-gray-400 hover:text-white uppercase tracking-wider font-bold">
+          <button
+            onClick={() => {
+              if (activeTab === 'app' && desktopApi.isAvailable) {
+                desktopApi
+                  .markAllNotifierRead()
+                  .then((events) => {
+                    setSystemNotifications([...mapNotifierEvents(events), ...appNotifications]);
+                  })
+                  .catch(() => {});
+              }
+            }}
+            className="text-[10px] text-gray-400 hover:text-white uppercase tracking-wider font-bold"
+          >
             Mark all as read
           </button>
         </div>

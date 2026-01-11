@@ -11,12 +11,27 @@ export type UpdateStatus = {
   message: string | null;
 };
 
+export type NotifierEvent = {
+  id: string;
+  type: 'CHAPTER_RELEASE';
+  title: string;
+  message: string;
+  time: string;
+  timestamp?: number;
+  read: boolean;
+  provider?: string;
+  providerMangaId?: number;
+};
+
 type DesktopBridge = {
   getSettings: () => Promise<DesktopSettings>;
   updateSetting: (key: keyof DesktopSettings, value: unknown) => Promise<DesktopSettings>;
   getUpdateStatus?: () => Promise<UpdateStatus>;
   installUpdate?: () => Promise<{ ok: boolean }>;
   onUpdateStatus?: (callback: (status: UpdateStatus) => void) => () => void;
+  getNotifierEvents?: () => Promise<NotifierEvent[]>;
+  markAllNotifierRead?: () => Promise<NotifierEvent[]>;
+  onNotifierEvents?: (callback: (events: NotifierEvent[]) => void) => () => void;
 };
 
 const bridge = typeof window !== 'undefined' ? (window as any).manverse : null;
@@ -55,5 +70,23 @@ export const desktopApi = {
       return () => {};
     }
     return bridge.onUpdateStatus(callback);
+  },
+  getNotifierEvents: async (): Promise<NotifierEvent[]> => {
+    if (!bridge?.getNotifierEvents) {
+      return [];
+    }
+    return bridge.getNotifierEvents();
+  },
+  markAllNotifierRead: async (): Promise<NotifierEvent[]> => {
+    if (!bridge?.markAllNotifierRead) {
+      return [];
+    }
+    return bridge.markAllNotifierRead();
+  },
+  onNotifierEvents: (callback: (events: NotifierEvent[]) => void): (() => void) => {
+    if (!bridge?.onNotifierEvents) {
+      return () => {};
+    }
+    return bridge.onNotifierEvents(callback);
   },
 };

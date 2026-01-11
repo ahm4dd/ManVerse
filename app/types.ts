@@ -83,13 +83,14 @@ export interface SearchResult {
 }
 
 export interface Notification {
-  id: number;
+  id: string | number;
   type: 'APP_UPDATE' | 'CHAPTER_RELEASE' | 'ANILIST_ACTIVITY';
   title: string;
   message: string;
   time: string;
   read: boolean;
   image?: string;
+  timestamp?: number;
 }
 
 export interface MediaListCollection {

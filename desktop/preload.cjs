@@ -13,4 +13,13 @@ contextBridge.exposeInMainWorld('manverse', {
       ipcRenderer.removeListener('manverse:update-status', listener);
     };
   },
+  getNotifierEvents: () => ipcRenderer.invoke('manverse:getNotifierEvents'),
+  markAllNotifierRead: () => ipcRenderer.invoke('manverse:markAllNotifierRead'),
+  onNotifierEvents: (callback) => {
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on('manverse:notifier-events', listener);
+    return () => {
+      ipcRenderer.removeListener('manverse:notifier-events', listener);
+    };
+  },
 });
