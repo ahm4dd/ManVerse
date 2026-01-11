@@ -15,6 +15,11 @@ const Recommendations: React.FC<RecommendationsProps> = ({ onNavigate }) => {
   const [pages, setPages] = useState({ trending: 1, popular: 1, topRated: 1 });
   const [hasMore, setHasMore] = useState({ trending: true, popular: true, topRated: true });
   const [loadingMore, setLoadingMore] = useState({ trending: false, popular: false, topRated: false });
+  const sectionCacheRef = useRef<Record<string, Record<number, Series[]>>>({
+    trending: {},
+    popular: {},
+    topRated: {},
+  });
   const scrollYRef = useRef(0);
   const RECOMMEND_STATE_KEY = 'manverse_recommendations_state_v1';
 
@@ -39,6 +44,11 @@ const Recommendations: React.FC<RecommendationsProps> = ({ onNavigate }) => {
         setTrending(t);
         setPopular(p);
         setTopRated(tr);
+        sectionCacheRef.current = {
+          trending: { 1: t },
+          popular: { 1: p },
+          topRated: { 1: tr },
+        };
         setPages({ trending: 1, popular: 1, topRated: 1 });
         setHasMore({
           trending: t.length > 0,
@@ -66,6 +76,9 @@ const Recommendations: React.FC<RecommendationsProps> = ({ onNavigate }) => {
             if (Array.isArray(saved.topRated)) setTopRated(saved.topRated);
             if (saved.pages) setPages(saved.pages);
             if (saved.hasMore) setHasMore(saved.hasMore);
+            if (saved.sectionCache) {
+              sectionCacheRef.current = saved.sectionCache;
+            }
             if (typeof saved.scrollY === 'number') {
               requestAnimationFrame(() => window.scrollTo(0, saved.scrollY));
             }
@@ -88,6 +101,7 @@ const Recommendations: React.FC<RecommendationsProps> = ({ onNavigate }) => {
       topRated,
       pages,
       hasMore,
+      sectionCache: sectionCacheRef.current,
       scrollY: scrollYRef.current,
     };
     try {
@@ -104,23 +118,35 @@ const Recommendations: React.FC<RecommendationsProps> = ({ onNavigate }) => {
     };
   }, [trending, popular, topRated, pages, hasMore]);
 
-  const handleLoadMore = async (section: 'trending' | 'popular' | 'topRated') => {
-    if (loadingMore[section] || !hasMore[section]) return;
-    const nextPage = pages[section] + 1;
+  const handlePageChange = async (section: 'trending' | 'popular' | 'topRated', page: number) => {
+    if (page < 1) return;
+    if (loadingMore[section]) return;
+    const cached = sectionCacheRef.current[section]?.[page];
+    setPages((prev) => ({ ...prev, [section]: page }));
+    if (cached) {
+      if (section === 'trending') setTrending(cached);
+      if (section === 'popular') setPopular(cached);
+      if (section === 'topRated') setTopRated(cached);
+      setHasMore((prev) => ({ ...prev, [section]: cached.length > 0 }));
+      return;
+    }
     setLoadingMore((prev) => ({ ...prev, [section]: true }));
     try {
       let data: Series[] = [];
       if (section === 'trending') {
-        data = await anilistApi.getTrending(nextPage);
-        setTrending((prev) => [...prev, ...data]);
+        data = await anilistApi.getTrending(page);
+        setTrending(data);
       } else if (section === 'popular') {
-        data = await anilistApi.getPopular(nextPage);
-        setPopular((prev) => [...prev, ...data]);
+        data = await anilistApi.getPopular(page);
+        setPopular(data);
       } else {
-        data = await anilistApi.getTopRated(nextPage);
-        setTopRated((prev) => [...prev, ...data]);
+        data = await anilistApi.getTopRated(page);
+        setTopRated(data);
       }
-      setPages((prev) => ({ ...prev, [section]: nextPage }));
+      if (!sectionCacheRef.current[section]) {
+        sectionCacheRef.current[section] = {};
+      }
+      sectionCacheRef.current[section][page] = data;
       setHasMore((prev) => ({ ...prev, [section]: data.length > 0 }));
     } finally {
       setLoadingMore((prev) => ({ ...prev, [section]: false }));
@@ -135,22 +161,34 @@ const Recommendations: React.FC<RecommendationsProps> = ({ onNavigate }) => {
     title: string;
     data: Series[];
     section: 'trending' | 'popular' | 'topRated';
-  }) => (
+  }) => {
+    const page = pages[section];
+    const canPrev = page > 1;
+    const canNext = hasMore[section];
+    return (
     <div className="mb-12 animate-fade-in">
       <div className="flex items-center justify-between mb-6 px-4 md:px-0">
         <h2 className="text-2xl font-bold text-white flex items-center gap-3">
            <span className="w-1.5 h-6 bg-primary rounded-full"></span>
            {title}
         </h2>
-        {hasMore[section] && (
+        <div className="flex items-center gap-2">
           <button
-            onClick={() => handleLoadMore(section)}
-            disabled={loadingMore[section]}
-            className="text-xs font-semibold text-gray-300 px-3 py-1.5 rounded-full border border-white/10 hover:bg-white/5 disabled:opacity-60"
+            onClick={() => handlePageChange(section, page - 1)}
+            disabled={!canPrev || loadingMore[section]}
+            className="text-xs font-semibold text-gray-300 px-3 py-1.5 rounded-full border border-white/10 hover:bg-white/5 disabled:opacity-50"
           >
-            {loadingMore[section] ? 'Loading...' : 'Load more'}
+            Prev
           </button>
-        )}
+          <span className="text-xs font-semibold text-gray-500">Page {page}</span>
+          <button
+            onClick={() => handlePageChange(section, page + 1)}
+            disabled={!canNext || loadingMore[section]}
+            className="text-xs font-semibold text-gray-300 px-3 py-1.5 rounded-full border border-white/10 hover:bg-white/5 disabled:opacity-50"
+          >
+            {loadingMore[section] ? 'Loading...' : 'Next'}
+          </button>
+        </div>
       </div>
       <div className="overflow-x-auto pb-8 -mx-4 px-4 md:mx-0 md:px-0 scrollbar-hide">
          <div className="flex gap-4 md:gap-6 w-max">
@@ -162,7 +200,7 @@ const Recommendations: React.FC<RecommendationsProps> = ({ onNavigate }) => {
          </div>
       </div>
     </div>
-  );
+  )};
 
   return (
     <div className="min-h-screen pt-8 pb-20 max-w-[1600px] mx-auto md:px-8">

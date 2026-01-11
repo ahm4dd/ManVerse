@@ -60,6 +60,12 @@ const Home: React.FC<HomeProps> = ({
   const [searchPage, setSearchPage] = useState(1);
   const [searchHasMore, setSearchHasMore] = useState(true);
   const [searchLoadingMore, setSearchLoadingMore] = useState(false);
+  const searchPageCacheRef = useRef<Record<string, Record<number, Series[]>>>({});
+  const tabPageCacheRef = useRef<Record<string, Record<number, Series[]>>>({
+    Newest: {},
+    Popular: {},
+    TopRated: {},
+  });
 
   // Drag Constraints for History
   const continueHistoryRef = useRef<HTMLDivElement>(null);
@@ -126,11 +132,17 @@ const Home: React.FC<HomeProps> = ({
       if (Array.isArray(saved.topRated)) setTopRated(saved.topRated);
       if (saved.tabPages) setTabPages(saved.tabPages);
       if (saved.tabHasMore) setTabHasMore(saved.tabHasMore);
+      if (saved.tabPageCache) {
+        tabPageCacheRef.current = saved.tabPageCache;
+      }
 
       if (saved.searchContextKey === searchContextKey && Array.isArray(saved.searchResults)) {
         setSearchResults(saved.searchResults);
         setSearchPage(saved.searchPage || 1);
         setSearchHasMore(saved.searchHasMore ?? true);
+        if (saved.searchPageCache) {
+          searchPageCacheRef.current = saved.searchPageCache;
+        }
         restoredSearchKeyRef.current = searchContextKey;
       }
 
@@ -164,9 +176,11 @@ const Home: React.FC<HomeProps> = ({
       topRated,
       tabPages,
       tabHasMore,
+      tabPageCache: tabPageCacheRef.current,
       searchResults,
       searchPage,
       searchHasMore,
+      searchPageCache: searchPageCacheRef.current,
       searchContextKey,
       scrollY: scrollYRef.current,
       searchScrollY: isDiscoveryMode ? scrollYRef.current : undefined,
@@ -329,6 +343,11 @@ const Home: React.FC<HomeProps> = ({
       setTrending(trendingData);
       setPopular(popularData);
       setTopRated(topRatedData);
+      tabPageCacheRef.current = {
+        Newest: { 1: trendingData },
+        Popular: { 1: popularData },
+        TopRated: { 1: topRatedData },
+      };
       setTabPages({ Newest: 1, Popular: 1, TopRated: 1 });
       setTabHasMore({
         Newest: trendingData.length > 0,
@@ -454,8 +473,12 @@ const Home: React.FC<HomeProps> = ({
       };
 
       const data = await api.searchSeries(globalSearchQuery, globalSearchSource, apiFilters, page);
-      setSearchResults(prev => (append ? [...prev, ...data] : data));
+      setSearchResults(data);
       setSearchHasMore(data.length > 0);
+      if (!searchPageCacheRef.current[searchContextKey]) {
+        searchPageCacheRef.current[searchContextKey] = {};
+      }
+      searchPageCacheRef.current[searchContextKey][page] = data;
     } finally {
       if (!append) setLoading(false);
       setSearchLoadingMore(false);
@@ -511,38 +534,61 @@ const Home: React.FC<HomeProps> = ({
     onNavigate('details', anilistId || item.id);
   };
 
-  const handleLoadMore = async () => {
-    if (isDiscoveryMode) {
-      if (searchLoadingMore || !searchHasMore) return;
-      const nextPage = searchPage + 1;
-      setSearchLoadingMore(true);
-      setSearchPage(nextPage);
-      await handleGlobalSearch(nextPage, true);
+  const loadTabPage = async (tab: 'Newest' | 'Popular' | 'Top Rated', page: number) => {
+    const tabKey = tab === 'Top Rated' ? 'TopRated' : tab;
+    const cached = tabPageCacheRef.current[tabKey]?.[page];
+    if (cached) {
+      if (tab === 'Newest') setTrending(cached);
+      if (tab === 'Popular') setPopular(cached);
+      if (tab === 'Top Rated') setTopRated(cached);
+      setTabPages((prev) => ({ ...prev, [tabKey]: page }));
+      setTabHasMore((prev) => ({ ...prev, [tabKey]: cached.length > 0 }));
       return;
     }
 
-    const tabKey = activeTab === 'Top Rated' ? 'TopRated' : activeTab;
-    if (tabLoadingMore[tabKey] || !tabHasMore[tabKey]) return;
-
-    const nextPage = tabPages[tabKey] + 1;
     setTabLoadingMore((prev) => ({ ...prev, [tabKey]: true }));
     try {
       let data: Series[] = [];
-      if (activeTab === 'Newest') {
-        data = await anilistApi.getTrending(nextPage);
-        setTrending((prev) => [...prev, ...data]);
-      } else if (activeTab === 'Popular') {
-        data = await anilistApi.getPopular(nextPage);
-        setPopular((prev) => [...prev, ...data]);
+      if (tab === 'Newest') {
+        data = await anilistApi.getTrending(page);
+        setTrending(data);
+      } else if (tab === 'Popular') {
+        data = await anilistApi.getPopular(page);
+        setPopular(data);
       } else {
-        data = await anilistApi.getTopRated(nextPage);
-        setTopRated((prev) => [...prev, ...data]);
+        data = await anilistApi.getTopRated(page);
+        setTopRated(data);
       }
-      setTabPages((prev) => ({ ...prev, [tabKey]: nextPage }));
+      if (!tabPageCacheRef.current[tabKey]) {
+        tabPageCacheRef.current[tabKey] = {};
+      }
+      tabPageCacheRef.current[tabKey][page] = data;
+      setTabPages((prev) => ({ ...prev, [tabKey]: page }));
       setTabHasMore((prev) => ({ ...prev, [tabKey]: data.length > 0 }));
     } finally {
       setTabLoadingMore((prev) => ({ ...prev, [tabKey]: false }));
     }
+  };
+
+  const handleSearchPageChange = async (page: number) => {
+    if (page < 1) return;
+    if (searchLoadingMore) return;
+    const cache = searchPageCacheRef.current[searchContextKey]?.[page];
+    setSearchPage(page);
+    if (cache) {
+      setSearchResults(cache);
+      setSearchHasMore(cache.length > 0);
+      return;
+    }
+    setSearchLoadingMore(true);
+    await handleGlobalSearch(page, false);
+  };
+
+  const handleTabPageChange = async (page: number) => {
+    if (page < 1) return;
+    const tabKey = activeTab === 'Top Rated' ? 'TopRated' : activeTab;
+    if (tabLoadingMore[tabKey]) return;
+    await loadTabPage(activeTab, page);
   };
 
   // Determine which list to show based on search or tab
@@ -559,6 +605,14 @@ const Home: React.FC<HomeProps> = ({
   const activeTabKey = activeTab === 'Top Rated' ? 'TopRated' : activeTab;
   const canLoadMore = isDiscoveryMode ? searchHasMore : tabHasMore[activeTabKey];
   const isLoadingMore = isDiscoveryMode ? searchLoadingMore : tabLoadingMore[activeTabKey];
+  const currentPage = isDiscoveryMode ? searchPage : tabPages[activeTabKey];
+  const canGoPrev = currentPage > 1;
+
+  useEffect(() => {
+    if (isDiscoveryMode) return;
+    const page = tabPages[activeTabKey] || 1;
+    void loadTabPage(activeTab, page);
+  }, [activeTab]);
 
   return (
     <div className="min-h-screen pb-20 px-4 sm:px-6 lg:px-8 max-w-[1800px] mx-auto pt-6">
@@ -768,14 +822,32 @@ const Home: React.FC<HomeProps> = ({
                           </div>
                        )}
                     </motion.div>
-                    {baseList.length > 0 && canLoadMore && (
-                      <div className="flex justify-center pt-6">
+                    {baseList.length > 0 && (canGoPrev || canLoadMore) && (
+                      <div className="flex flex-wrap items-center justify-center gap-4 pt-6">
                         <button
-                          onClick={handleLoadMore}
-                          disabled={isLoadingMore}
-                          className="px-6 py-3 rounded-xl bg-white/5 text-white font-semibold text-sm border border-white/10 hover:bg-white/10 disabled:opacity-60"
+                          onClick={() =>
+                            isDiscoveryMode
+                              ? handleSearchPageChange(currentPage - 1)
+                              : handleTabPageChange(currentPage - 1)
+                          }
+                          disabled={!canGoPrev || isLoadingMore}
+                          className="px-5 py-2.5 rounded-xl bg-white/5 text-white font-semibold text-sm border border-white/10 hover:bg-white/10 disabled:opacity-50"
                         >
-                          {isLoadingMore ? 'Loading...' : 'Load more'}
+                          Previous
+                        </button>
+                        <div className="text-sm font-semibold text-gray-400">
+                          Page {currentPage}
+                        </div>
+                        <button
+                          onClick={() =>
+                            isDiscoveryMode
+                              ? handleSearchPageChange(currentPage + 1)
+                              : handleTabPageChange(currentPage + 1)
+                          }
+                          disabled={!canLoadMore || isLoadingMore}
+                          className="px-5 py-2.5 rounded-xl bg-white/5 text-white font-semibold text-sm border border-white/10 hover:bg-white/10 disabled:opacity-50"
+                        >
+                          {isLoadingMore ? 'Loading...' : 'Next'}
                         </button>
                       </div>
                     )}

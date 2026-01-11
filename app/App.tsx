@@ -340,7 +340,6 @@ const AppContent: React.FC = () => {
       saveNavState(nextState);
       setCurrentView(nextState.view);
       setViewData(nextState.data ?? null);
-      window.scrollTo(0, 0);
     };
 
     window.addEventListener('popstate', handlePopState);
