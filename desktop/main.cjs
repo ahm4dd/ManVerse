@@ -147,6 +147,7 @@ async function waitForUrl(url, timeoutMs = 30000) {
 }
 
 async function createWindow() {
+  const iconPath = path.join(__dirname, 'assets', 'icon.png');
   const win = new BrowserWindow({
     width: 1280,
     height: 900,
@@ -157,6 +158,7 @@ async function createWindow() {
     fullscreenable: true,
     backgroundColor: '#0b0b0f',
     autoHideMenuBar: true,
+    icon: fs.existsSync(iconPath) ? iconPath : undefined,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
