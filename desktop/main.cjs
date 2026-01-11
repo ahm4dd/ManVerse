@@ -40,6 +40,22 @@ const defaultSettings = {
 let appSettings = null;
 let notifierTimer = null;
 let notifierRunning = false;
+let updateStatus = {
+  state: 'idle',
+  version: null,
+  message: null,
+};
+
+function broadcastUpdateStatus() {
+  BrowserWindow.getAllWindows().forEach((win) => {
+    win.webContents.send('manverse:update-status', updateStatus);
+  });
+}
+
+function setUpdateStatus(next) {
+  updateStatus = { ...updateStatus, ...next };
+  broadcastUpdateStatus();
+}
 
 function spawnProcess(command, args, options) {
   const child = spawn(command, args, options);
@@ -373,6 +389,9 @@ async function createWindow() {
 
   await win.loadURL(uiUrl);
   mainWindow = win;
+  win.webContents.on('did-finish-load', () => {
+    broadcastUpdateStatus();
+  });
   win.on('closed', () => {
     mainWindow = null;
   });
@@ -386,7 +405,20 @@ function initAutoUpdates() {
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
 
-  autoUpdater.on('update-downloaded', async () => {
+  autoUpdater.on('checking-for-update', () => {
+    setUpdateStatus({ state: 'checking', message: null });
+  });
+
+  autoUpdater.on('update-available', (info) => {
+    setUpdateStatus({ state: 'available', version: info?.version ?? null, message: null });
+  });
+
+  autoUpdater.on('update-not-available', () => {
+    setUpdateStatus({ state: 'idle', version: null, message: null });
+  });
+
+  autoUpdater.on('update-downloaded', async (info) => {
+    setUpdateStatus({ state: 'downloaded', version: info?.version ?? updateStatus.version });
     const response = await dialog.showMessageBox(mainWindow ?? undefined, {
       type: 'info',
       buttons: ['Restart now', 'Later'],
@@ -404,6 +436,10 @@ function initAutoUpdates() {
 
   autoUpdater.on('error', (error) => {
     console.warn('Auto-update error:', error?.message || error);
+    setUpdateStatus({
+      state: 'error',
+      message: error?.message || 'Update failed',
+    });
   });
 
   autoUpdater.checkForUpdatesAndNotify();
@@ -454,6 +490,11 @@ app.whenReady().then(() => {
   ipcMain.handle('manverse:updateSetting', (_event, payload) =>
     updateSetting(payload?.key, payload?.value),
   );
+  ipcMain.handle('manverse:getUpdateStatus', () => updateStatus);
+  ipcMain.handle('manverse:installUpdate', () => {
+    autoUpdater.quitAndInstall();
+    return { ok: true };
+  });
   bootstrap().catch((error) => {
     dialog.showErrorBox('ManVerse startup failed', error.message || String(error));
     app.quit();

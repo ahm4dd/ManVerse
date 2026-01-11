@@ -5,9 +5,18 @@ export type DesktopSettings = {
   pollJitterMinutes: number;
 };
 
+export type UpdateStatus = {
+  state: 'idle' | 'checking' | 'available' | 'downloaded' | 'error';
+  version: string | null;
+  message: string | null;
+};
+
 type DesktopBridge = {
   getSettings: () => Promise<DesktopSettings>;
   updateSetting: (key: keyof DesktopSettings, value: unknown) => Promise<DesktopSettings>;
+  getUpdateStatus?: () => Promise<UpdateStatus>;
+  installUpdate?: () => Promise<{ ok: boolean }>;
+  onUpdateStatus?: (callback: (status: UpdateStatus) => void) => () => void;
 };
 
 const bridge = typeof window !== 'undefined' ? (window as any).manverse : null;
@@ -28,5 +37,23 @@ export const desktopApi = {
       throw new Error('Desktop bridge unavailable');
     }
     return bridge.updateSetting(key, value);
+  },
+  getUpdateStatus: async (): Promise<UpdateStatus | null> => {
+    if (!bridge?.getUpdateStatus) {
+      return null;
+    }
+    return bridge.getUpdateStatus();
+  },
+  installUpdate: async (): Promise<void> => {
+    if (!bridge?.installUpdate) {
+      throw new Error('Desktop bridge unavailable');
+    }
+    await bridge.installUpdate();
+  },
+  onUpdateStatus: (callback: (status: UpdateStatus) => void): (() => void) => {
+    if (!bridge?.onUpdateStatus) {
+      return () => {};
+    }
+    return bridge.onUpdateStatus(callback);
   },
 };

@@ -16,6 +16,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import PageTransition from './components/PageTransition';
 import SearchFilters, { FilterState } from './components/SearchFilters';
 import { providerOptions, type Source, isProviderSource } from './lib/providers';
+import { desktopApi, type UpdateStatus } from './lib/desktop';
 
 type View = 'home' | 'details' | 'reader' | 'login' | 'library' | 'recommendations' | 'recent-reads';
 
@@ -85,6 +86,8 @@ const AppContent: React.FC = () => {
   const [showNavMenu, setShowNavMenu] = useState(false);
   const [syncPending, setSyncPending] = useState(0);
   const [syncLoading, setSyncLoading] = useState(false);
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
+  const [updateBannerDismissed, setUpdateBannerDismissed] = useState(false);
 
   // Global Search State
   const [searchQuery, setSearchQuery] = useState('');
@@ -265,6 +268,10 @@ const AppContent: React.FC = () => {
     filters.genre !== 'All' || 
     filters.country !== 'All' || 
     filters.sort !== defaultSort;
+  const showUpdateBanner =
+    desktopApi.isAvailable &&
+    updateStatus?.state === 'downloaded' &&
+    !updateBannerDismissed;
 
   // Load User Function (Extracted for re-use)
   const loadUser = async () => {
@@ -299,6 +306,15 @@ const AppContent: React.FC = () => {
     setSyncLoading(false);
   };
 
+  const handleInstallUpdate = async () => {
+    if (!desktopApi.isAvailable) return;
+    try {
+      await desktopApi.installUpdate();
+    } catch (error) {
+      console.warn('Failed to install update', error);
+    }
+  };
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const token = params.get('token');
@@ -322,6 +338,25 @@ const AppContent: React.FC = () => {
     window.history.replaceState(initialState, '', buildUrl(initialState.view, initialState.data));
 
     loadUser();
+  }, []);
+
+  useEffect(() => {
+    if (!desktopApi.isAvailable) return;
+    let unsubscribe = () => {};
+    desktopApi
+      .getUpdateStatus()
+      .then((status) => {
+        if (status) {
+          setUpdateStatus(status);
+        }
+      })
+      .catch(() => {});
+    unsubscribe = desktopApi.onUpdateStatus((status) => {
+      setUpdateStatus(status);
+    });
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -764,8 +799,37 @@ const AppContent: React.FC = () => {
                   </div>
                 )}
               </div>
-            </div>
           </div>
+          </div>
+
+          {showUpdateBanner && (
+            <div className="border-t border-white/10 bg-primary/10">
+              <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="text-sm text-gray-200">
+                  <span className="font-semibold text-white">Update ready.</span>
+                  <span className="text-gray-400 ml-2">
+                    {updateStatus?.version
+                      ? `Version ${updateStatus.version} is ready to install.`
+                      : 'A new version is ready to install.'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={handleInstallUpdate}
+                    className="px-4 py-2 rounded-lg text-xs font-bold bg-primary text-black shadow-lg shadow-primary/30 transition hover:brightness-110"
+                  >
+                    Restart now
+                  </button>
+                  <button
+                    onClick={() => setUpdateBannerDismissed(true)}
+                    className="px-3 py-2 rounded-lg text-xs font-semibold text-gray-300 border border-white/10 hover:text-white hover:bg-white/5 transition"
+                  >
+                    Later
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
           
           {/* Nav Menu (Responsive) */}
           {showNavMenu && (
