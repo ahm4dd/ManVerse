@@ -235,8 +235,8 @@ function formatSeriesDetails(details: ProviderSeriesDetails): SeriesDetails {
   };
 }
 
-function normalizeProviderSearchKey(provider: Source, query: string) {
-  return `${provider}:${query.trim().toLowerCase()}`;
+function normalizeProviderSearchKey(provider: Source, query: string, page = 1) {
+  return `${provider}:${query.trim().toLowerCase()}:page:${page}`;
 }
 
 function getCachedProviderSearch(key: string): Series[] | null {
@@ -248,8 +248,8 @@ function getCachedProviderSearch(key: string): Series[] | null {
   return null;
 }
 
-function peekProviderSearchCache(query: string, provider: Source) {
-  const cacheKey = normalizeProviderSearchKey(provider, query);
+function peekProviderSearchCache(query: string, provider: Source, page = 1) {
+  const cacheKey = normalizeProviderSearchKey(provider, query, page);
   const entry = providerSearchCache.get(cacheKey);
   if (!entry) return null;
   return {
@@ -282,10 +282,14 @@ export const api = {
     }
   },
 
-  searchProviderSeries: async (query: string, provider: Source = 'AsuraScans'): Promise<Series[]> => {
+  searchProviderSeries: async (
+    query: string,
+    provider: Source = 'AsuraScans',
+    page = 1,
+  ): Promise<Series[]> => {
     const trimmed = query.trim();
     if (!trimmed) return [];
-    const cacheKey = normalizeProviderSearchKey(provider, trimmed);
+    const cacheKey = normalizeProviderSearchKey(provider, trimmed, page);
     const cached = getCachedProviderSearch(cacheKey);
     if (cached) {
       return cached;
@@ -296,7 +300,7 @@ export const api = {
     }
 
     const request = apiRequest<ProviderSearchResult>(
-      `/api/manga/search?source=asura&query=${encodeURIComponent(trimmed)}`,
+      `/api/manga/search?source=asura&query=${encodeURIComponent(trimmed)}&page=${page}`,
     )
       .then((res) => {
         const results = res.results.map(formatSeriesResult);
@@ -311,16 +315,20 @@ export const api = {
     return request;
   },
 
-  refreshProviderSearch: async (query: string, provider: Source = 'AsuraScans'): Promise<Series[]> => {
+  refreshProviderSearch: async (
+    query: string,
+    provider: Source = 'AsuraScans',
+    page = 1,
+  ): Promise<Series[]> => {
     const trimmed = query.trim();
     if (!trimmed) return [];
-    const cacheKey = normalizeProviderSearchKey(provider, trimmed);
+    const cacheKey = normalizeProviderSearchKey(provider, trimmed, page);
     const inFlight = providerSearchInFlight.get(cacheKey);
     if (inFlight) {
       return inFlight;
     }
     const request = apiRequest<ProviderSearchResult>(
-      `/api/manga/search?source=asura&query=${encodeURIComponent(trimmed)}`,
+      `/api/manga/search?source=asura&query=${encodeURIComponent(trimmed)}&page=${page}`,
     )
       .then((res) => {
         const results = res.results.map(formatSeriesResult);
@@ -356,17 +364,23 @@ export const api = {
     });
   },
 
-  searchSeries: async (query: string, source: Source = 'AniList', filters: SearchFilters = {}): Promise<Series[]> => {
+  searchSeries: async (
+    query: string,
+    source: Source = 'AniList',
+    filters: SearchFilters = {},
+    page = 1,
+  ): Promise<Series[]> => {
     if (source === 'AniList') {
       try {
-        return await anilistApi.search(query, 1, filters);
+        return await anilistApi.search(query, page, filters);
       } catch (e) {
         console.warn("AniList search failed", e);
         return [];
       }
     } else {
       try {
-        return await api.searchProviderSeries(query, source);
+        if (!query.trim()) return [];
+        return await api.searchProviderSeries(query, source, page);
       } catch (e) {
         console.warn('Provider search failed', e);
         return [];

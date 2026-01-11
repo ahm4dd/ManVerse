@@ -39,6 +39,7 @@ const errorResponse = {
 
 const searchSchema = z.object({
   query: z.string().min(1),
+  page: z.coerce.number().int().positive().optional(),
   source: z.enum(['anilist', 'asura', 'both']).optional(),
   format: z.string().optional(),
   status: z.string().optional(),
@@ -240,7 +241,7 @@ const searchRoute = createRoute({
 });
 
 manga.openapi(searchRoute, (c) => {
-  const { query, source, format, status, genre, country, sort } = c.req.valid('query');
+  const { query, page, source, format, status, genre, country, sort } = c.req.valid('query');
   return service
     .search(query, (source || 'anilist') as MangaSource, {
       sort: normalizeSort(sort),
@@ -248,7 +249,7 @@ manga.openapi(searchRoute, (c) => {
       status: normalizeStatus(status),
       genre: genre && genre !== 'All' ? genre : undefined,
       country: normalizeCountry(country),
-    })
+    }, page || 1)
     .then((results) => jsonSuccess(c, results))
     .catch((error) =>
       jsonError(
