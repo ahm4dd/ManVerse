@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog } = require('electron');
+const { app, BrowserWindow, dialog, Notification, ipcMain } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const { spawn, spawnSync } = require('node:child_process');
 const http = require('node:http');
@@ -30,12 +30,106 @@ let uiServer = null;
 let mainWindow = null;
 let isShuttingDown = false;
 
+const settingsPath = path.join(app.getPath('userData'), 'settings.json');
+const defaultSettings = {
+  notifierEnabled: true,
+  launchOnStartup: false,
+  pollBaseMinutes: 60,
+  pollJitterMinutes: 15,
+};
+let appSettings = null;
+let notifierTimer = null;
+let notifierRunning = false;
+
 function spawnProcess(command, args, options) {
   const child = spawn(command, args, options);
   child.on('error', (error) => {
     dialog.showErrorBox('ManVerse process error', error.message);
   });
   return child;
+}
+
+function loadSettings() {
+  if (appSettings) return appSettings;
+  try {
+    if (fs.existsSync(settingsPath)) {
+      const raw = fs.readFileSync(settingsPath, 'utf8');
+      appSettings = { ...defaultSettings, ...JSON.parse(raw) };
+      return appSettings;
+    }
+  } catch {
+    // ignore
+  }
+  appSettings = { ...defaultSettings };
+  return appSettings;
+}
+
+function saveSettings(settings) {
+  appSettings = settings;
+  try {
+    fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+  } catch {
+    // ignore
+  }
+}
+
+function setLinuxAutoStart(enabled) {
+  const autostartDir = path.join(app.getPath('home'), '.config', 'autostart');
+  const desktopFile = path.join(autostartDir, 'manverse.desktop');
+  if (!enabled) {
+    if (fs.existsSync(desktopFile)) {
+      fs.unlinkSync(desktopFile);
+    }
+    return;
+  }
+  fs.mkdirSync(autostartDir, { recursive: true });
+  const content = [
+    '[Desktop Entry]',
+    'Type=Application',
+    'Name=ManVerse',
+    'Comment=ManVerse background notifier',
+    `Exec=${process.execPath}`,
+    'Terminal=false',
+    'X-GNOME-Autostart-enabled=true',
+  ].join('\n');
+  fs.writeFileSync(desktopFile, content);
+}
+
+function applyStartupSetting(enabled) {
+  if (process.platform === 'win32') {
+    app.setLoginItemSettings({
+      openAtLogin: enabled,
+      path: process.execPath,
+    });
+    return;
+  }
+  if (process.platform === 'linux') {
+    setLinuxAutoStart(enabled);
+  }
+}
+
+function getSettings() {
+  return loadSettings();
+}
+
+function updateSetting(key, value) {
+  const settings = { ...loadSettings(), [key]: value };
+  saveSettings(settings);
+  if (key === 'launchOnStartup') {
+    applyStartupSetting(Boolean(value));
+  }
+  if (key === 'notifierEnabled' && !value && BrowserWindow.getAllWindows().length === 0) {
+    app.quit();
+  }
+  if (key === 'notifierEnabled') {
+    if (value) {
+      scheduleNotifierCheck(5 * 60 * 1000);
+    } else {
+      clearNotifierTimer();
+    }
+  }
+  return settings;
 }
 
 function killProcessTree(child, label) {
@@ -139,6 +233,54 @@ function startUiDevServer() {
     stdio: 'inherit',
     detached: process.platform !== 'win32',
   });
+}
+
+function clearNotifierTimer() {
+  if (notifierTimer) {
+    clearTimeout(notifierTimer);
+    notifierTimer = null;
+  }
+}
+
+function scheduleNotifierCheck(delayMs) {
+  clearNotifierTimer();
+  if (!getSettings().notifierEnabled) return;
+  notifierTimer = setTimeout(runNotifierCheck, delayMs);
+}
+
+async function runNotifierCheck() {
+  if (notifierRunning || !getSettings().notifierEnabled) {
+    return;
+  }
+  notifierRunning = true;
+  try {
+    const response = await fetch(`${apiUrl}/api/notifications/chapters`);
+    if (response.ok) {
+      const payload = await response.json();
+      const updates = payload?.data ?? [];
+      const iconPath = path.join(__dirname, 'assets', 'icon.png');
+      updates.forEach((update) => {
+        const title = update.seriesTitle || 'New chapter available';
+        const chapterLabel = update.chapterNumber ? `Chapter ${update.chapterNumber}` : 'New chapter';
+        const body = update.releaseDate
+          ? `${chapterLabel} • ${update.releaseDate}`
+          : chapterLabel;
+        new Notification({
+          title,
+          body,
+          icon: fs.existsSync(iconPath) ? iconPath : undefined,
+        }).show();
+      });
+    }
+  } catch (error) {
+    console.warn('Notifier check failed:', error?.message || error);
+  } finally {
+    notifierRunning = false;
+    const { pollBaseMinutes, pollJitterMinutes } = getSettings();
+    const jitter = Math.floor(Math.random() * Math.max(1, pollJitterMinutes));
+    const delayMs = (pollBaseMinutes + jitter) * 60 * 1000;
+    scheduleNotifierCheck(delayMs);
+  }
 }
 
 function startUiStaticServer() {
@@ -275,6 +417,11 @@ async function bootstrap() {
   await Promise.all([waitForUrl(`${apiUrl}/health`), waitForUrl(uiUrl)]);
   await createWindow();
   initAutoUpdates();
+  const settings = getSettings();
+  applyStartupSetting(settings.launchOnStartup);
+  if (settings.notifierEnabled) {
+    scheduleNotifierCheck(5 * 60 * 1000);
+  }
 }
 
 app.on('before-quit', (event) => {
@@ -303,6 +450,10 @@ app.on('before-quit', (event) => {
 
 app.whenReady().then(() => {
   app.setAppUserModelId('com.ahm4dd.manverse');
+  ipcMain.handle('manverse:getSettings', () => getSettings());
+  ipcMain.handle('manverse:updateSetting', (_event, payload) =>
+    updateSetting(payload?.key, payload?.value),
+  );
   bootstrap().catch((error) => {
     dialog.showErrorBox('ManVerse startup failed', error.message || String(error));
     app.quit();
@@ -311,7 +462,9 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
-    app.quit();
+    if (!getSettings().notifierEnabled) {
+      app.quit();
+    }
   }
 });
 

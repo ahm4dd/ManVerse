@@ -113,13 +113,20 @@ export class ScraperService {
     }
   }
 
-  async search(query: string, page = 1, provider: Provider = Providers.AsuraScans): Promise<SearchResult> {
+  async search(
+    query: string,
+    page = 1,
+    provider: Provider = Providers.AsuraScans,
+    options?: { refresh?: boolean },
+  ): Promise<SearchResult> {
     const normalizedQuery = query.trim().toLowerCase();
     const cacheKey = `provider:${provider}:search:${normalizedQuery}:${page}`;
-    const diskCached = ScraperService.diskCache.get<SearchResult>(cacheKey);
-    if (diskCached) {
-      await ScraperService.cache.getOrLoad(cacheKey, DEFAULT_CACHE_TTL_MS.search, async () => diskCached);
-      return diskCached;
+    if (!options?.refresh) {
+      const diskCached = ScraperService.diskCache.get<SearchResult>(cacheKey);
+      if (diskCached) {
+        await ScraperService.cache.getOrLoad(cacheKey, DEFAULT_CACHE_TTL_MS.search, async () => diskCached);
+        return diskCached;
+      }
     }
     return ScraperService.cache.getOrLoad(cacheKey, DEFAULT_CACHE_TTL_MS.search, async () => {
       const result = await this.withPage(
@@ -135,12 +142,15 @@ export class ScraperService {
   async getSeriesDetails(
     id: string,
     provider: Provider = Providers.AsuraScans,
+    options?: { refresh?: boolean },
   ): Promise<Manhwa> {
     const cacheKey = `provider:${provider}:details:${id.trim()}`;
-    const diskCached = ScraperService.diskCache.get<Manhwa>(cacheKey);
-    if (diskCached) {
-      await ScraperService.cache.getOrLoad(cacheKey, DEFAULT_CACHE_TTL_MS.details, async () => diskCached);
-      return diskCached;
+    if (!options?.refresh) {
+      const diskCached = ScraperService.diskCache.get<Manhwa>(cacheKey);
+      if (diskCached) {
+        await ScraperService.cache.getOrLoad(cacheKey, DEFAULT_CACHE_TTL_MS.details, async () => diskCached);
+        return diskCached;
+      }
     }
     return ScraperService.cache.getOrLoad(cacheKey, DEFAULT_CACHE_TTL_MS.details, async () => {
       const result = await this.withPage(
@@ -156,12 +166,15 @@ export class ScraperService {
   async getChapterImages(
     id: string,
     provider: Provider = Providers.AsuraScans,
+    options?: { refresh?: boolean },
   ): Promise<ManhwaChapter> {
     const cacheKey = `provider:${provider}:chapter:${id.trim()}`;
-    const diskCached = ScraperService.diskCache.get<ManhwaChapter>(cacheKey);
-    if (diskCached) {
-      await ScraperService.cache.getOrLoad(cacheKey, DEFAULT_CACHE_TTL_MS.chapter, async () => diskCached);
-      return diskCached;
+    if (!options?.refresh) {
+      const diskCached = ScraperService.diskCache.get<ManhwaChapter>(cacheKey);
+      if (diskCached) {
+        await ScraperService.cache.getOrLoad(cacheKey, DEFAULT_CACHE_TTL_MS.chapter, async () => diskCached);
+        return diskCached;
+      }
     }
     return ScraperService.cache.getOrLoad(cacheKey, DEFAULT_CACHE_TTL_MS.chapter, async () => {
       const result = await this.withPage(

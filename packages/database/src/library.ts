@@ -23,6 +23,16 @@ export interface LibraryEntryWithMedia {
   media: AnilistMangaRecord | null;
 }
 
+export interface ReadingProviderEntry {
+  userId: string | null;
+  anilistId: number;
+  provider: string;
+  providerMangaId: number;
+  providerId: string;
+  seriesTitle: string | null;
+  coverImage: string | null;
+}
+
 export function upsertLibraryEntry(input: LibraryEntryInput): LibraryEntryRecord {
   const db = getDatabase();
   const now = Math.floor(Date.now() / 1000);
@@ -213,6 +223,48 @@ export function deleteLibraryEntry(userId: string, anilistId: number): boolean {
     .prepare('DELETE FROM user_library WHERE user_id = ? AND anilist_id = ?')
     .run(userId, anilistId);
   return result.changes > 0;
+}
+
+export function listReadingProviderEntries(status: string = 'CURRENT'): ReadingProviderEntry[] {
+  const db = getDatabase();
+  const rows = db
+    .prepare(
+      `SELECT
+        ul.user_id as user_id,
+        ul.anilist_id as anilist_id,
+        ul.provider as provider,
+        ul.provider_manga_id as provider_manga_id,
+        pm.provider_id as provider_id,
+        pm.title as provider_title,
+        am.title_romaji as title_romaji,
+        am.title_english as title_english,
+        am.title_native as title_native,
+        am.cover_large as cover_large
+       FROM user_library ul
+       JOIN provider_manga pm ON pm.id = ul.provider_manga_id
+       LEFT JOIN anilist_manga am ON am.id = ul.anilist_id
+       WHERE ul.status = ? AND ul.provider_manga_id IS NOT NULL`,
+    )
+    .all(status) as Array<Record<string, unknown>>;
+
+  return rows.map((row) => {
+    const title =
+      (row.title_english as string | null) ??
+      (row.title_romaji as string | null) ??
+      (row.title_native as string | null) ??
+      (row.provider_title as string | null) ??
+      null;
+
+    return {
+      userId: (row.user_id as string | null) ?? null,
+      anilistId: row.anilist_id as number,
+      provider: row.provider as string,
+      providerMangaId: row.provider_manga_id as number,
+      providerId: row.provider_id as string,
+      seriesTitle: title,
+      coverImage: (row.cover_large as string | null) ?? null,
+    };
+  });
 }
 
 export function countLibraryEntries(userId: string): number {

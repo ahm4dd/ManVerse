@@ -15,6 +15,7 @@ import chaptersRoutes from './routes/chapters.ts';
 import downloadsRoutes from './routes/downloads.ts';
 import syncRoutes from './routes/sync.ts';
 import anilistRoutes from './routes/anilist.ts';
+import notificationsRoutes from './routes/notifications.ts';
 
 const app = new OpenAPIHono<HonoEnv>({ defaultHook: openApiHook });
 const port = Number(Bun.env.PORT || 3001);
@@ -88,6 +89,7 @@ app.route('/api/chapters', chaptersRoutes);
 app.route('/api/downloads', downloadsRoutes);
 app.route('/api/sync', syncRoutes);
 app.route('/api/anilist', anilistRoutes);
+app.route('/api/notifications', notificationsRoutes);
 
 app.onError(handleError);
 

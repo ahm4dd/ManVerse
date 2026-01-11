@@ -105,6 +105,20 @@ Set these when launching the desktop app.
   - Override the Bun binary used by the desktop app.
   - Useful to force a system Bun install instead of the bundled runtime.
 
+### Desktop settings (stored in user config)
+
+The desktop shell stores UI toggles in a JSON file under the Electron user data path
+(for example `~/.config/ManVerse/settings.json` on Linux).
+
+- `notifierEnabled`
+  - Enables hourly chapter-release checks in the background.
+- `launchOnStartup`
+  - Starts ManVerse on system login (Windows Startup / KDE autostart).
+- `pollBaseMinutes`
+  - Base interval in minutes for background checks.
+- `pollJitterMinutes`
+  - Random jitter in minutes added to the base interval.
+
 ## Build + CI
 
 - `BUN_BUNDLE_VERSION`

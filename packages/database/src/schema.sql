@@ -139,3 +139,14 @@ CREATE TABLE IF NOT EXISTS custom_providers (
   created_at INTEGER DEFAULT (unixepoch()),
   updated_at INTEGER DEFAULT (unixepoch())
 );
+
+CREATE TABLE IF NOT EXISTS provider_release_state (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  provider_manga_id INTEGER NOT NULL,
+  last_chapter TEXT,
+  last_title TEXT,
+  last_checked_at INTEGER DEFAULT (unixepoch()),
+  last_seen_at INTEGER DEFAULT (unixepoch()),
+  FOREIGN KEY (provider_manga_id) REFERENCES provider_manga (id) ON DELETE CASCADE,
+  UNIQUE(provider_manga_id)
+);
