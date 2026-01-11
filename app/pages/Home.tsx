@@ -60,6 +60,7 @@ const Home: React.FC<HomeProps> = ({
   const [searchPage, setSearchPage] = useState(1);
   const [searchHasMore, setSearchHasMore] = useState(true);
   const [searchLoadingMore, setSearchLoadingMore] = useState(false);
+  const [homeHydrated, setHomeHydrated] = useState(false);
   const searchPageCacheRef = useRef<Record<string, Record<number, Series[]>>>({});
   const tabPageCacheRef = useRef<Record<string, Record<number, Series[]>>>({
     Newest: {},
@@ -114,53 +115,65 @@ const Home: React.FC<HomeProps> = ({
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const raw = sessionStorage.getItem(HOME_STATE_KEY);
-    if (!raw) {
-      if (!isDiscoveryMode) {
-        loadDefaultData();
-      }
-      return;
-    }
+    let cancelled = false;
 
-    try {
-      const saved = JSON.parse(raw);
-      if (saved?.activeTab) {
-        setActiveTab(saved.activeTab);
-      }
-      if (Array.isArray(saved.trending)) setTrending(saved.trending);
-      if (Array.isArray(saved.popular)) setPopular(saved.popular);
-      if (Array.isArray(saved.topRated)) setTopRated(saved.topRated);
-      if (saved.tabPages) setTabPages(saved.tabPages);
-      if (saved.tabHasMore) setTabHasMore(saved.tabHasMore);
-      if (saved.tabPageCache) {
-        tabPageCacheRef.current = saved.tabPageCache;
-      }
-
-      if (saved.searchContextKey === searchContextKey && Array.isArray(saved.searchResults)) {
-        setSearchResults(saved.searchResults);
-        setSearchPage(saved.searchPage || 1);
-        setSearchHasMore(saved.searchHasMore ?? true);
-        if (saved.searchPageCache) {
-          searchPageCacheRef.current = saved.searchPageCache;
+    const hydrate = async () => {
+      const raw = sessionStorage.getItem(HOME_STATE_KEY);
+      if (!raw) {
+        if (!isDiscoveryMode) {
+          await loadDefaultData();
         }
-        restoredSearchKeyRef.current = searchContextKey;
+        if (!cancelled) setHomeHydrated(true);
+        return;
       }
 
-      const targetScroll = isDiscoveryMode
-        ? saved.searchScrollY ?? saved.scrollY
-        : saved.scrollY;
-      if (typeof targetScroll === 'number') {
-        requestAnimationFrame(() => window.scrollTo(0, targetScroll));
-      }
+      try {
+        const saved = JSON.parse(raw);
+        if (saved?.activeTab) {
+          setActiveTab(saved.activeTab);
+        }
+        if (Array.isArray(saved.trending)) setTrending(saved.trending);
+        if (Array.isArray(saved.popular)) setPopular(saved.popular);
+        if (Array.isArray(saved.topRated)) setTopRated(saved.topRated);
+        if (saved.tabPages) setTabPages(saved.tabPages);
+        if (saved.tabHasMore) setTabHasMore(saved.tabHasMore);
+        if (saved.tabPageCache) {
+          tabPageCacheRef.current = saved.tabPageCache;
+        }
 
-      if (!isDiscoveryMode && (!saved.trending || saved.trending.length === 0)) {
-        loadDefaultData();
+        if (saved.searchContextKey === searchContextKey && Array.isArray(saved.searchResults)) {
+          setSearchResults(saved.searchResults);
+          setSearchPage(saved.searchPage || 1);
+          setSearchHasMore(saved.searchHasMore ?? true);
+          if (saved.searchPageCache) {
+            searchPageCacheRef.current = saved.searchPageCache;
+          }
+          restoredSearchKeyRef.current = searchContextKey;
+        }
+
+        const targetScroll = isDiscoveryMode
+          ? saved.searchScrollY ?? saved.scrollY
+          : saved.scrollY;
+        if (typeof targetScroll === 'number') {
+          requestAnimationFrame(() => window.scrollTo(0, targetScroll));
+        }
+
+        if (!isDiscoveryMode && (!saved.trending || saved.trending.length === 0)) {
+          await loadDefaultData();
+        }
+      } catch {
+        if (!isDiscoveryMode) {
+          await loadDefaultData();
+        }
+      } finally {
+        if (!cancelled) setHomeHydrated(true);
       }
-    } catch {
-      if (!isDiscoveryMode) {
-        loadDefaultData();
-      }
-    }
+    };
+
+    void hydrate();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -168,7 +181,7 @@ const Home: React.FC<HomeProps> = ({
   }, [user]);
 
   const persistHomeState = () => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined' || !homeHydrated) return;
     const payload = {
       activeTab,
       trending,
@@ -193,6 +206,7 @@ const Home: React.FC<HomeProps> = ({
   };
 
   useEffect(() => {
+    if (!homeHydrated) return;
     persistHomeState();
     return () => {
       persistHomeState();
@@ -209,6 +223,7 @@ const Home: React.FC<HomeProps> = ({
     searchHasMore,
     searchContextKey,
     isDiscoveryMode,
+    homeHydrated,
   ]);
 
   useEffect(() => {
@@ -307,6 +322,7 @@ const Home: React.FC<HomeProps> = ({
 
   // Trigger global search when global props change (Debounced)
   useEffect(() => {
+     if (!homeHydrated) return;
      if (!isDiscoveryMode) {
         setSearchResults([]); 
         setSearchPage(1);
@@ -329,7 +345,7 @@ const Home: React.FC<HomeProps> = ({
      }, 600);
 
      return () => clearTimeout(timer);
-  }, [searchContextKey, isDiscoveryMode]);
+  }, [searchContextKey, isDiscoveryMode, homeHydrated]);
 
   const loadDefaultData = async () => {
     setLoading(true);
@@ -609,10 +625,11 @@ const Home: React.FC<HomeProps> = ({
   const canGoPrev = currentPage > 1;
 
   useEffect(() => {
+    if (!homeHydrated) return;
     if (isDiscoveryMode) return;
     const page = tabPages[activeTabKey] || 1;
     void loadTabPage(activeTab, page);
-  }, [activeTab]);
+  }, [activeTab, homeHydrated]);
 
   return (
     <div className="min-h-screen pb-20 px-4 sm:px-6 lg:px-8 max-w-[1800px] mx-auto pt-6">

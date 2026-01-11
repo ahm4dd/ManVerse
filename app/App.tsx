@@ -43,6 +43,8 @@ type NavOptions = {
 };
 
 const NAV_STATE_KEY = 'manverse_nav_state_v1';
+const HOME_STATE_KEY = 'manverse_home_state_v2';
+const RECOMMEND_STATE_KEY = 'manverse_recommendations_state_v1';
 
 const DEFAULT_FILTERS: FilterState = {
   format: 'All',
@@ -80,6 +82,35 @@ const AppContent: React.FC = () => {
   // Animation State
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
   const historyIndexRef = useRef(0);
+
+  const persistScrollForView = (view: View) => {
+    if (typeof window === 'undefined') return;
+    if (view === 'home') {
+      try {
+        const raw = sessionStorage.getItem(HOME_STATE_KEY);
+        if (!raw) return;
+        const saved = JSON.parse(raw);
+        const scrollY = window.scrollY;
+        saved.scrollY = scrollY;
+        saved.searchScrollY = scrollY;
+        sessionStorage.setItem(HOME_STATE_KEY, JSON.stringify(saved));
+      } catch {
+        // Ignore storage errors
+      }
+      return;
+    }
+    if (view === 'recommendations') {
+      try {
+        const raw = sessionStorage.getItem(RECOMMEND_STATE_KEY);
+        if (!raw) return;
+        const saved = JSON.parse(raw);
+        saved.scrollY = window.scrollY;
+        sessionStorage.setItem(RECOMMEND_STATE_KEY, JSON.stringify(saved));
+      } catch {
+        // Ignore storage errors
+      }
+    }
+  };
 
   const loadStoredNavState = () => {
     if (typeof window === 'undefined') return null;
@@ -289,6 +320,7 @@ const AppContent: React.FC = () => {
       window.scrollTo(0, 0);
       return;
     }
+    persistScrollForView(currentView);
     window.scrollTo(0, 0);
     const nextIndex = options.replace ? historyIndexRef.current : historyIndexRef.current + 1;
     const state: NavState = {

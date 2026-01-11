@@ -15,6 +15,7 @@ const Recommendations: React.FC<RecommendationsProps> = ({ onNavigate }) => {
   const [pages, setPages] = useState({ trending: 1, popular: 1, topRated: 1 });
   const [hasMore, setHasMore] = useState({ trending: true, popular: true, topRated: true });
   const [loadingMore, setLoadingMore] = useState({ trending: false, popular: false, topRated: false });
+  const [recommendationsHydrated, setRecommendationsHydrated] = useState(false);
   const sectionCacheRef = useRef<Record<string, Record<number, Series[]>>>({
     trending: {},
     popular: {},
@@ -33,13 +34,15 @@ const Recommendations: React.FC<RecommendationsProps> = ({ onNavigate }) => {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+
     const fetchData = async () => {
       setLoading(true);
       try {
         const [t, p, tr] = await Promise.all([
           anilistApi.getTrending(1),
           anilistApi.getPopular(1),
-          anilistApi.getTopRated(1)
+          anilistApi.getTopRated(1),
         ]);
         setTrending(t);
         setPopular(p);
@@ -59,8 +62,10 @@ const Recommendations: React.FC<RecommendationsProps> = ({ onNavigate }) => {
         console.error(e);
       } finally {
         setLoading(false);
+        if (!cancelled) setRecommendationsHydrated(true);
       }
     };
+
     if (typeof window !== 'undefined') {
       const raw = sessionStorage.getItem(RECOMMEND_STATE_KEY);
       if (raw) {
@@ -83,6 +88,7 @@ const Recommendations: React.FC<RecommendationsProps> = ({ onNavigate }) => {
               requestAnimationFrame(() => window.scrollTo(0, saved.scrollY));
             }
             setLoading(false);
+            if (!cancelled) setRecommendationsHydrated(true);
             return;
           }
         } catch {
@@ -90,11 +96,15 @@ const Recommendations: React.FC<RecommendationsProps> = ({ onNavigate }) => {
         }
       }
     }
-    fetchData();
+    void fetchData();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const persistRecommendationsState = () => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined' || !recommendationsHydrated) return;
     const payload = {
       trending,
       popular,
@@ -112,11 +122,12 @@ const Recommendations: React.FC<RecommendationsProps> = ({ onNavigate }) => {
   };
 
   useEffect(() => {
+    if (!recommendationsHydrated) return;
     persistRecommendationsState();
     return () => {
       persistRecommendationsState();
     };
-  }, [trending, popular, topRated, pages, hasMore]);
+  }, [trending, popular, topRated, pages, hasMore, recommendationsHydrated]);
 
   const handlePageChange = async (section: 'trending' | 'popular' | 'topRated', page: number) => {
     if (page < 1) return;
