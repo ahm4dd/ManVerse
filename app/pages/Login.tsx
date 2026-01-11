@@ -1,16 +1,26 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Providers, providerShortLabel } from '../lib/providers';
 import { anilistApi } from '../lib/anilist';
 import { ChevronRight, StarIcon } from '../components/Icons';
+import AniListSetupModal from '../components/AniListSetupModal';
 
 interface LoginProps {
   onLoginSuccess?: () => void;
 }
 
 const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
+  const [showSetup, setShowSetup] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
+
   const handleLoginClick = async () => {
-    const authUrl = await anilistApi.getLoginUrl();
-    window.location.href = authUrl;
+    setLoginError(null);
+    try {
+      const authUrl = await anilistApi.getLoginUrl();
+      window.location.href = authUrl;
+    } catch (error) {
+      setLoginError('AniList is not configured yet. Follow the setup guide to continue.');
+      setShowSetup(true);
+    }
   };
   
   const handleDemoClick = () => {
@@ -71,6 +81,20 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
                 <span>Try Demo Account</span>
               </button>
             </div>
+
+            {loginError && (
+              <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-200">
+                {loginError}
+              </div>
+            )}
+
+            <button
+              onClick={() => setShowSetup(true)}
+              className="inline-flex items-center gap-2 text-xs font-semibold text-primary hover:text-primary/80 transition-colors"
+            >
+              AniList setup guide
+              <ChevronRight className="w-3 h-3" />
+            </button>
             
             <p className="text-xs text-gray-500 max-w-[400px] leading-snug text-center sm:text-left">
               The demo account lets you test the dashboard and library features without logging in.
@@ -120,6 +144,8 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
         </div>
 
       </div>
+
+      <AniListSetupModal open={showSetup} onClose={() => setShowSetup(false)} />
     </div>
   );
 };
