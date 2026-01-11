@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { Series } from '../types';
 import { api, Source } from '../lib/api';
 import { anilistApi, SearchFilters as ISearchFilters } from '../lib/anilist';
@@ -10,6 +10,7 @@ import HistoryCard from '../components/HistoryCard';
 import SidebarList from '../components/SidebarList';
 import { FilterState } from '../components/SearchFilters';
 import { motion } from 'framer-motion';
+import { SortIcon } from '../components/Icons';
 
 interface HomeProps {
   onNavigate: (view: string, data?: any) => void;
@@ -54,6 +55,20 @@ const Home: React.FC<HomeProps> = ({
   
   // View/Filter States for default view
   const [activeTab, setActiveTab] = useState<'Newest' | 'Popular' | 'Top Rated'>('Newest');
+  const [tabPages, setTabPages] = useState({ Newest: 1, Popular: 1, TopRated: 1 });
+  const [tabHasMore, setTabHasMore] = useState({ Newest: true, Popular: true, TopRated: true });
+  const [tabLoadingMore, setTabLoadingMore] = useState({ Newest: false, Popular: false, TopRated: false });
+  const [searchPage, setSearchPage] = useState(1);
+  const [searchHasMore, setSearchHasMore] = useState(true);
+  const [searchLoadingMore, setSearchLoadingMore] = useState(false);
+  const [homeHydrated, setHomeHydrated] = useState(false);
+  const [pageInput, setPageInput] = useState('1');
+  const searchPageCacheRef = useRef<Record<string, Record<number, Series[]>>>({});
+  const tabPageCacheRef = useRef<Record<string, Record<number, Series[]>>>({
+    Newest: {},
+    Popular: {},
+    TopRated: {},
+  });
 
   // Drag Constraints for History
   const continueHistoryRef = useRef<HTMLDivElement>(null);
@@ -69,6 +84,9 @@ const Home: React.FC<HomeProps> = ({
   const PREFETCH_CACHE_KEY = 'manverse_smart_prefetch_v1';
   const PREFETCH_TTL_MS = 12 * 60 * 60 * 1000;
   const ACTIVE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+  const HOME_STATE_KEY = 'manverse_home_state_v2';
+  const scrollYRef = useRef(0);
+  const restoredSearchKeyRef = useRef<string | null>(null);
 
   // Check if filters are active (dirty)
   const isFiltersDirty = 
@@ -80,17 +98,146 @@ const Home: React.FC<HomeProps> = ({
 
   // Discovery Mode enabled if there is a search query OR GLOBAL filters are applied
   const isDiscoveryMode = globalSearchQuery.length > 0 || isFiltersDirty;
+  const searchContextKey = useMemo(() => {
+    return JSON.stringify({
+      q: globalSearchQuery.trim(),
+      f: globalFilters,
+      s: globalSearchSource,
+    });
+  }, [globalSearchQuery, globalFilters, globalSearchSource]);
 
   useEffect(() => {
-    // Only load initial default data if we aren't already searching/filtering
-    if (!isDiscoveryMode) {
-      loadDefaultData();
-    }
+    if (typeof window === 'undefined') return;
+    const onScroll = () => {
+      scrollYRef.current = window.scrollY;
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    let cancelled = false;
+
+    const hydrate = async () => {
+      const raw = sessionStorage.getItem(HOME_STATE_KEY);
+      if (!raw) {
+        if (!isDiscoveryMode) {
+          await loadDefaultData();
+        }
+        if (!cancelled) setHomeHydrated(true);
+        return;
+      }
+
+      try {
+        const saved = JSON.parse(raw);
+        const canRestoreSearch =
+          saved.searchContextKey === searchContextKey && Array.isArray(saved.searchResults);
+        const canRestoreDefault =
+          !isDiscoveryMode &&
+          (Array.isArray(saved.trending) ||
+            Array.isArray(saved.popular) ||
+            Array.isArray(saved.topRated));
+        if (saved?.activeTab) {
+          setActiveTab(saved.activeTab);
+        }
+        if (Array.isArray(saved.trending)) setTrending(saved.trending);
+        if (Array.isArray(saved.popular)) setPopular(saved.popular);
+        if (Array.isArray(saved.topRated)) setTopRated(saved.topRated);
+        if (saved.tabPages) setTabPages(saved.tabPages);
+        if (saved.tabHasMore) setTabHasMore(saved.tabHasMore);
+        if (saved.tabPageCache) {
+          tabPageCacheRef.current = saved.tabPageCache;
+        }
+
+        if (canRestoreSearch) {
+          setSearchResults(saved.searchResults);
+          setSearchPage(saved.searchPage || 1);
+          setSearchHasMore(saved.searchHasMore ?? true);
+          if (saved.searchPageCache) {
+            searchPageCacheRef.current = saved.searchPageCache;
+          }
+          restoredSearchKeyRef.current = searchContextKey;
+        }
+
+        const targetScroll = isDiscoveryMode
+          ? saved.searchScrollY ?? saved.scrollY
+          : saved.scrollY;
+        if (typeof targetScroll === 'number') {
+          requestAnimationFrame(() => window.scrollTo(0, targetScroll));
+        }
+
+        if (!isDiscoveryMode && (!saved.trending || saved.trending.length === 0)) {
+          await loadDefaultData();
+        }
+
+        if (canRestoreSearch || canRestoreDefault) {
+          setLoading(false);
+        }
+      } catch {
+        if (!isDiscoveryMode) {
+          await loadDefaultData();
+        }
+      } finally {
+        if (!cancelled) setHomeHydrated(true);
+      }
+    };
+
+    void hydrate();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
     loadContinueReading();
   }, [user]);
+
+  const persistHomeState = () => {
+    if (typeof window === 'undefined' || !homeHydrated) return;
+    const payload = {
+      activeTab,
+      trending,
+      popular,
+      topRated,
+      tabPages,
+      tabHasMore,
+      tabPageCache: tabPageCacheRef.current,
+      searchResults,
+      searchPage,
+      searchHasMore,
+      searchPageCache: searchPageCacheRef.current,
+      searchContextKey,
+      scrollY: scrollYRef.current,
+      searchScrollY: isDiscoveryMode ? scrollYRef.current : undefined,
+    };
+    try {
+      sessionStorage.setItem(HOME_STATE_KEY, JSON.stringify(payload));
+    } catch {
+      // Ignore storage issues
+    }
+  };
+
+  useEffect(() => {
+    if (!homeHydrated) return;
+    persistHomeState();
+    return () => {
+      persistHomeState();
+    };
+  }, [
+    activeTab,
+    trending,
+    popular,
+    topRated,
+    tabPages,
+    tabHasMore,
+    searchResults,
+    searchPage,
+    searchHasMore,
+    searchContextKey,
+    isDiscoveryMode,
+    homeHydrated,
+  ]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -188,32 +335,54 @@ const Home: React.FC<HomeProps> = ({
 
   // Trigger global search when global props change (Debounced)
   useEffect(() => {
+     if (!homeHydrated) return;
      if (!isDiscoveryMode) {
         setSearchResults([]); 
+        setSearchPage(1);
+        setSearchHasMore(true);
+        setSearchLoadingMore(false);
         // If we exited discovery mode (cleared search/filters), ensure default data is there if missing
         if (trending.length === 0 && !loading) loadDefaultData();
         return;
      }
 
+     if (restoredSearchKeyRef.current === searchContextKey) {
+        restoredSearchKeyRef.current = null;
+        return;
+     }
+
      const timer = setTimeout(() => {
-        handleGlobalSearch();
+        setSearchPage(1);
+        setSearchHasMore(true);
+        handleGlobalSearch(1, false);
      }, 600);
 
      return () => clearTimeout(timer);
-  }, [globalSearchQuery, globalFilters, globalSearchSource]);
+  }, [searchContextKey, isDiscoveryMode, homeHydrated]);
 
   const loadDefaultData = async () => {
     setLoading(true);
     try {
       const [trendingData, popularData, topRatedData] = await Promise.all([
-         anilistApi.getTrending(),
-         anilistApi.getPopular(),
-         anilistApi.getTopRated()
+         anilistApi.getTrending(1),
+         anilistApi.getPopular(1),
+         anilistApi.getTopRated(1)
       ]);
       
       setTrending(trendingData);
       setPopular(popularData);
       setTopRated(topRatedData);
+      tabPageCacheRef.current = {
+        Newest: { 1: trendingData },
+        Popular: { 1: popularData },
+        TopRated: { 1: topRatedData },
+      };
+      setTabPages({ Newest: 1, Popular: 1, TopRated: 1 });
+      setTabHasMore({
+        Newest: trendingData.length > 0,
+        Popular: popularData.length > 0,
+        TopRated: topRatedData.length > 0,
+      });
     } catch (e) {
       console.warn("Failed to load default data", e);
     } finally {
@@ -312,8 +481,13 @@ const Home: React.FC<HomeProps> = ({
     setRecentReads(localOnly);
   };
 
-  const handleGlobalSearch = async () => {
-    setLoading(true);
+  const handleGlobalSearch = async (page = 1, append = false) => {
+    if (globalSearchSource === 'AsuraScans' && !globalSearchQuery.trim()) {
+      setSearchResults([]);
+      setSearchHasMore(false);
+      return;
+    }
+    if (!append) setLoading(true);
     try {
       // Map UI Sort to API Sort
       let apiSort = 'POPULARITY_DESC';
@@ -327,10 +501,42 @@ const Home: React.FC<HomeProps> = ({
          sort: apiSort
       };
 
-      const data = await api.searchSeries(globalSearchQuery, globalSearchSource, apiFilters);
-      setSearchResults(data);
+      const sortProviderResults = (items: Series[]) => {
+        const parseChapter = (value?: string) => {
+          if (!value) return 0;
+          const match = value.match(/(\d+(?:\.\d+)?)/);
+          return match ? Number.parseFloat(match[1]) : 0;
+        };
+        if (globalFilters.sort === 'Chapters (High)') {
+          return [...items].sort((a, b) => parseChapter(b.latestChapter) - parseChapter(a.latestChapter));
+        }
+        if (globalFilters.sort === 'Chapters (Low)') {
+          return [...items].sort((a, b) => parseChapter(a.latestChapter) - parseChapter(b.latestChapter));
+        }
+        if (globalFilters.sort === 'Title') {
+          return [...items].sort((a, b) => a.title.localeCompare(b.title));
+        }
+        return items;
+      };
+
+      let results: Series[] = [];
+      if (globalSearchSource === 'AsuraScans') {
+        const meta = await api.searchProviderSeriesMeta(globalSearchQuery, globalSearchSource, page);
+        results = sortProviderResults(meta.results);
+        setSearchResults(results);
+        setSearchHasMore(meta.hasNextPage);
+      } else {
+        results = await api.searchSeries(globalSearchQuery, globalSearchSource, apiFilters, page);
+        setSearchResults(results);
+        setSearchHasMore(results.length > 0);
+      }
+      if (!searchPageCacheRef.current[searchContextKey]) {
+        searchPageCacheRef.current[searchContextKey] = {};
+      }
+      searchPageCacheRef.current[searchContextKey][page] = results;
     } finally {
-      setLoading(false);
+      if (!append) setLoading(false);
+      setSearchLoadingMore(false);
     }
   };
 
@@ -383,6 +589,85 @@ const Home: React.FC<HomeProps> = ({
     onNavigate('details', anilistId || item.id);
   };
 
+  const loadTabPage = async (tab: 'Newest' | 'Popular' | 'Top Rated', page: number) => {
+    const tabKey = tab === 'Top Rated' ? 'TopRated' : tab;
+    const cached = tabPageCacheRef.current[tabKey]?.[page];
+    if (cached) {
+      if (tab === 'Newest') setTrending(cached);
+      if (tab === 'Popular') setPopular(cached);
+      if (tab === 'Top Rated') setTopRated(cached);
+      setTabPages((prev) => ({ ...prev, [tabKey]: page }));
+      setTabHasMore((prev) => ({ ...prev, [tabKey]: cached.length > 0 }));
+      return;
+    }
+
+    setTabLoadingMore((prev) => ({ ...prev, [tabKey]: true }));
+    try {
+      let data: Series[] = [];
+      if (tab === 'Newest') {
+        data = await anilistApi.getTrending(page);
+        setTrending(data);
+      } else if (tab === 'Popular') {
+        data = await anilistApi.getPopular(page);
+        setPopular(data);
+      } else {
+        data = await anilistApi.getTopRated(page);
+        setTopRated(data);
+      }
+      if (!tabPageCacheRef.current[tabKey]) {
+        tabPageCacheRef.current[tabKey] = {};
+      }
+      tabPageCacheRef.current[tabKey][page] = data;
+      setTabPages((prev) => ({ ...prev, [tabKey]: page }));
+      setTabHasMore((prev) => ({ ...prev, [tabKey]: data.length > 0 }));
+    } finally {
+      setTabLoadingMore((prev) => ({ ...prev, [tabKey]: false }));
+    }
+  };
+
+  const handleSearchPageChange = async (page: number) => {
+    if (page < 1) return;
+    if (searchLoadingMore) return;
+    const cache = searchPageCacheRef.current[searchContextKey]?.[page];
+    setSearchPage(page);
+    if (cache) {
+      if (globalSearchSource === 'AsuraScans') {
+        const parseChapter = (value?: string) => {
+          if (!value) return 0;
+          const match = value.match(/(\d+(?:\.\d+)?)/);
+          return match ? Number.parseFloat(match[1]) : 0;
+        };
+        let nextResults = cache;
+        if (globalFilters.sort === 'Chapters (High)') {
+          nextResults = [...cache].sort((a, b) => parseChapter(b.latestChapter) - parseChapter(a.latestChapter));
+        } else if (globalFilters.sort === 'Chapters (Low)') {
+          nextResults = [...cache].sort((a, b) => parseChapter(a.latestChapter) - parseChapter(b.latestChapter));
+        } else if (globalFilters.sort === 'Title') {
+          nextResults = [...cache].sort((a, b) => a.title.localeCompare(b.title));
+        }
+        setSearchResults(nextResults);
+      } else {
+        setSearchResults(cache);
+      }
+      if (globalSearchSource === 'AsuraScans') {
+        const meta = api.peekProviderSearchCache(globalSearchQuery, globalSearchSource, page);
+        setSearchHasMore(meta?.hasNextPage ?? cache.length > 0);
+      } else {
+        setSearchHasMore(cache.length > 0);
+      }
+      return;
+    }
+    setSearchLoadingMore(true);
+    await handleGlobalSearch(page, false);
+  };
+
+  const handleTabPageChange = async (page: number) => {
+    if (page < 1) return;
+    const tabKey = activeTab === 'Top Rated' ? 'TopRated' : activeTab;
+    if (tabLoadingMore[tabKey]) return;
+    await loadTabPage(activeTab, page);
+  };
+
   // Determine which list to show based on search or tab
   const getBaseSeriesList = () => {
     if (isDiscoveryMode) return searchResults;
@@ -394,6 +679,36 @@ const Home: React.FC<HomeProps> = ({
   };
 
   const baseList = getBaseSeriesList();
+  const activeTabKey = activeTab === 'Top Rated' ? 'TopRated' : activeTab;
+  const canLoadMore = isDiscoveryMode ? searchHasMore : tabHasMore[activeTabKey];
+  const isLoadingMore = isDiscoveryMode ? searchLoadingMore : tabLoadingMore[activeTabKey];
+  const currentPage = isDiscoveryMode ? searchPage : tabPages[activeTabKey];
+  const canGoPrev = currentPage > 1;
+  const canGoFirst = currentPage > 1;
+
+  useEffect(() => {
+    if (!homeHydrated) return;
+    if (isDiscoveryMode) return;
+    const page = tabPages[activeTabKey] || 1;
+    void loadTabPage(activeTab, page);
+  }, [activeTab, homeHydrated]);
+
+  useEffect(() => {
+    setPageInput(String(currentPage));
+  }, [currentPage]);
+
+  const handleJumpToPage = async (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    const target = Number(trimmed);
+    if (!Number.isFinite(target) || target < 1) return;
+    if (target === currentPage) return;
+    if (isDiscoveryMode) {
+      await handleSearchPageChange(target);
+    } else {
+      await handleTabPageChange(target);
+    }
+  };
 
   return (
     <div className="min-h-screen pb-20 px-4 sm:px-6 lg:px-8 max-w-[1800px] mx-auto pt-6">
@@ -555,15 +870,24 @@ const Home: React.FC<HomeProps> = ({
 
                {/* Results Title (Discovery Mode) */}
                {isDiscoveryMode && (
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
                      <div>
                          <h2 className="text-2xl font-bold text-white">
                             {globalSearchQuery ? `Results for "${globalSearchQuery}"` : 'Filtered Results'}
                          </h2>
                          {searchResults.length > 0 && <span className="text-sm text-gray-500">{searchResults.length} matches found</span>}
                      </div>
-                     <div className="text-sm text-gray-500 font-bold px-3 py-1 bg-surfaceHighlight rounded-lg border border-white/5">
-                        Source: {globalSearchSource}
+                     <div className="flex items-center gap-2 flex-wrap">
+                        <button
+                          onClick={toggleFilters}
+                          className="flex items-center gap-2 text-xs font-bold px-3 py-1 rounded-full bg-primary/10 text-primary border border-primary/30 hover:border-primary/60 transition-colors"
+                        >
+                          <SortIcon className="w-3.5 h-3.5" />
+                          Sort: {globalFilters.sort}
+                        </button>
+                        <div className="text-xs text-gray-500 font-bold px-3 py-1 bg-surfaceHighlight rounded-full border border-white/5">
+                          Source: {globalSearchSource}
+                        </div>
                      </div>
                   </div>
                )}
@@ -579,29 +903,97 @@ const Home: React.FC<HomeProps> = ({
                     ))}
                   </div>
                ) : (
-                  <motion.div 
-                    layout
-                    className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-x-5 gap-y-10"
-                  >
-                     {baseList.length > 0 ? (
-                        baseList.map((item, index) => (
-                           <SeriesCard 
-                              key={item.id} 
-                              series={item} 
-                              index={index}
-                              onClick={() => onNavigate('details', item.id)} 
-                           />
-                        ))
-                     ) : (
-                        <div className="col-span-full py-20 text-center text-gray-500 flex flex-col items-center">
-                           <span className="text-4xl mb-4 opacity-50">🔍</span>
-                           <p className="text-lg font-medium">No results found.</p>
-                           {isDiscoveryMode && (
-                              <button onClick={toggleFilters} className="mt-4 text-primary hover:underline">Adjust filters</button>
-                           )}
+                  <>
+                    <motion.div 
+                      layout
+                      className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-x-5 gap-y-10"
+                    >
+                       {baseList.length > 0 ? (
+                          baseList.map((item, index) => (
+                             <SeriesCard 
+                                key={item.id} 
+                                series={item} 
+                                index={index}
+                                onClick={() => onNavigate('details', item.id)} 
+                             />
+                          ))
+                       ) : (
+                          <div className="col-span-full py-20 text-center text-gray-500 flex flex-col items-center">
+                             <span className="text-4xl mb-4 opacity-50">🔍</span>
+                             <p className="text-lg font-medium">No results found.</p>
+                             {isDiscoveryMode && (
+                                <button onClick={toggleFilters} className="mt-4 text-primary hover:underline">Adjust filters</button>
+                             )}
+                          </div>
+                       )}
+                    </motion.div>
+                    {baseList.length > 0 && (canGoPrev || canLoadMore) && (
+                      <div className="flex flex-wrap items-center justify-center gap-4 pt-6">
+                        <button
+                          onClick={() =>
+                            isDiscoveryMode
+                              ? handleSearchPageChange(1)
+                              : handleTabPageChange(1)
+                          }
+                          disabled={!canGoFirst || isLoadingMore}
+                          className="px-4 py-2.5 rounded-xl bg-white/5 text-white font-semibold text-sm border border-white/10 hover:bg-white/10 disabled:opacity-50"
+                        >
+                          First
+                        </button>
+                        <button
+                          onClick={() =>
+                            isDiscoveryMode
+                              ? handleSearchPageChange(currentPage - 1)
+                              : handleTabPageChange(currentPage - 1)
+                          }
+                          disabled={!canGoPrev || isLoadingMore}
+                          className="px-4 py-2.5 rounded-xl bg-white/5 text-white font-semibold text-sm border border-white/10 hover:bg-white/10 disabled:opacity-50"
+                        >
+                          Previous
+                        </button>
+                        <div className="text-sm font-semibold text-gray-400">
+                          Page {currentPage}
                         </div>
-                     )}
-                  </motion.div>
+                        <div className="flex items-center gap-2">
+                          <label className="text-xs font-semibold text-gray-500 uppercase tracking-widest">
+                            Jump
+                          </label>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            value={pageInput}
+                            onChange={(event) => setPageInput(event.target.value.replace(/[^\d]/g, ''))}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter') {
+                                void handleJumpToPage(pageInput);
+                              }
+                            }}
+                            className="w-16 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm font-semibold text-white text-center focus:outline-none focus:border-primary/60"
+                            placeholder="1"
+                          />
+                          <button
+                            onClick={() => handleJumpToPage(pageInput)}
+                            disabled={isLoadingMore}
+                            className="px-3 py-2 rounded-lg bg-white/5 text-white text-xs font-bold border border-white/10 hover:bg-white/10 disabled:opacity-50"
+                          >
+                            Go
+                          </button>
+                        </div>
+                        <button
+                          onClick={() =>
+                            isDiscoveryMode
+                              ? handleSearchPageChange(currentPage + 1)
+                              : handleTabPageChange(currentPage + 1)
+                          }
+                          disabled={!canLoadMore || isLoadingMore}
+                          className="px-4 py-2.5 rounded-xl bg-white/5 text-white font-semibold text-sm border border-white/10 hover:bg-white/10 disabled:opacity-50"
+                        >
+                          {isLoadingMore ? 'Loading...' : 'Next'}
+                        </button>
+                      </div>
+                    )}
+                  </>
                )}
             </motion.div>
          </div>

@@ -43,14 +43,28 @@ type NavOptions = {
 };
 
 const NAV_STATE_KEY = 'manverse_nav_state_v1';
+const HOME_STATE_KEY = 'manverse_home_state_v2';
+const RECOMMEND_STATE_KEY = 'manverse_recommendations_state_v1';
 
 const DEFAULT_FILTERS: FilterState = {
   format: 'All',
   status: 'All',
   genre: 'All',
   country: 'All',
-  sort: 'Popularity'
+  sort: 'Popularity',
 };
+
+const SORT_OPTIONS_ANILIST = [
+  'Popularity',
+  'Title',
+  'Score',
+  'Progress',
+  'Last Updated',
+  'Last Added',
+  'Start Date',
+];
+
+const SORT_OPTIONS_PROVIDER = ['Relevance', 'Chapters (High)', 'Chapters (Low)', 'Title'];
 
 const AVAILABLE_GENRES = [
   'Action', 'Adventure', 'Comedy', 'Drama', 'Ecchi', 'Fantasy', 'Horror', 'Mahou Shoujo', 'Mecha', 'Music', 'Mystery', 'Psychological', 'Romance', 'Sci-Fi', 'Slice of Life', 'Sports', 'Supernatural', 'Thriller'
@@ -80,6 +94,35 @@ const AppContent: React.FC = () => {
   // Animation State
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
   const historyIndexRef = useRef(0);
+
+  const persistScrollForView = (view: View) => {
+    if (typeof window === 'undefined') return;
+    if (view === 'home') {
+      try {
+        const raw = sessionStorage.getItem(HOME_STATE_KEY);
+        if (!raw) return;
+        const saved = JSON.parse(raw);
+        const scrollY = window.scrollY;
+        saved.scrollY = scrollY;
+        saved.searchScrollY = scrollY;
+        sessionStorage.setItem(HOME_STATE_KEY, JSON.stringify(saved));
+      } catch {
+        // Ignore storage errors
+      }
+      return;
+    }
+    if (view === 'recommendations') {
+      try {
+        const raw = sessionStorage.getItem(RECOMMEND_STATE_KEY);
+        if (!raw) return;
+        const saved = JSON.parse(raw);
+        saved.scrollY = window.scrollY;
+        sessionStorage.setItem(RECOMMEND_STATE_KEY, JSON.stringify(saved));
+      } catch {
+        // Ignore storage errors
+      }
+    }
+  };
 
   const loadStoredNavState = () => {
     if (typeof window === 'undefined') return null;
@@ -210,12 +253,13 @@ const AppContent: React.FC = () => {
   };
 
   // Check if filters are active (dirty)
+  const defaultSort = searchSource === 'AsuraScans' ? 'Relevance' : 'Popularity';
   const isFiltersDirty = 
     filters.format !== 'All' || 
     filters.status !== 'All' || 
     filters.genre !== 'All' || 
     filters.country !== 'All' || 
-    filters.sort !== 'Popularity';
+    filters.sort !== defaultSort;
 
   // Load User Function (Extracted for re-use)
   const loadUser = async () => {
@@ -289,6 +333,7 @@ const AppContent: React.FC = () => {
       window.scrollTo(0, 0);
       return;
     }
+    persistScrollForView(currentView);
     window.scrollTo(0, 0);
     const nextIndex = options.replace ? historyIndexRef.current : historyIndexRef.current + 1;
     const state: NavState = {
@@ -340,7 +385,6 @@ const AppContent: React.FC = () => {
       saveNavState(nextState);
       setCurrentView(nextState.view);
       setViewData(nextState.data ?? null);
-      window.scrollTo(0, 0);
     };
 
     window.addEventListener('popstate', handlePopState);
@@ -383,8 +427,16 @@ const AppContent: React.FC = () => {
     // setShowFilters(true);
   };
 
+  useEffect(() => {
+    const options = searchSource === 'AsuraScans' ? SORT_OPTIONS_PROVIDER : SORT_OPTIONS_ANILIST;
+    setFilters((prev) => {
+      if (options.includes(prev.sort)) return prev;
+      return { ...prev, sort: options[0] };
+    });
+  }, [searchSource]);
+
   const clearFilters = () => {
-    setFilters(DEFAULT_FILTERS);
+    setFilters({ ...DEFAULT_FILTERS, sort: defaultSort });
     setSearchQuery('');
     setShowFilters(false);
   };
@@ -712,6 +764,8 @@ const AppContent: React.FC = () => {
                        filters={filters}
                        onChange={setFilters}
                        availableGenres={AVAILABLE_GENRES}
+                       sortOptions={searchSource === 'AsuraScans' ? SORT_OPTIONS_PROVIDER : SORT_OPTIONS_ANILIST}
+                       defaultSort={defaultSort}
                      />
                    </div>
                 </motion.div>
@@ -754,10 +808,11 @@ const AppContent: React.FC = () => {
           )}
 
           {currentView === 'details' && (
-            <PageTransition key="details">
-              <Details 
-                seriesId={viewData} 
-                onNavigate={navigate} 
+            <PageTransition key={`details-${viewData ?? 'empty'}`}>
+              <Details
+                key={viewData ?? 'details'}
+                seriesId={viewData}
+                onNavigate={navigate}
                 onBack={handleBack}
                 user={user}
               />
