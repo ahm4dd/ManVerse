@@ -716,7 +716,7 @@ const Home: React.FC<HomeProps> = ({
   };
 
   return (
-    <div className="min-h-screen pb-20 px-4 sm:px-6 lg:px-8 max-w-[1800px] mx-auto pt-6">
+    <div className="min-h-[100dvh] pb-20 px-4 sm:px-6 lg:px-8 max-w-[1800px] mx-auto pt-4 sm:pt-6">
       
       {/* 1. Hero Carousel (Only on default view) */}
       {!isDiscoveryMode && trending.length > 0 && (

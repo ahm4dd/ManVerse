@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ChevronLeft } from '../components/Icons';
 import { desktopApi, type DesktopSettings, type UpdateStatus } from '../lib/desktop';
+import { API_URL, apiRequest } from '../lib/api-client';
 
 interface SettingsProps {
   onBack: () => void;
@@ -17,6 +18,11 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup }) => {
     redirectUri: '',
   });
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [credentialStatus, setCredentialStatus] = useState<{
+    configured: boolean;
+    source: 'env' | 'runtime' | 'none';
+    redirectUri?: string;
+  } | null>(null);
 
   useEffect(() => {
     if (!desktopApi.isAvailable) return;
@@ -35,6 +41,16 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup }) => {
       }
     };
     void load();
+  }, []);
+
+  useEffect(() => {
+    if (desktopApi.isAvailable) return;
+    apiRequest<{ configured: boolean; source: 'env' | 'runtime' | 'none'; redirectUri?: string }>(
+      '/api/auth/anilist/status',
+      { skipAuth: true },
+    )
+      .then((status) => setCredentialStatus(status))
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -65,22 +81,43 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup }) => {
   const notifierEnabled = Boolean(desktopSettings?.notifierEnabled);
   const launchOnStartup = Boolean(desktopSettings?.launchOnStartup);
   const updateReady = updateStatus?.state === 'downloaded';
-  const defaultRedirectUri = 'http://localhost:3001/api/auth/anilist/callback';
+  const defaultRedirectUri = `${API_URL}/api/auth/anilist/callback`;
 
   const handleSaveCredentials = async () => {
-    if (!desktopApi.isAvailable) return;
+    if (!credentials.clientId.trim() || !credentials.clientSecret.trim()) {
+      setSaveState('error');
+      return;
+    }
     setSaveState('saving');
     try {
-      let next = await desktopApi.updateSetting('anilistClientId', credentials.clientId.trim());
-      next = await desktopApi.updateSetting(
-        'anilistClientSecret',
-        credentials.clientSecret.trim(),
-      );
-      next = await desktopApi.updateSetting(
-        'anilistRedirectUri',
-        credentials.redirectUri.trim() || defaultRedirectUri,
-      );
-      setDesktopSettings(next);
+      if (desktopApi.isAvailable) {
+        let next = await desktopApi.updateSetting('anilistClientId', credentials.clientId.trim());
+        next = await desktopApi.updateSetting(
+          'anilistClientSecret',
+          credentials.clientSecret.trim(),
+        );
+        next = await desktopApi.updateSetting(
+          'anilistRedirectUri',
+          credentials.redirectUri.trim() || defaultRedirectUri,
+        );
+        setDesktopSettings(next);
+      } else {
+        await apiRequest('/api/auth/anilist/credentials', {
+          method: 'POST',
+          skipAuth: true,
+          body: JSON.stringify({
+            clientId: credentials.clientId.trim(),
+            clientSecret: credentials.clientSecret.trim(),
+            redirectUri: credentials.redirectUri.trim() || defaultRedirectUri,
+          }),
+        });
+        const status = await apiRequest<{
+          configured: boolean;
+          source: 'env' | 'runtime' | 'none';
+          redirectUri?: string;
+        }>('/api/auth/anilist/status', { skipAuth: true });
+        setCredentialStatus(status);
+      }
       setSaveState('saved');
       window.setTimeout(() => setSaveState('idle'), 1500);
     } catch {
@@ -89,8 +126,8 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup }) => {
   };
 
   return (
-    <div className="min-h-screen bg-background pb-20">
-      <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8 pt-8">
+    <div className="min-h-[100dvh] bg-background pb-20">
+      <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8 pt-5 sm:pt-8">
         <button
           onClick={onBack}
           className="mb-6 flex items-center gap-2 text-gray-300 hover:text-white transition-colors"
@@ -122,6 +159,26 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup }) => {
                 Open setup guide
               </button>
             </div>
+
+            {!desktopApi.isAvailable && (
+              <div className="mt-4 rounded-xl border border-white/10 bg-surfaceHighlight/40 px-4 py-3 text-sm text-gray-300">
+                You are editing the server credentials from this browser. The values are saved on the
+                host machine running the API.
+              </div>
+            )}
+            {!desktopApi.isAvailable && credentialStatus && (
+              <div
+                className={`mt-3 rounded-xl border border-white/10 px-4 py-3 text-sm ${
+                  credentialStatus.configured
+                    ? 'bg-emerald-500/10 text-emerald-200'
+                    : 'bg-amber-500/10 text-amber-200'
+                }`}
+              >
+                {credentialStatus.configured
+                  ? `AniList is already configured on the server (${credentialStatus.source}).`
+                  : 'AniList is not configured on the server yet.'}
+              </div>
+            )}
 
             <div className="mt-6 grid gap-4 md:grid-cols-2">
               <div>
@@ -157,7 +214,9 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup }) => {
                   className="mt-2 w-full rounded-lg border border-white/10 bg-surfaceHighlight px-3 py-2.5 text-sm text-gray-200 focus:outline-none focus:border-primary"
                 />
                 <p className="text-xs text-gray-500 mt-2">
-                  Stored locally on this device. ManVerse never uploads your secret.
+                  {desktopApi.isAvailable
+                    ? 'Stored locally on this device. ManVerse never uploads your secret.'
+                    : 'Saved on the host running the API. ManVerse never uploads your secret.'}
                 </p>
               </div>
             </div>
@@ -165,7 +224,10 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup }) => {
             <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="text-sm text-gray-400">
                 {saveState === 'saved' && 'Saved. You can sign in now.'}
-                {saveState === 'error' && 'Could not save. Please try again.'}
+                {saveState === 'error' &&
+                  (!credentials.clientId.trim() || !credentials.clientSecret.trim()
+                    ? 'Enter both Client ID and Client Secret.'
+                    : 'Could not save. Please try again.')}
                 {saveState === 'saving' && 'Saving...'}
               </div>
               <button

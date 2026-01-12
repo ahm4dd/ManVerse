@@ -10,6 +10,9 @@ Set these in `app/.env.local`.
 - `VITE_API_URL`
   - Base URL for the API.
   - Default: `http://localhost:3001`
+- `VITE_ALLOWED_HOSTS`
+  - Comma-separated hostnames allowed by Vite dev server.
+  - Example: `ahm4dd-laptop.local,192.168.33.6`
 
 ## API (api/)
 
@@ -36,6 +39,12 @@ Set these in `api/.env`.
 - `ANILIST_REDIRECT_URI`
   - Must match your AniList app settings.
   - Default: `http://localhost:3001/api/auth/anilist/callback`
+- `MANVERSE_CONFIG_DIR`
+  - Optional config directory for runtime settings (used by the API).
+  - Default: `~/.config/ManVerse` (Linux), `%APPDATA%\\ManVerse` (Windows)
+- `MANVERSE_SETTINGS_TOKEN`
+  - Optional token required to save AniList credentials from the UI.
+  - If set, send as `X-Settings-Token` header from the Settings page.
 - `ANILIST_RPM`
   - AniList request-per-minute cap.
   - Default: `30`
@@ -147,4 +156,5 @@ MANVERSE_DB_PATH=/absolute/path/to/manverse.db
 
 # Frontend env
 VITE_API_URL=http://localhost:3001
+VITE_ALLOWED_HOSTS=ahm4dd-laptop.local,192.168.33.6
 ```

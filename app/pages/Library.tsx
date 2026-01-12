@@ -426,7 +426,7 @@ const Library: React.FC<LibraryProps> = ({ onNavigate, user }) => {
 
   if (!user) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center">
+      <div className="min-h-[100dvh] flex flex-col items-center justify-center p-6 text-center">
          <div className="w-20 h-20 bg-surfaceHighlight rounded-full flex items-center justify-center mb-6 animate-pulse">
             <StarIcon className="w-10 h-10 text-gray-600" />
          </div>
@@ -445,7 +445,7 @@ const Library: React.FC<LibraryProps> = ({ onNavigate, user }) => {
   }
 
   return (
-    <div className="min-h-screen pb-20 max-w-[1400px] mx-auto">
+    <div className="min-h-[100dvh] pb-20 max-w-[1400px] mx-auto">
       
       {/* 1. Header (Profile) */}
       <div className="relative h-64 md:h-80 w-full overflow-hidden">

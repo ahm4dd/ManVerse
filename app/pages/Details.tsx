@@ -1537,7 +1537,7 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
 
   if (loading || !data) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-[100dvh] flex items-center justify-center">
         <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin" />
       </div>
     );
@@ -1585,7 +1585,7 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
   };
 
   return (
-    <div className="min-h-screen bg-background relative pb-20">
+    <div className="min-h-[100dvh] bg-background relative pb-20">
       {/* Dynamic Background with Fade In */}
       <motion.div 
         initial={{ opacity: 0 }}
@@ -1602,7 +1602,7 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
         <div className="absolute inset-0 bg-gradient-to-b from-background/20 to-background" />
       </motion.div>
 
-      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 pt-8">
+      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 pt-5 sm:pt-8">
         <motion.button 
           initial={{ x: -20, opacity: 0 }}
           animate={{ x: 0, opacity: 1 }}

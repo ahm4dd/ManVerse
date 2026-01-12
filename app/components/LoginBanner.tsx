@@ -21,8 +21,17 @@ const LoginBanner: React.FC = () => {
       <div className="relative z-10 flex items-center gap-3">
          <button 
            onClick={async () => {
-             const authUrl = await anilistApi.getLoginUrl();
-             window.location.href = authUrl;
+             try {
+               const authUrl = await anilistApi.getLoginUrl();
+               window.location.href = authUrl;
+             } catch {
+               const status = await anilistApi.getCredentialStatus();
+               if (!status?.configured) {
+                 alert('AniList is not configured yet. Open Settings → AniList setup.');
+               } else {
+                 alert('AniList login failed. Check your credentials and try again.');
+               }
+             }
            }}
            className="bg-[#02A9FF] hover:bg-[#0297e6] text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-lg shadow-blue-500/20 transition-transform active:scale-95"
          >

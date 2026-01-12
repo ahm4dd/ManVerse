@@ -650,14 +650,14 @@ const Reader: React.FC<ReaderProps> = ({
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
+      <div className="min-h-[100dvh] bg-black flex items-center justify-center">
         <div className="text-primary animate-pulse">Loading Chapter...</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-black flex flex-col items-center relative">
+    <div className="min-h-[100dvh] bg-black flex flex-col items-center relative">
       {/* Scroll Progress Bar */}
       <div className="fixed bottom-0 left-0 right-0 h-1 z-[60] pointer-events-none">
         <div className="h-full w-full bg-transparent">
@@ -959,7 +959,7 @@ const Reader: React.FC<ReaderProps> = ({
 
       {/* --- Main Reader Content --- */}
       <div
-        className="w-full min-h-screen pt-20 pb-32 flex flex-col items-center transition-all duration-300"
+        className="w-full min-h-[100dvh] pt-16 sm:pt-20 pb-32 flex flex-col items-center transition-all duration-300"
         style={{ gap: pageGap }}
         onClick={toggleControls}
       >

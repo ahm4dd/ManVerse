@@ -6,9 +6,10 @@ import {
   type MediaListStatus,
 } from '@manverse/anilist';
 import { MemoryCache } from '../utils/cache.ts';
+import { getRuntimeConfigValue } from '../utils/runtime-config.ts';
 
 function requireEnv(name: string): string {
-  const value = Bun.env[name];
+  const value = Bun.env[name] || getRuntimeConfigValue(name);
   if (!value) {
     throw new Error(`${name} is not configured`);
   }
@@ -48,22 +49,24 @@ export class AniListService {
     return client;
   }
 
-  private getAuthClient(): AniListAuth {
+  private getAuthClient(redirectUri?: string): AniListAuth {
     const port = Bun.env.PORT || '3001';
-    const defaultRedirectUri = `http://localhost:${port}/api/auth/anilist/callback`;
+    const fallbackRedirectUri = `http://localhost:${port}/api/auth/anilist/callback`;
+    const resolvedRedirectUri =
+      redirectUri || Bun.env.ANILIST_REDIRECT_URI || fallbackRedirectUri;
     return new AniListAuth({
       clientId: requireEnv('ANILIST_CLIENT_ID'),
       clientSecret: requireEnv('ANILIST_CLIENT_SECRET'),
-      redirectUri: Bun.env.ANILIST_REDIRECT_URI || defaultRedirectUri,
+      redirectUri: resolvedRedirectUri,
     });
   }
 
-  getAuthorizationUrl(): string {
-    return this.getAuthClient().getAuthorizationUrl();
+  getAuthorizationUrl(redirectUri?: string): string {
+    return this.getAuthClient(redirectUri).getAuthorizationUrl();
   }
 
-  async exchangeCodeForToken(code: string): Promise<AuthToken> {
-    const auth = this.getAuthClient();
+  async exchangeCodeForToken(code: string, redirectUri?: string): Promise<AuthToken> {
+    const auth = this.getAuthClient(redirectUri);
     return auth.exchangeCodeForToken(code);
   }
 

@@ -43,7 +43,15 @@ export async function apiRequest<T>(
 
   if (!response.ok || !payload?.success) {
     const message = payload?.error?.message || response.statusText || 'Request failed';
-    throw new Error(message);
+    const error = new Error(message) as Error & {
+      status?: number;
+      code?: string;
+      details?: unknown;
+    };
+    error.status = response.status;
+    error.code = payload?.error?.code;
+    error.details = payload?.error?.details;
+    throw error;
   }
 
   return payload.data as T;

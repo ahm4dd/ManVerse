@@ -465,8 +465,13 @@ const AppContent: React.FC = () => {
       window.location.href = authUrl;
     } catch (error) {
       console.error('Failed to start AniList login', error);
-      notify('AniList is not configured yet. Open the setup guide to continue.', 'warning');
-      setShowSetupGuide(true);
+      const status = await anilistApi.getCredentialStatus();
+      if (!status?.configured) {
+        notify('AniList is not configured yet. Open the setup guide to continue.', 'warning');
+        setShowSetupGuide(true);
+        return;
+      }
+      notify('AniList login failed. Check your credentials and API log.', 'error');
     }
   };
 
@@ -513,7 +518,7 @@ const AppContent: React.FC = () => {
 
   return (
     <div
-      className={`bg-background text-white min-h-screen font-sans selection:bg-primary/30 transition-colors duration-300 flex flex-col ${
+      className={`bg-background text-white min-h-[100dvh] font-sans selection:bg-primary/30 transition-colors duration-300 flex flex-col ${
         isDesktop ? 'pt-9' : ''
       }`}
     >
@@ -527,10 +532,10 @@ const AppContent: React.FC = () => {
         >
           <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8">
             {/* Grid Layout: [Left Content] [Search Bar] [Right Actions] */}
-            <div className="flex flex-col gap-3 py-3 md:flex-row md:items-center md:gap-4 md:py-0 md:h-20 [@media(min-width:1800px)]:grid [@media(min-width:1800px)]:grid-cols-[minmax(420px,1.6fr)_minmax(520px,2.1fr)_minmax(240px,1fr)]">
+            <div className="flex flex-col gap-3 py-2 sm:py-3 md:flex-row md:items-center md:gap-4 md:py-0 md:h-20 [@media(min-width:1800px)]:grid [@media(min-width:1800px)]:grid-cols-[minmax(420px,1.6fr)_minmax(520px,2.1fr)_minmax(240px,1fr)]">
               
               {/* Left Section: Logo & Links */}
-              <div className="flex items-center gap-4 md:gap-6 justify-start min-w-0 w-full md:w-auto md:flex-none">
+              <div className="flex items-center gap-3 md:gap-6 md:justify-start min-w-0 w-full md:w-auto md:flex-none">
                 <div 
                   className="flex items-center gap-3 cursor-pointer group flex-shrink-0"
                   onClick={() => navigate('home')}
@@ -548,9 +553,9 @@ const AppContent: React.FC = () => {
                 {/* Hide navigation links earlier (xl) to prioritize search bar space */}
                 <button
                   onClick={() => setShowNavMenu(!showNavMenu)}
-                  className="flex items-center gap-2 rounded-xl border border-white/10 bg-[#1a1a1a] px-3 py-2 text-sm font-semibold text-gray-300 hover:text-white hover:bg-white/5 transition-colors [@media(min-width:1800px)]:hidden"
+                  className="flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-[#1a1a1a] px-4 h-10 text-sm font-semibold text-gray-200 hover:text-white hover:bg-white/5 transition-colors [@media(min-width:1800px)]:hidden"
                 >
-                  <MenuIcon className="w-4 h-4" />
+                  <MenuIcon className="w-5 h-5" />
                   Menu
                 </button>
 
@@ -580,6 +585,184 @@ const AppContent: React.FC = () => {
                     >
                       Library
                     </button>
+                  )}
+                </div>
+
+                {/* Mobile actions */}
+                <div className="ml-auto flex items-center gap-2 md:hidden">
+                  <div className="relative">
+                    <button 
+                      onClick={() => setShowNotifications(!showNotifications)}
+                      className="p-2.5 rounded-xl hover:bg-white/10 text-gray-300 hover:text-white transition-colors relative"
+                    >
+                      <BellIcon className="w-5 h-5" />
+                      <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-red-500 rounded-full border border-surface"></span>
+                    </button>
+                    {showNotifications && (
+                      <NotificationsMenu onClose={() => setShowNotifications(false)} user={user} />
+                    )}
+                  </div>
+
+                  {user && (
+                    <button
+                      onClick={handleSyncNow}
+                      className={`p-2.5 rounded-xl transition-colors relative ${
+                        syncLoading
+                          ? 'text-primary'
+                          : 'text-gray-300 hover:text-white hover:bg-white/10'
+                      }`}
+                      title={syncPending > 0 ? `${syncPending} pending sync` : 'All synced'}
+                    >
+                      <SyncIcon className={`w-5 h-5 ${syncLoading ? 'animate-spin' : ''}`} />
+                      {syncPending > 0 && (
+                        <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-[10px] font-bold text-black flex items-center justify-center">
+                          {syncPending}
+                        </span>
+                      )}
+                    </button>
+                  )}
+
+                  {user ? (
+                    <div className="relative">
+                      <button
+                        onClick={() => setShowProfileMenu(!showProfileMenu)}
+                        className="flex items-center gap-2"
+                      >
+                        <img
+                          src={user?.avatar?.large || '/logo.png'}
+                          alt="avatar"
+                          className="w-9 h-9 rounded-full border border-surfaceHighlight cursor-pointer hover:ring-2 ring-primary transition-all object-cover aspect-square shrink-0"
+                        />
+                      </button>
+                      {showProfileMenu && (
+                        <>
+                          <div
+                            className="fixed inset-0 z-10"
+                            onClick={() => setShowProfileMenu(false)}
+                          />
+                          <div className="absolute right-0 top-full mt-2 w-56 bg-surface border border-white/10 rounded-2xl shadow-xl z-20 py-2 overflow-hidden animate-fade-in ring-1 ring-black/50">
+                            <div className="px-4 py-3 border-b border-white/10">
+                              <div className="text-sm font-semibold text-white">
+                                {user?.name || 'Account'}
+                              </div>
+                              <div className="text-xs text-gray-500">
+                                {user?.name ? 'AniList connected' : 'Session active'}
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => {
+                                setShowProfileMenu(false);
+                                navigate('library');
+                              }}
+                              className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
+                            >
+                              Library
+                            </button>
+                            <button
+                              onClick={() => {
+                                setShowProfileMenu(false);
+                                navigate('recent-reads');
+                              }}
+                              className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
+                            >
+                              Recent Reads
+                            </button>
+                            <button
+                              onClick={() => {
+                                setShowProfileMenu(false);
+                                navigate('settings');
+                              }}
+                              className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
+                            >
+                              Settings
+                            </button>
+                            <button
+                              onClick={() => {
+                                setShowProfileMenu(false);
+                                setShowSetupGuide(true);
+                              }}
+                              className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
+                            >
+                              AniList setup guide
+                            </button>
+                            <button
+                              onClick={handleLogout}
+                              className="w-full text-left px-4 py-2.5 text-sm text-red-300 hover:text-red-200 hover:bg-red-500/10 transition-colors"
+                            >
+                              Sign out
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="relative">
+                      <button
+                        onClick={() => setShowLoginMenu(!showLoginMenu)}
+                        className="flex text-xs font-bold bg-[#3DB4F2] hover:bg-[#3DB4F2]/90 text-white px-3 py-2 rounded-xl transition-colors items-center gap-2 shadow-lg shadow-blue-500/20"
+                      >
+                        Login
+                        <ChevronDown className="w-4 h-4" />
+                      </button>
+                      {showLoginMenu && (
+                        <>
+                          <div
+                            className="fixed inset-0 z-10"
+                            onClick={() => setShowLoginMenu(false)}
+                          />
+                          <div className="absolute right-0 top-full mt-2 w-64 bg-surface border border-white/10 rounded-2xl shadow-xl z-20 py-2 overflow-hidden animate-fade-in ring-1 ring-black/50">
+                            <div className="px-4 py-2 text-[11px] font-bold text-gray-500 uppercase tracking-widest">
+                              Sign in
+                            </div>
+                            <button
+                              onClick={() => {
+                                setShowLoginMenu(false);
+                                handleOAuthLogin();
+                              }}
+                              className="mx-2 mb-1 flex w-[calc(100%-1rem)] items-center justify-center rounded-lg bg-gradient-to-r from-[#02A9FF] to-[#7AD9FF] px-4 py-2.5 text-xs font-bold text-white shadow-lg shadow-blue-500/30 transition hover:brightness-110"
+                            >
+                              Continue with AniList
+                            </button>
+                            <button
+                              onClick={() => {
+                                setShowLoginMenu(false);
+                                handleDemoLogin();
+                              }}
+                              className="w-full text-left px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
+                            >
+                              Try demo account
+                            </button>
+                            <button
+                              onClick={() => {
+                                setShowLoginMenu(false);
+                                setShowSetupGuide(true);
+                              }}
+                              className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
+                            >
+                              AniList setup guide
+                            </button>
+                            <button
+                              onClick={() => {
+                                setShowLoginMenu(false);
+                                navigate('settings');
+                              }}
+                              className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
+                            >
+                              Settings
+                            </button>
+                            <button
+                              onClick={() => {
+                                setShowLoginMenu(false);
+                                navigate('login');
+                              }}
+                              className="w-full text-left px-4 py-2.5 text-xs text-gray-500 hover:text-gray-300 hover:bg-white/5 transition-colors"
+                            >
+                              Learn more
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>
@@ -648,7 +831,7 @@ const AppContent: React.FC = () => {
               </div>
 
               {/* Right Section: Actions & Profile */}
-              <div className="flex items-center gap-3 sm:gap-4 justify-end w-full md:w-auto md:pl-4 md:border-l md:border-white/10">
+              <div className="hidden md:flex items-center gap-3 sm:gap-4 justify-end w-full md:w-auto md:pl-4 md:border-l md:border-white/10">
                 {/* Theme Switcher */}
                   <div className="relative hidden md:block">
                     <button 

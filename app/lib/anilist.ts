@@ -1,5 +1,5 @@
 import { Series, SeriesDetails } from '../types';
-import { apiRequest, getStoredToken, setStoredToken } from './api-client';
+import { API_URL, apiRequest, getStoredToken, setStoredToken } from './api-client';
 
 const ANILIST_API = 'https://graphql.anilist.co';
 // NOTE: Replace with your actual Client ID from https://anilist.co/settings/developer
@@ -594,11 +594,25 @@ export const anilistApi = {
   },
 
   async getLoginUrl() {
-    const data = await apiRequest<{ authUrl: string }>('/api/auth/anilist/login', {
+    const redirectUri = `${API_URL}/api/auth/anilist/callback`;
+    const query = new URLSearchParams({ redirectUri });
+    const data = await apiRequest<{ authUrl: string }>(`/api/auth/anilist/login?${query}`, {
       method: 'POST',
       skipAuth: true,
     });
     return data.authUrl;
+  },
+
+  async getCredentialStatus() {
+    try {
+      return await apiRequest<{
+        configured: boolean;
+        source: 'env' | 'runtime' | 'none';
+        redirectUri?: string;
+      }>('/api/auth/anilist/status', { skipAuth: true });
+    } catch {
+      return null;
+    }
   },
 
   async getCurrentUser() {
@@ -613,7 +627,17 @@ export const anilistApi = {
       return user;
     } catch (e) {
       console.error("Auth check failed:", e);
-      this.logout();
+      const err = e as Error & { status?: number; code?: string };
+      const message = err?.message?.toLowerCase?.() || '';
+      const isAuthError =
+        err?.status === 401 ||
+        err?.code === 'AUTH_REQUIRED' ||
+        err?.code === 'AUTH_ERROR' ||
+        message.includes('token') ||
+        message.includes('authorization');
+      if (isAuthError) {
+        this.logout();
+      }
       return null;
     }
   },

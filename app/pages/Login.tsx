@@ -17,8 +17,13 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess, onOpenSetup }) => {
       const authUrl = await anilistApi.getLoginUrl();
       window.location.href = authUrl;
     } catch (error) {
-      setLoginError('AniList is not configured yet. Follow the setup guide to continue.');
-      onOpenSetup?.();
+      const status = await anilistApi.getCredentialStatus();
+      if (!status?.configured) {
+        setLoginError('AniList is not configured yet. Follow the setup guide to continue.');
+        onOpenSetup?.();
+      } else {
+        setLoginError('AniList login failed. Check your credentials and try again.');
+      }
     }
   };
   

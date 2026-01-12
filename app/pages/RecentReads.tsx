@@ -126,8 +126,8 @@ const RecentReads: React.FC<RecentReadsProps> = ({ onNavigate, onBack }) => {
   };
 
   return (
-    <div className="min-h-screen bg-background pb-20">
-      <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 pt-8">
+    <div className="min-h-[100dvh] bg-background pb-20">
+      <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 pt-5 sm:pt-8">
         <button
           onClick={onBack}
           className="mb-6 flex items-center gap-2 text-gray-300 hover:text-white transition-colors"
