@@ -529,6 +529,7 @@ const AppContent: React.FC = () => {
           className={`sticky z-[60] bg-surface/95 backdrop-blur-md border-b border-white/5 shadow-sm relative ${
             isDesktop ? 'top-9' : 'top-0'
           }`}
+          style={isDesktop ? undefined : { paddingTop: 'env(safe-area-inset-top)' }}
         >
           <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8">
             {/* Grid Layout: [Left Content] [Search Bar] [Right Actions] */}
@@ -1183,7 +1184,10 @@ const AppContent: React.FC = () => {
         </nav>
       )}
 
-      <main className="flex-1">
+      <main
+        className="flex-1"
+        style={isDesktop ? undefined : { paddingBottom: 'env(safe-area-inset-bottom)' }}
+      >
         <AnimatePresence mode="wait">
           {currentView === 'home' && (
             <PageTransition key="home">

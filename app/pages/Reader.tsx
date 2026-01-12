@@ -676,6 +676,7 @@ const Reader: React.FC<ReaderProps> = ({
         } left-0 right-0 z-50 bg-black/90 backdrop-blur-md border-b border-white/10 px-4 py-3 transition-transform duration-300 ease-in-out ${
           controlsVisible ? "translate-y-0" : "-translate-y-full"
         }`}
+        style={isDesktop ? undefined : { paddingTop: 'calc(env(safe-area-inset-top) + 0.5rem)' }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="max-w-4xl mx-auto flex items-center justify-between">
@@ -819,10 +820,11 @@ const Reader: React.FC<ReaderProps> = ({
       </div>
 
       {/* --- Bottom Navigation Bar (Floating) --- */}
-      <div
+      <div 
         className={`fixed bottom-0 left-0 right-0 z-50 bg-black/90 backdrop-blur-md border-t border-white/10 px-4 py-4 transition-transform duration-300 ease-in-out ${
           controlsVisible ? "translate-y-0" : "translate-y-full"
         }`}
+        style={isDesktop ? undefined : { paddingBottom: 'calc(env(safe-area-inset-bottom) + 0.5rem)' }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="max-w-2xl mx-auto flex items-center justify-between gap-4">

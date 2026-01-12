@@ -300,8 +300,19 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
         title: data.title,
       }),
     );
+
+    const remoteProgress = data?.mediaListEntry?.progress;
+    if (
+      activeProviderSeries?.chapters?.length &&
+      typeof remoteProgress === 'number' &&
+      remoteProgress > 0
+    ) {
+      const remoteIds = getReadIdsForProgress(activeProviderSeries.chapters, remoteProgress);
+      remoteIds.forEach((id) => readIds.add(id));
+    }
+
     setReadChapterIds(readIds);
-  }, [data, activeProviderSeries]);
+  }, [data, activeProviderSeries, data?.mediaListEntry?.progress]);
 
   const refreshDownloadedChapters = async (providerMangaId?: number) => {
     if (!providerMangaId) {
