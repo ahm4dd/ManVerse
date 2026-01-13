@@ -1548,7 +1548,7 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
 
   if (loading || !data) {
     return (
-      <div className="min-h-[100dvh] flex items-center justify-center">
+      <div className="min-h-[100dvh] min-h-app flex items-center justify-center">
         <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin" />
       </div>
     );
@@ -1596,7 +1596,7 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
   };
 
   return (
-    <div className="min-h-[100dvh] bg-background relative pb-20">
+    <div className="min-h-[100dvh] min-h-app bg-background relative pb-20">
       {/* Dynamic Background with Fade In */}
       <motion.div 
         initial={{ opacity: 0 }}

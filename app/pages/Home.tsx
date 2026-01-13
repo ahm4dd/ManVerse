@@ -12,6 +12,7 @@ import { FilterState } from '../components/SearchFilters';
 import { motion } from 'framer-motion';
 import { SortIcon } from '../components/Icons';
 import { Providers, type Source, isProviderSource } from '../lib/providers';
+import { useMediaQuery } from '../lib/useMediaQuery';
 
 interface HomeProps {
   onNavigate: (view: string, data?: any) => void;
@@ -88,6 +89,7 @@ const Home: React.FC<HomeProps> = ({
   const HOME_STATE_KEY = 'manverse_home_state_v2';
   const scrollYRef = useRef(0);
   const restoredSearchKeyRef = useRef<string | null>(null);
+  const isPhoneLayout = useMediaQuery('(max-width: 768px)');
 
   // Check if filters are active (dirty)
   const isFiltersDirty = 
@@ -716,7 +718,7 @@ const Home: React.FC<HomeProps> = ({
   };
 
   return (
-    <div className="min-h-[100dvh] pb-20 px-4 sm:px-6 lg:px-8 max-w-[1800px] mx-auto pt-4 sm:pt-6">
+    <div className="min-h-[100dvh] min-h-app pb-20 px-4 sm:px-6 lg:px-8 max-w-[1800px] mx-auto pt-4 sm:pt-6">
       
       {/* 1. Hero Carousel (Only on default view) */}
       {!isDiscoveryMode && trending.length > 0 && (
@@ -725,6 +727,11 @@ const Home: React.FC<HomeProps> = ({
            animate={{ opacity: 1, y: 0 }}
            transition={{ duration: 0.6, ease: "easeOut" }}
            className="mb-8"
+           style={
+             isPhoneLayout
+               ? undefined
+               : { marginTop: 'calc(var(--nav-height, 0px) * -1)' }
+           }
          >
            <HeroCarousel 
               items={trending.slice(0, 5)} 
@@ -758,17 +765,33 @@ const Home: React.FC<HomeProps> = ({
                   
                   <motion.div 
                     ref={continueHistoryRef} 
-                    className="overflow-hidden cursor-grab active:cursor-grabbing -mx-4 px-4 sm:mx-0 sm:px-0"
+                    className={`-mx-4 px-4 sm:mx-0 sm:px-0 ${
+                      isPhoneLayout
+                        ? 'overflow-x-auto scrollbar-hide snap-x snap-mandatory'
+                        : 'overflow-hidden cursor-grab active:cursor-grabbing'
+                    }`}
+                    style={
+                      isPhoneLayout
+                        ? { WebkitOverflowScrolling: 'touch' }
+                        : undefined
+                    }
                   >
                      <motion.div 
-                       drag="x"
-                       dragConstraints={{ right: 0, left: -continueHistoryWidth }}
-                       onDragStart={handleContinueDragStart}
-                       onDragEnd={handleContinueDragEnd}
-                       className="flex gap-5 w-max py-2" 
+                       drag={isPhoneLayout ? false : "x"}
+                       dragConstraints={
+                         isPhoneLayout
+                           ? undefined
+                           : { right: 0, left: -continueHistoryWidth }
+                       }
+                       onDragStart={isPhoneLayout ? undefined : handleContinueDragStart}
+                       onDragEnd={isPhoneLayout ? undefined : handleContinueDragEnd}
+                       className="flex gap-4 sm:gap-5 w-max py-2" 
                      >
                         {continueReading.map((item) => (
-                          <div key={item.id} className="w-[280px] sm:w-[320px] aspect-video flex-shrink-0">
+                          <div
+                            key={item.id}
+                            className="w-[85vw] max-w-[320px] sm:w-[320px] aspect-[4/3] sm:aspect-video flex-shrink-0 snap-start"
+                          >
                               <HistoryCard 
                                  item={item} 
                                  onResume={handleContinueClick}
@@ -777,7 +800,7 @@ const Home: React.FC<HomeProps> = ({
                               />
                           </div>
                         ))}
-                        <div className="w-[150px] aspect-video flex-shrink-0">
+                        <div className="w-[70vw] max-w-[200px] sm:w-[150px] aspect-[4/3] sm:aspect-video flex-shrink-0 snap-start">
                            <HistoryCard
                              isViewMore={true}
                              viewLabel="View Library"
@@ -809,17 +832,33 @@ const Home: React.FC<HomeProps> = ({
                   
                   <motion.div 
                     ref={recentHistoryRef} 
-                    className="overflow-hidden cursor-grab active:cursor-grabbing -mx-4 px-4 sm:mx-0 sm:px-0"
+                    className={`-mx-4 px-4 sm:mx-0 sm:px-0 ${
+                      isPhoneLayout
+                        ? 'overflow-x-auto scrollbar-hide snap-x snap-mandatory'
+                        : 'overflow-hidden cursor-grab active:cursor-grabbing'
+                    }`}
+                    style={
+                      isPhoneLayout
+                        ? { WebkitOverflowScrolling: 'touch' }
+                        : undefined
+                    }
                   >
                      <motion.div 
-                       drag="x"
-                       dragConstraints={{ right: 0, left: -recentHistoryWidth }}
-                       onDragStart={handleRecentDragStart}
-                       onDragEnd={handleRecentDragEnd}
-                       className="flex gap-5 w-max py-2" 
+                       drag={isPhoneLayout ? false : "x"}
+                       dragConstraints={
+                         isPhoneLayout
+                           ? undefined
+                           : { right: 0, left: -recentHistoryWidth }
+                       }
+                       onDragStart={isPhoneLayout ? undefined : handleRecentDragStart}
+                       onDragEnd={isPhoneLayout ? undefined : handleRecentDragEnd}
+                       className="flex gap-4 sm:gap-5 w-max py-2" 
                      >
                         {recentReads.map((item) => (
-                          <div key={item.id} className="w-[280px] sm:w-[320px] aspect-video flex-shrink-0">
+                          <div
+                            key={item.id}
+                            className="w-[85vw] max-w-[320px] sm:w-[320px] aspect-[4/3] sm:aspect-video flex-shrink-0 snap-start"
+                          >
                               <HistoryCard 
                                  item={item} 
                                  onResume={handleContinueClick}
@@ -828,7 +867,7 @@ const Home: React.FC<HomeProps> = ({
                               />
                           </div>
                         ))}
-                        <div className="w-[150px] aspect-video flex-shrink-0">
+                        <div className="w-[70vw] max-w-[200px] sm:w-[150px] aspect-[4/3] sm:aspect-video flex-shrink-0 snap-start">
                            <HistoryCard
                              isViewMore={true}
                              viewLabel="View Recent Reads"

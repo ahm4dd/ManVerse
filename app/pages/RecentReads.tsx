@@ -126,7 +126,7 @@ const RecentReads: React.FC<RecentReadsProps> = ({ onNavigate, onBack }) => {
   };
 
   return (
-    <div className="min-h-[100dvh] bg-background pb-20">
+    <div className="min-h-[100dvh] min-h-app bg-background pb-20">
       <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 pt-5 sm:pt-8">
         <button
           onClick={onBack}
@@ -192,7 +192,10 @@ const RecentReads: React.FC<RecentReadsProps> = ({ onNavigate, onBack }) => {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
             {cards.map((item) => (
-              <div key={`${item.id}-${item.chapterId ?? 'latest'}`} className="aspect-video">
+              <div
+                key={`${item.id}-${item.chapterId ?? 'latest'}`}
+                className="aspect-[4/3] sm:aspect-video"
+              >
                 <HistoryCard item={item} onResume={handleResume} onInfo={handleInfo} />
               </div>
             ))}

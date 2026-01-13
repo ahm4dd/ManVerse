@@ -7,7 +7,7 @@ import Library from './pages/Library';
 import Recommendations from './pages/Recommendations';
 import RecentReads from './pages/RecentReads';
 import Settings from './pages/Settings';
-import { PaletteIcon, BellIcon, SearchIcon, FilterIcon, XIcon, ChevronDown, SyncIcon, MenuIcon } from './components/Icons';
+import { PaletteIcon, BellIcon, SearchIcon, FilterIcon, XIcon, ChevronDown, SyncIcon, MenuIcon, ChevronUp } from './components/Icons';
 import NotificationsMenu from './components/NotificationsMenu';
 import AniListSetupModal from './components/AniListSetupModal';
 import DesktopTitleBar from './components/DesktopTitleBar';
@@ -20,6 +20,7 @@ import PageTransition from './components/PageTransition';
 import SearchFilters, { FilterState } from './components/SearchFilters';
 import { providerOptions, type Source, isProviderSource } from './lib/providers';
 import { desktopApi, type UpdateStatus } from './lib/desktop';
+import { useMediaQuery } from './lib/useMediaQuery';
 
 type View =
   | 'home'
@@ -89,6 +90,7 @@ const AppContent: React.FC = () => {
   const [isVerifying, setIsVerifying] = useState(false);
   const { theme, setTheme } = useTheme();
   const { notify } = useNotification();
+  const isPhoneLayout = useMediaQuery('(max-width: 768px)');
   
   // Menus
   const [showThemeMenu, setShowThemeMenu] = useState(false);
@@ -515,21 +517,96 @@ const AppContent: React.FC = () => {
   const isDesktop =
     desktopApi.isAvailable &&
     !(typeof navigator !== 'undefined' && navigator.platform.toLowerCase().includes('mac'));
+  const navRef = useRef<HTMLDivElement | null>(null);
+  const [navHeight, setNavHeight] = useState(0);
+  const [showScrollTop, setShowScrollTop] = useState(false);
+
+  useEffect(() => {
+    if (isDesktop) {
+      setNavHeight(0);
+      return;
+    }
+    const node = navRef.current;
+    if (!node) return;
+    const update = () => setNavHeight(node.getBoundingClientRect().height || 0);
+    update();
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', update);
+      return () => window.removeEventListener('resize', update);
+    }
+    const observer = new ResizeObserver(update);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [isDesktop]);
+
+  useEffect(() => {
+    if (!isPhoneLayout) {
+      setShowScrollTop(false);
+      return;
+    }
+    const threshold =
+      currentView === 'reader' ? 200 : Math.max(navHeight - 24, 120);
+    const handleScroll = () => {
+      setShowScrollTop(window.scrollY > threshold);
+    };
+    handleScroll();
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [currentView, isPhoneLayout, navHeight]);
+
+  useEffect(() => {
+    if (isDesktop) return;
+    if (typeof window === 'undefined') return;
+    if (typeof CSS !== 'undefined' && CSS.supports('height: 100dvh')) return;
+    const setAppHeight = () => {
+      const viewport = window.visualViewport;
+      const height = viewport?.height ?? window.innerHeight;
+      document.documentElement.style.setProperty('--app-height', `${height}px`);
+    };
+    setAppHeight();
+    window.addEventListener('resize', setAppHeight);
+    window.visualViewport?.addEventListener('resize', setAppHeight);
+    return () => {
+      window.removeEventListener('resize', setAppHeight);
+      window.visualViewport?.removeEventListener('resize', setAppHeight);
+    };
+  }, [isDesktop]);
 
   return (
     <div
-      className={`bg-background text-white min-h-[100dvh] font-sans selection:bg-primary/30 transition-colors duration-300 flex flex-col ${
+      className={`bg-background text-white min-h-[100dvh] min-h-app font-sans selection:bg-primary/30 transition-colors duration-300 flex flex-col ${
         isDesktop ? 'pt-9' : ''
       }`}
+      style={
+        !isDesktop
+          ? ({
+              '--nav-height': `${navHeight}px`,
+              minHeight: 'var(--app-height)',
+            } as React.CSSProperties)
+          : undefined
+      }
     >
       <DesktopTitleBar />
       {/* Top Navigation Bar - Global - Hidden in Reader Mode */}
       {currentView !== 'reader' && (
         <nav
-          className={`sticky z-[60] bg-surface/95 backdrop-blur-md border-b border-white/5 shadow-sm relative ${
-            isDesktop ? 'top-9' : 'top-0'
+          ref={navRef}
+          className={`z-[60] bg-surface/90 backdrop-blur-md border-b border-white/5 shadow-sm ${
+            isDesktop
+              ? 'sticky top-9'
+              : isPhoneLayout
+                ? 'relative'
+                : 'fixed top-0 left-0 right-0'
           }`}
-          style={isDesktop ? undefined : { paddingTop: 'env(safe-area-inset-top)' }}
+          style={
+            isDesktop
+              ? undefined
+              : {
+                  paddingTop: 'var(--safe-top)',
+                  paddingLeft: 'var(--safe-left)',
+                  paddingRight: 'var(--safe-right)',
+                }
+          }
         >
           <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8">
             {/* Grid Layout: [Left Content] [Search Bar] [Right Actions] */}
@@ -1186,7 +1263,26 @@ const AppContent: React.FC = () => {
 
       <main
         className="flex-1"
-        style={isDesktop ? undefined : { paddingBottom: 'env(safe-area-inset-bottom)' }}
+        style={
+          isDesktop
+            ? undefined
+            : {
+                paddingTop:
+                  currentView === 'reader'
+                    ? '0px'
+                    : isPhoneLayout
+                      ? '0px'
+                      : navHeight
+                        ? `${navHeight}px`
+                        : 'var(--safe-top)',
+                paddingBottom:
+                  currentView === 'reader' ? '0px' : 'var(--safe-bottom)',
+                paddingLeft:
+                  currentView === 'reader' ? '0px' : 'var(--safe-left)',
+                paddingRight:
+                  currentView === 'reader' ? '0px' : 'var(--safe-right)',
+              }
+        }
       >
         <AnimatePresence mode="wait">
           {currentView === 'home' && (
@@ -1257,6 +1353,22 @@ const AppContent: React.FC = () => {
           )}
         </AnimatePresence>
       </main>
+
+      {showScrollTop && (
+        <button
+          type="button"
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          className="fixed z-[65] h-10 w-10 rounded-full border border-white/10 bg-surface/80 text-white shadow-lg shadow-black/40 backdrop-blur-md transition hover:bg-surfaceHighlight/80"
+          style={{
+            bottom: 'calc(var(--safe-bottom) + 1rem)',
+            right: 'calc(var(--safe-right) + 1rem)',
+          }}
+          aria-label="Scroll to top"
+          title="Scroll to top"
+        >
+          <ChevronUp className="mx-auto h-5 w-5" />
+        </button>
+      )}
 
       <AniListSetupModal
         open={showSetupGuide}

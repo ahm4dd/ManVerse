@@ -11,11 +11,11 @@ import { anilistApi } from "../lib/anilist";
 import { history } from "../lib/history";
 import { Providers, type Source, isProviderSource } from "../lib/providers";
 import { desktopApi } from "../lib/desktop";
+import { useMediaQuery } from "../lib/useMediaQuery";
 import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
-  MenuIcon,
   SearchIcon,
 } from "../components/Icons";
 import { motion, AnimatePresence } from "framer-motion";
@@ -84,12 +84,17 @@ const Reader: React.FC<ReaderProps> = ({
 
   // Controls Visibility State
   const [controlsVisible, setControlsVisible] = useState(true);
-  const [showChapterList, setShowChapterList] = useState(false);
+  const [chapterListAnchor, setChapterListAnchor] = useState<
+    "top" | "bottom" | null
+  >(null);
   const [showSettings, setShowSettings] = useState(false);
   const lastScrollY = useRef(0);
   const isDesktop =
     desktopApi.isAvailable &&
     !(typeof navigator !== "undefined" && navigator.platform.toLowerCase().includes("mac"));
+  const isPhoneLayout = useMediaQuery("(max-width: 768px)");
+  const isMobileReader = isPhoneLayout && !isDesktop;
+  const showChapterList = chapterListAnchor !== null;
 
   // Settings (Persisted)
   const [maxWidth, setMaxWidth] = useState<"100%" | "75%" | "50%">(() => {
@@ -153,7 +158,6 @@ const Reader: React.FC<ReaderProps> = ({
 
   // Refs
   const imageRefs = useRef<(HTMLImageElement | null)[]>([]);
-  const progressBarRef = useRef<HTMLDivElement>(null);
   // FIX: Using ReturnType<typeof setTimeout> instead of NodeJS.Timeout for compatibility
   const syncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const shouldScrollRef = useRef<number | null>(null);
@@ -319,7 +323,7 @@ const Reader: React.FC<ReaderProps> = ({
       setCurrentPage(1);
       setTrackStatus("idle");
       setControlsVisible(true);
-      setShowChapterList(false);
+      setChapterListAnchor(null);
       setShowSettings(false);
       shouldScrollRef.current = null;
 
@@ -515,11 +519,9 @@ const Reader: React.FC<ReaderProps> = ({
   useEffect(() => {
     if (showChapterList) {
       setChapterSearchQuery("");
-      const nextCount = Math.max(50, currentChapterIndex + 10);
-      setVisibleChapterCount(nextCount);
       setShowSettings(false);
     }
-  }, [showChapterList, currentChapterIndex]);
+  }, [showChapterList]);
 
   useEffect(() => {
     if (!showChapterList) return;
@@ -531,32 +533,17 @@ const Reader: React.FC<ReaderProps> = ({
 
   // Scroll Visibility Logic
   useEffect(() => {
+    if (isMobileReader) return;
     const handleScroll = () => {
       const currentScrollY = window.scrollY;
       const lastY = lastScrollY.current;
       lastScrollY.current = currentScrollY;
 
-      if (progressBarRef.current) {
-        const totalHeight =
-          document.documentElement.scrollHeight - window.innerHeight;
-        const progress =
-          totalHeight > 0 ? (currentScrollY / totalHeight) * 100 : 0;
-        progressBarRef.current.style.width = `${Math.min(
-          100,
-          Math.max(0, progress)
-        )}%`;
-      }
-
-      if (currentScrollY < 100) {
-        setControlsVisible(true);
-        return;
-      }
-
       if (Math.abs(currentScrollY - lastY) < 10) return;
 
       if (currentScrollY > lastY) {
         setControlsVisible(false);
-        setShowChapterList(false);
+        setChapterListAnchor(null);
         setShowSettings(false);
       } else {
         setControlsVisible(true);
@@ -565,7 +552,7 @@ const Reader: React.FC<ReaderProps> = ({
 
     window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
+  }, [isMobileReader]);
 
   // Intersection Observer
   useEffect(() => {
@@ -601,7 +588,7 @@ const Reader: React.FC<ReaderProps> = ({
     saveProgress(true);
 
     const chapterNum = parseFloat(chapter.number.replace(/[^0-9.]/g, ""));
-    setShowChapterList(false);
+    setChapterListAnchor(null);
     onNavigate(
       "reader",
       {
@@ -620,24 +607,69 @@ const Reader: React.FC<ReaderProps> = ({
   };
 
   const toggleControls = (e: React.MouseEvent) => {
-    setControlsVisible((prev) => !prev);
-    if (controlsVisible) {
-      setShowChapterList(false);
-      setShowSettings(false);
+    if (isMobileReader) {
+      if (showSettings) setShowSettings(false);
+      if (showChapterList) setChapterListAnchor(null);
+      return;
     }
+    setControlsVisible((prev) => {
+      const next = !prev;
+      if (next) {
+        setChapterListAnchor(null);
+        setShowSettings(false);
+      }
+      return next;
+    });
+  };
+
+  const toggleChapterList = (anchor: "top" | "bottom") => {
+    setChapterListAnchor((prev) => (prev === anchor ? null : anchor));
+    setShowSettings(false);
   };
 
   const filteredChapters = useMemo(() => {
     if (!chapterSearchQuery) return chapterList;
     const lowerQuery = chapterSearchQuery.toLowerCase();
-    return chapterList.filter(
+    const filtered = chapterList.filter(
       (ch) =>
         ch.number.toLowerCase().includes(lowerQuery) ||
         ch.title.toLowerCase().includes(lowerQuery)
     );
+    const queryNum = parseFloat(chapterSearchQuery);
+    return filtered.sort((a, b) => {
+      if (a.number === chapterSearchQuery) return -1;
+      if (b.number === chapterSearchQuery) return 1;
+
+      const aNum = parseFloat(a.number);
+      const bNum = parseFloat(b.number);
+
+      if (!isNaN(queryNum) && !isNaN(aNum) && !isNaN(bNum)) {
+        const distA = Math.abs(aNum - queryNum);
+        const distB = Math.abs(bNum - queryNum);
+        if (distA !== distB) return distA - distB;
+      }
+      return 0;
+    });
   }, [chapterList, chapterSearchQuery]);
 
   const chaptersToRender = filteredChapters.slice(0, visibleChapterCount);
+
+  useEffect(() => {
+    if (!showChapterList) return;
+    if (chapterSearchQuery) {
+      setVisibleChapterCount(Math.max(1, filteredChapters.length));
+      return;
+    }
+    const baseCount = isMobileReader ? 24 : 50;
+    const buffer = isMobileReader ? 6 : 10;
+    setVisibleChapterCount(Math.max(baseCount, currentChapterIndex + buffer));
+  }, [
+    chapterSearchQuery,
+    currentChapterIndex,
+    filteredChapters.length,
+    isMobileReader,
+    showChapterList,
+  ]);
 
   const handleChapterListScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
@@ -648,183 +680,185 @@ const Reader: React.FC<ReaderProps> = ({
     }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-[100dvh] bg-black flex items-center justify-center">
-        <div className="text-primary animate-pulse">Loading Chapter...</div>
-      </div>
-    );
-  }
+  const topHeaderContent = (
+    <div className="max-w-4xl mx-auto flex items-center justify-between relative">
+      <button
+        onClick={onBack}
+        className="text-gray-300 hover:text-white flex items-center gap-2 px-2 py-1 rounded-md hover:bg-white/5 transition-colors"
+      >
+        <ChevronLeft className="w-5 h-5" />
+        <span className="hidden sm:inline font-medium">Back</span>
+      </button>
 
-  return (
-    <div className="min-h-[100dvh] bg-black flex flex-col items-center relative">
-      {/* Scroll Progress Bar */}
-      <div className="fixed bottom-0 left-0 right-0 h-1 z-[60] pointer-events-none">
-        <div className="h-full w-full bg-transparent">
-          <div
-            ref={progressBarRef}
-            className="h-full bg-primary shadow-[0_0_10px_rgba(var(--c-primary),0.8)] transition-all duration-75 ease-out rounded-r-full"
-            style={{ width: "0%" }}
-          />
+      <div className="flex flex-col items-center absolute left-1/2 -translate-x-1/2">
+        <div className="text-sm font-bold text-white max-w-[150px] sm:max-w-xs truncate">
+          {currentChapter ? `Chapter ${currentChapter.number}` : ""}
+        </div>
+        <div className="text-xs text-gray-400">
+          Page {currentPage}/{totalPages}
         </div>
       </div>
 
-      {/* --- Top Header (Floating) --- */}
-      <div
-        className={`fixed ${
-          isDesktop ? "top-9" : "top-0"
-        } left-0 right-0 z-50 bg-black/90 backdrop-blur-md border-b border-white/10 px-4 py-3 transition-transform duration-300 ease-in-out ${
-          controlsVisible ? "translate-y-0" : "-translate-y-full"
-        }`}
-        style={isDesktop ? undefined : { paddingTop: 'calc(env(safe-area-inset-top) + 0.5rem)' }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
+      <div className="flex items-center gap-2">
+        {trackStatus === "syncing" && (
+          <span className="hidden sm:inline text-[10px] text-blue-400 font-medium tracking-wide mr-2 animate-pulse">
+            Syncing...
+          </span>
+        )}
+        {trackStatus === "synced" && (
+          <span className="hidden sm:inline text-[10px] text-green-400 font-medium tracking-wide mr-2">
+            Synced
+          </span>
+        )}
+        {trackStatus === "error" && (
+          <span className="hidden sm:inline text-[10px] text-red-400 font-medium tracking-wide mr-2">
+            Sync Fail
+          </span>
+        )}
+
+        {/* Settings Toggle */}
+        <div className="relative">
           <button
-            onClick={onBack}
-            className="text-gray-300 hover:text-white flex items-center gap-2 px-2 py-1 rounded-md hover:bg-white/5 transition-colors"
+            onClick={() => {
+              setShowSettings(!showSettings);
+              setChapterListAnchor(null);
+            }}
+            className={`p-2 rounded-full transition-colors ${
+              showSettings
+                ? "bg-white/10 text-white"
+                : "text-gray-400 hover:text-white hover:bg-white/5"
+            }`}
           >
-            <ChevronLeft className="w-5 h-5" />
-            <span className="hidden sm:inline font-medium">Back</span>
+            <GearIcon className="w-5 h-5" />
           </button>
 
-          <div className="flex flex-col items-center absolute left-1/2 -translate-x-1/2">
-            <div className="text-sm font-bold text-white max-w-[150px] sm:max-w-xs truncate">
-              {currentChapter ? `Chapter ${currentChapter.number}` : ""}
-            </div>
-            <div className="text-xs text-gray-400">
-              Page {currentPage}/{totalPages}
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {trackStatus === "syncing" && (
-              <span className="hidden sm:inline text-[10px] text-blue-400 font-medium tracking-wide mr-2 animate-pulse">
-                Syncing...
-              </span>
-            )}
-            {trackStatus === "synced" && (
-              <span className="hidden sm:inline text-[10px] text-green-400 font-medium tracking-wide mr-2">
-                Synced
-              </span>
-            )}
-            {trackStatus === "error" && (
-              <span className="hidden sm:inline text-[10px] text-red-400 font-medium tracking-wide mr-2">
-                Sync Fail
-              </span>
-            )}
-
-            {/* Settings Toggle */}
-            <div className="relative">
-              <button
-                onClick={() => {
-                  setShowSettings(!showSettings);
-                  setShowChapterList(false);
-                }}
-                className={`p-2 rounded-full transition-colors ${
-                  showSettings
-                    ? "bg-white/10 text-white"
-                    : "text-gray-400 hover:text-white hover:bg-white/5"
-                }`}
-              >
-                <GearIcon className="w-5 h-5" />
-              </button>
-
-              {/* Settings Popup */}
-              {showSettings && (
-                <div className="absolute right-0 top-full mt-2 w-56 bg-[#18181b] rounded-xl shadow-2xl border border-white/10 ring-1 ring-black/50 p-4 animate-fade-in flex flex-col gap-4 z-50">
-                  <div>
-                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">
-                      Image Width
-                    </label>
-                    <div className="flex bg-surfaceHighlight rounded-lg p-1 border border-white/5">
-                      {["100%", "75%", "50%"].map((w) => (
-                        <button
-                          key={w}
-                          onClick={() => setMaxWidth(w as any)}
-                          className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${
-                            maxWidth === w
-                              ? "bg-primary text-white shadow-sm"
-                              : "text-gray-400 hover:text-white"
-                          }`}
-                        >
-                          {w === "100%" ? "Full" : w}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">
-                      Page Gap
-                    </label>
-                    <div className="flex bg-surfaceHighlight rounded-lg p-1 border border-white/5">
-                      {["0px", "8px", "24px"].map((g) => (
-                        <button
-                          key={g}
-                          onClick={() => setPageGap(g as any)}
-                          className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${
-                            pageGap === g
-                              ? "bg-primary text-white shadow-sm"
-                              : "text-gray-400 hover:text-white"
-                          }`}
-                        >
-                          {g === "0px" ? "None" : g === "8px" ? "S" : "L"}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">
-                      Smart Prefetch
-                    </label>
-                    <div className="flex items-center justify-between gap-2">
+          {/* Settings Popup */}
+          {showSettings && (
+            <div className="absolute right-0 top-full mt-2 w-56 bg-surface rounded-xl shadow-2xl border border-white/10 ring-1 ring-black/50 p-4 animate-fade-in flex flex-col gap-4 z-50">
+              <div>
+                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">
+                  Image Width
+                </label>
+                <div className="flex bg-surfaceHighlight rounded-lg p-1 border border-white/5">
+                  {["100%", "75%", "50%"].map((w) => (
+                    <button
+                      key={w}
+                      onClick={() => setMaxWidth(w as any)}
+                      className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${
+                        maxWidth === w
+                          ? "bg-primary text-white shadow-sm"
+                          : "text-gray-400 hover:text-white"
+                      }`}
+                    >
+                      {w === "100%" ? "Full" : w}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">
+                  Page Gap
+                </label>
+                <div className="flex bg-surfaceHighlight rounded-lg p-1 border border-white/5">
+                  {["0px", "8px", "24px"].map((g) => (
+                    <button
+                      key={g}
+                      onClick={() => setPageGap(g as any)}
+                      className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${
+                        pageGap === g
+                          ? "bg-primary text-white shadow-sm"
+                          : "text-gray-400 hover:text-white"
+                      }`}
+                    >
+                      {g === "0px" ? "None" : g === "8px" ? "S" : "L"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">
+                  Smart Prefetch
+                </label>
+                <div className="flex items-center justify-between gap-2">
+                  <button
+                    onClick={() => setPrefetchEnabled((prev) => !prev)}
+                    className={`px-3 py-2 rounded-lg text-xs font-bold border transition-colors ${
+                      prefetchEnabled
+                        ? "bg-primary text-white border-primary"
+                        : "bg-surfaceHighlight text-gray-400 border-white/10 hover:text-white"
+                    }`}
+                  >
+                    {prefetchEnabled ? "On" : "Off"}
+                  </button>
+                  <div className="flex bg-surfaceHighlight rounded-lg p-1 border border-white/5 flex-1">
+                    {[1, 2, 3, 5].map((count) => (
                       <button
-                        onClick={() => setPrefetchEnabled((prev) => !prev)}
-                        className={`px-3 py-2 rounded-lg text-xs font-bold border transition-colors ${
-                          prefetchEnabled
-                            ? "bg-primary text-white border-primary"
-                            : "bg-surfaceHighlight text-gray-400 border-white/10 hover:text-white"
+                        key={count}
+                        onClick={() => setPrefetchCount(count)}
+                        className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${
+                          prefetchCount === count
+                            ? "bg-primary text-white shadow-sm"
+                            : "text-gray-400 hover:text-white"
                         }`}
                       >
-                        {prefetchEnabled ? "On" : "Off"}
+                        {count}
                       </button>
-                      <div className="flex bg-surfaceHighlight rounded-lg p-1 border border-white/5 flex-1">
-                        {[1, 2, 3, 5].map((count) => (
-                          <button
-                            key={count}
-                            onClick={() => setPrefetchCount(count)}
-                            className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${
-                              prefetchCount === count
-                                ? "bg-primary text-white shadow-sm"
-                                : "text-gray-400 hover:text-white"
-                            }`}
-                          >
-                            {count}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <p className="mt-2 text-[10px] text-gray-500">
-                      Downloads the next N chapters when you are actively
-                      reading.
-                    </p>
-                  </div>
-                  <div className="pt-2 border-t border-white/5 text-[10px] text-gray-500 text-center">
-                    Pro tip: Use 'N' and 'P' keys
+                    ))}
                   </div>
                 </div>
-              )}
+                <p className="mt-2 text-[10px] text-gray-500">
+                  Downloads the next N chapters when you are actively reading.
+                </p>
+              </div>
+              <div className="pt-2 border-t border-white/5 text-[10px] text-gray-500 text-center">
+                Pro tip: Use 'N' and 'P' keys
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
+    </div>
+  );
 
-      {/* --- Bottom Navigation Bar (Floating) --- */}
-      <div 
-        className={`fixed bottom-0 left-0 right-0 z-50 bg-black/90 backdrop-blur-md border-t border-white/10 px-4 py-4 transition-transform duration-300 ease-in-out ${
+  const renderChapterNav = (
+    placement: "top" | "bottom",
+    variant: "fixed" | "inline"
+  ) => {
+    const isFixed = variant === "fixed";
+    const isTop = placement === "top";
+    const isListOpen = chapterListAnchor === placement;
+    const shellClass = isMobileReader
+      ? "bg-surface"
+      : "bg-surface/90 backdrop-blur-md";
+    const wrapperClass = isFixed
+      ? `fixed bottom-0 left-0 right-0 z-50 ${shellClass} border-t border-white/10 px-4 py-4 transition-transform duration-300 ease-in-out ${
           controlsVisible ? "translate-y-0" : "translate-y-full"
-        }`}
-        style={isDesktop ? undefined : { paddingBottom: 'calc(env(safe-area-inset-bottom) + 0.5rem)' }}
+        }`
+      : `w-full ${shellClass} ${
+          isTop ? "border-b" : "border-t"
+        } border-white/10 px-4 py-4`;
+    const wrapperStyle = !isDesktop
+      ? isFixed
+        ? {
+            paddingBottom: "calc(var(--safe-bottom) + 0.5rem)",
+            paddingLeft: "var(--safe-left)",
+            paddingRight: "var(--safe-right)",
+          }
+        : {
+            paddingLeft: "var(--safe-left)",
+            paddingRight: "var(--safe-right)",
+            ...(isTop
+              ? {}
+              : { paddingBottom: "calc(var(--safe-bottom) + 0.5rem)" }),
+          }
+      : undefined;
+    const popupOffset = isTop ? -10 : 10;
+    const popupPosition = isTop ? "top-full mt-4" : "bottom-full mb-4";
+
+    return (
+      <div
+        className={wrapperClass}
+        style={wrapperStyle}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="max-w-2xl mx-auto flex items-center justify-between gap-4">
@@ -847,10 +881,7 @@ const Reader: React.FC<ReaderProps> = ({
                 : "Current: --"}
             </div>
             <button
-              onClick={() => {
-                setShowChapterList(!showChapterList);
-                setShowSettings(false);
-              }}
+              onClick={() => toggleChapterList(placement)}
               className="w-full flex items-center justify-center gap-2 bg-surfaceHighlight hover:bg-white/10 border border-white/10 text-white font-medium py-3 px-4 rounded-xl transition-all active:scale-95"
             >
               <span className="truncate max-w-[150px] sm:max-w-[200px]">
@@ -860,34 +891,37 @@ const Reader: React.FC<ReaderProps> = ({
               </span>
               <ChevronDown
                 className={`w-4 h-4 transition-transform duration-300 ${
-                  showChapterList ? "rotate-180" : ""
+                  isListOpen ? "rotate-180" : ""
                 }`}
               />
             </button>
 
             {/* Chapter List Popup */}
             <AnimatePresence>
-              {showChapterList && (
+              {showChapterList && isListOpen && (
                 <motion.div
-                  initial={{ opacity: 0, y: 10, x: "-50%" }}
+                  initial={{ opacity: 0, y: popupOffset, x: "-50%" }}
                   animate={{ opacity: 1, y: 0, x: "-50%" }}
-                  exit={{ opacity: 0, y: 10, x: "-50%" }}
+                  exit={{ opacity: 0, y: popupOffset, x: "-50%" }}
                   transition={{ duration: 0.2 }}
-                  className="absolute bottom-full left-1/2 mb-4 w-64 xs:w-72 max-h-[60vh] flex flex-col bg-[#18181b] rounded-xl shadow-2xl border border-white/10 ring-1 ring-black/50 z-50"
+                  className={`absolute ${popupPosition} left-1/2 w-64 xs:w-72 max-h-[45vh] sm:max-h-[60vh] flex flex-col bg-surface rounded-xl shadow-2xl border border-white/10 ring-1 ring-black/50 z-50`}
                 >
-                  <div className="p-3 border-b border-white/10 bg-[#18181b] rounded-t-xl z-20">
+                  <div className="p-3 border-b border-white/10 bg-surface rounded-t-xl z-20">
                     <div className="relative group">
                       <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-gray-500">
                         <SearchIcon className="w-3.5 h-3.5" />
                       </div>
                       <input
-                        autoFocus
+                        autoFocus={!isMobileReader}
                         type="text"
                         placeholder="Search chapter..."
-                        className="w-full bg-surfaceHighlight/50 border border-white/5 rounded-lg py-2 pl-9 pr-3 text-xs text-white focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all placeholder-gray-500"
+                        className="w-full bg-surfaceHighlight/50 border border-white/5 rounded-lg py-2.5 pl-9 pr-3 text-[16px] sm:text-xs text-white focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all placeholder-gray-500"
                         value={chapterSearchQuery}
                         onChange={(e) => setChapterSearchQuery(e.target.value)}
                         onClick={(e) => e.stopPropagation()}
+                        inputMode="search"
+                        autoCorrect="off"
+                        spellCheck={false}
                       />
                     </div>
                   </div>
@@ -958,22 +992,101 @@ const Reader: React.FC<ReaderProps> = ({
           </button>
         </div>
       </div>
+    );
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-[100dvh] min-h-app bg-background flex items-center justify-center">
+        <div className="text-primary animate-pulse">Loading Chapter...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-[100dvh] min-h-app bg-background flex flex-col items-center relative">
+
+      {/* Safe-area scrims for reader controls */}
+      {!isDesktop && !isMobileReader && (
+        <>
+          <div
+            className={`fixed top-0 left-0 right-0 z-40 bg-background transition-opacity duration-300 pointer-events-none ${
+              controlsVisible ? "opacity-100" : "opacity-0"
+            }`}
+            style={{ height: controlsVisible ? "var(--safe-top)" : "0px" }}
+          />
+          <div
+            className={`fixed bottom-0 left-0 right-0 z-40 bg-background transition-opacity duration-300 pointer-events-none ${
+              controlsVisible ? "opacity-100" : "opacity-0"
+            }`}
+            style={{
+              height: controlsVisible ? "var(--safe-bottom)" : "0px",
+            }}
+          />
+        </>
+      )}
+
+      {!isMobileReader && (
+        <div
+          className={`fixed ${
+            isDesktop ? "top-9" : "top-0"
+          } left-0 right-0 z-50 bg-surface/90 backdrop-blur-md border-b border-white/10 px-4 py-3 transition-transform duration-300 ease-in-out ${
+            controlsVisible ? "translate-y-0" : "-translate-y-full"
+          }`}
+          style={
+            isDesktop
+              ? undefined
+              : {
+                  paddingTop: "calc(var(--safe-top) + 0.5rem)",
+                  paddingLeft: "var(--safe-left)",
+                  paddingRight: "var(--safe-right)",
+                }
+          }
+          onClick={(e) => e.stopPropagation()}
+        >
+          {topHeaderContent}
+        </div>
+      )}
+
+      {!isMobileReader && renderChapterNav("bottom", "fixed")}
 
       {/* --- Main Reader Content --- */}
       <div
-        className="w-full min-h-[100dvh] pt-16 sm:pt-20 pb-32 flex flex-col items-center transition-all duration-300"
-        style={{ gap: pageGap }}
+        className="w-full min-h-[100dvh] min-h-app flex flex-col items-center transition-all duration-300"
+        style={{
+          paddingTop: "0px",
+          paddingBottom: "0px",
+        }}
         onClick={toggleControls}
       >
+        {isMobileReader && (
+          <div className="w-full">
+            <div
+              className="w-full bg-surface border-b border-white/10 px-4 py-3"
+              style={{
+                paddingTop: "calc(var(--safe-top) + 0.5rem)",
+                paddingLeft: "var(--safe-left)",
+                paddingRight: "var(--safe-right)",
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {topHeaderContent}
+            </div>
+            {renderChapterNav("top", "inline")}
+          </div>
+        )}
+
         <div
           className="w-full flex flex-col items-center transition-[max-width] duration-300"
           style={{
-            maxWidth:
-              maxWidth === "100%"
+            maxWidth: isMobileReader
+              ? "100%"
+              : maxWidth === "100%"
                 ? "100%"
                 : maxWidth === "75%"
-                ? "1000px"
-                : "700px",
+                  ? "1000px"
+                  : "700px",
+            gap: pageGap,
           }}
         >
           {pages.map((page) => (
@@ -985,11 +1098,13 @@ const Reader: React.FC<ReaderProps> = ({
               data-page={page.page}
               src={page.src}
               alt={`Page ${page.page}`}
-              className="w-full h-auto select-none bg-surfaceHighlight/10 min-h-[500px]"
+              className="w-full h-auto select-none bg-transparent min-h-[500px]"
               loading="lazy"
             />
           ))}
         </div>
+
+        {isMobileReader && renderChapterNav("bottom", "inline")}
 
         {/* End of Chapter Navigation */}
         <div className="w-full px-4 py-12 flex flex-col items-center gap-6 text-center">

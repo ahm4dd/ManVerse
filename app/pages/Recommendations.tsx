@@ -267,7 +267,7 @@ const Recommendations: React.FC<RecommendationsProps> = ({ onNavigate }) => {
   )};
 
   return (
-    <div className="min-h-[100dvh] pt-5 sm:pt-8 pb-20 max-w-[1600px] mx-auto md:px-8">
+    <div className="min-h-[100dvh] min-h-app pt-5 sm:pt-8 pb-20 max-w-[1600px] mx-auto md:px-8">
        <div className="px-4 md:px-0 mb-10">
          <h1 className="text-4xl md:text-5xl font-extrabold text-white mb-3 tracking-tight">Discover</h1>
          <p className="text-gray-400 font-medium">Curated lists from the AniList community.</p>

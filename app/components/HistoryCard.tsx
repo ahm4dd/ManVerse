@@ -2,6 +2,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { ChevronRight, XIcon } from './Icons';
 import { isProviderSource, providerShortLabel, type Source } from '../lib/providers';
+import { useMediaQuery } from '../lib/useMediaQuery';
 
 interface HistoryItem {
   id: string;
@@ -35,6 +36,8 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
   viewLabel,
   disableClick = false,
 }) => {
+  const isPhoneLayout = useMediaQuery('(max-width: 768px)');
+
   if (isViewMore) {
     return (
       <div 
@@ -56,15 +59,21 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
 
   if (!item) return null;
 
+  const handleCardClick = () => {
+    if (disableClick) return;
+    if (isPhoneLayout && onResume) {
+      onResume(item);
+      return;
+    }
+    (onInfo || onClick)?.(item);
+  };
+
   return (
     <motion.div 
       layout
       className="relative group cursor-pointer overflow-hidden rounded-xl border border-white/5 bg-surfaceHighlight shadow-lg w-full h-full aspect-video"
-      onClick={() => {
-        if (disableClick) return;
-        (onInfo || onClick)?.(item);
-      }}
-      whileHover={{ scale: 1.01 }}
+      onClick={handleCardClick}
+      whileHover={isPhoneLayout ? undefined : { scale: 1.01 }}
       transition={{ type: 'spring', stiffness: 300, damping: 20 }}
     >
       {/* Background Image */}
@@ -92,7 +101,7 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
       )}
 
       {/* Content Overlay */}
-      <div className="absolute inset-0 p-5 flex flex-col justify-end items-start z-10">
+      <div className="absolute inset-0 p-4 sm:p-5 flex flex-col justify-end items-start z-10">
         
         {/* Chapter Badge */}
         <div className="mb-2">
@@ -117,7 +126,11 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
 
         {/* Actions */}
         {(onResume || onInfo || onClick) && (
-          <div className="flex items-center gap-2 mb-3 w-full flex-wrap">
+          <div
+            className={`mb-3 w-full ${
+              isPhoneLayout ? 'flex flex-col gap-2' : 'flex items-center gap-2 flex-wrap'
+            }`}
+          >
             {(onResume || onClick) && (
               <button
                 onClick={(event) => {
@@ -125,7 +138,11 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
                   if (disableClick) return;
                   (onResume || onClick)?.(item);
                 }}
-                className="px-3 py-1.5 rounded-full bg-primary text-black text-[11px] font-extrabold uppercase tracking-wide shadow-sm hover:brightness-110 flex-1 min-w-0 truncate"
+                className={`rounded-full bg-primary text-black font-extrabold uppercase tracking-wide shadow-sm hover:brightness-110 ${
+                  isPhoneLayout
+                    ? 'px-4 py-2 text-xs w-full'
+                    : 'px-3 py-1.5 text-[11px] flex-1 min-w-0 truncate'
+                }`}
               >
                 Resume {String(item.chapterNumber).toLowerCase().includes('chapter') ? item.chapterNumber : `Ch ${item.chapterNumber}`}
               </button>
@@ -136,7 +153,9 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
                 if (disableClick) return;
                 (onInfo || onClick)?.(item);
               }}
-              className="px-3 py-1.5 rounded-full bg-white/10 text-white text-[11px] font-bold uppercase tracking-wide border border-white/10 hover:bg-white/20 flex-shrink-0"
+              className={`rounded-full bg-white/10 text-white font-bold uppercase tracking-wide border border-white/10 hover:bg-white/20 ${
+                isPhoneLayout ? 'px-4 py-2 text-xs w-full' : 'px-3 py-1.5 text-[11px] flex-shrink-0'
+              }`}
             >
               Info
             </button>

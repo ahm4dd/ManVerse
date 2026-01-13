@@ -38,7 +38,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess, onOpenSetup }) => {
   };
 
   return (
-    <div className="min-h-[calc(100vh-64px)] flex items-center justify-center relative overflow-hidden bg-background">
+    <div className="min-h-[100dvh] min-h-app flex items-center justify-center relative overflow-hidden bg-background">
       
       {/* Abstract Background Elements */}
       <div className="absolute top-[-20%] left-[-10%] w-[50vw] h-[50vw] bg-primary/20 rounded-full blur-[120px] pointer-events-none mix-blend-screen" />
