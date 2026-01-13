@@ -9,7 +9,8 @@ import { MemoryCache } from '../utils/cache.ts';
 import { getRuntimeConfigValue } from '../utils/runtime-config.ts';
 
 function requireEnv(name: string): string {
-  const value = Bun.env[name] || getRuntimeConfigValue(name);
+  const raw = Bun.env[name] || getRuntimeConfigValue(name);
+  const value = raw ? String(raw).trim().replace(/^['"]|['"]$/g, '') : '';
   if (!value) {
     throw new Error(`${name} is not configured`);
   }

@@ -12,6 +12,7 @@ import NotificationsMenu from './components/NotificationsMenu';
 import AniListSetupModal from './components/AniListSetupModal';
 import DesktopTitleBar from './components/DesktopTitleBar';
 import { anilistApi } from './lib/anilist';
+import { getStoredToken } from './lib/api-client';
 import { Chapter } from './types';
 import { ThemeProvider, useTheme, themes } from './lib/theme';
 import { NotificationProvider, useNotification } from './lib/notifications';
@@ -254,15 +255,18 @@ const AppContent: React.FC = () => {
     };
   };
 
-  const resolveInitialState = (params: URLSearchParams) => {
+  const resolveInitialState = (
+    params: URLSearchParams,
+    options: { ignoreStored?: boolean } = {},
+  ) => {
     const historyState = window.history.state as NavState | null;
     if (historyState?.app) {
       return historyState;
     }
-    const storedState = loadStoredNavState();
+    const storedState = options.ignoreStored ? null : loadStoredNavState();
     const parsed = parseRouteFromParams(params);
     const merged = mergeReaderState(parsed, storedState);
-    if ((merged.view === 'home' && !merged.data) && storedState?.app) {
+    if ((merged.view === 'home' && !merged.data) && storedState?.app && !options.ignoreStored) {
       return {
         ...storedState,
         index: 0,
@@ -335,6 +339,13 @@ const AppContent: React.FC = () => {
     const params = new URLSearchParams(window.location.search);
     const token = params.get('token');
     const authError = params.get('error');
+    const storedToken = getStoredToken();
+    const ignoreStoredNav =
+      Boolean(token || authError) || window.location.pathname !== '/';
+
+    if (!token && storedToken && storedToken !== anilistApi.token) {
+      anilistApi.setToken(storedToken);
+    }
 
     if (token) {
       setIsVerifying(true);
@@ -346,7 +357,7 @@ const AppContent: React.FC = () => {
       params.delete('error');
     }
 
-    const initialState = resolveInitialState(params);
+    const initialState = resolveInitialState(params, { ignoreStored: ignoreStoredNav });
     setCurrentView(initialState.view);
     setViewData(initialState.data ?? null);
     historyIndexRef.current = initialState.index ?? 0;
@@ -505,15 +516,6 @@ const AppContent: React.FC = () => {
     setShowFilters(false);
   };
 
-  if (isVerifying) {
-    return (
-      <div className="min-h-screen bg-background flex flex-col items-center justify-center space-y-4">
-        <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-        <p className="text-gray-400 font-medium animate-pulse">Verifying with AniList...</p>
-      </div>
-    );
-  }
-
   const isDesktop =
     desktopApi.isAvailable &&
     !(typeof navigator !== 'undefined' && navigator.platform.toLowerCase().includes('mac'));
@@ -571,6 +573,15 @@ const AppContent: React.FC = () => {
       window.visualViewport?.removeEventListener('resize', setAppHeight);
     };
   }, [isDesktop]);
+
+  if (isVerifying) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center space-y-4">
+        <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+        <p className="text-gray-400 font-medium animate-pulse">Verifying with AniList...</p>
+      </div>
+    );
+  }
 
   return (
     <div

@@ -49,17 +49,7 @@ function getRequestOrigin(c: { req: { url: string; header: (name: string) => str
 function getAuthRedirectUri(c: { req: { url: string; header: (name: string) => string | undefined } }) {
   const requestOrigin = getRequestOrigin(c);
   const configured = Bun.env.ANILIST_REDIRECT_URI || getRuntimeConfigValue('ANILIST_REDIRECT_URI');
-  if (configured) {
-    try {
-      const configuredUrl = new URL(configured);
-      const requestUrl = new URL(requestOrigin);
-      if (configuredUrl.host === requestUrl.host) {
-        return configured;
-      }
-    } catch {
-      // Fall back to request origin.
-    }
-  }
+  if (configured) return configured;
   return `${requestOrigin}/api/auth/anilist/callback`;
 }
 

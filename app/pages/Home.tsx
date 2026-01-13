@@ -91,6 +91,15 @@ const Home: React.FC<HomeProps> = ({
   const restoredSearchKeyRef = useRef<string | null>(null);
   const isPhoneLayout = useMediaQuery('(max-width: 768px)');
 
+  const parseChapterNumber = (value?: string | number) => {
+    if (value === undefined || value === null) return null;
+    if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+    const cleaned = value.replace(/[^0-9.]/g, '');
+    if (!cleaned) return null;
+    const parsed = Number.parseFloat(cleaned);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
   // Check if filters are active (dirty)
   const isFiltersDirty = 
     globalFilters.format !== 'All' || 
@@ -549,11 +558,6 @@ const Home: React.FC<HomeProps> = ({
   const handleContinueClick = async (item: ContinueItem) => {
     const anilistId = item.anilistId || (item.source === 'AniList' ? item.id : undefined);
 
-    if (!item.chapterId) {
-      onNavigate('details', anilistId || item.id);
-      return;
-    }
-
     try {
       let providerDetails = null;
       const provider = isProviderSource(item.source) ? item.source : Providers.AsuraScans;
@@ -570,14 +574,35 @@ const Home: React.FC<HomeProps> = ({
         return;
       }
 
-      const chapterNum = typeof item.chapterNumber === 'string' ? parseFloat(item.chapterNumber) : item.chapterNumber;
+      let chapterId = item.chapterId;
+      const targetChapterNum = parseChapterNumber(item.chapterNumber);
+      let resolvedChapterNum = item.chapterNumber;
+
+      if (!chapterId && targetChapterNum !== null) {
+        const matched = providerDetails.chapters.find((chapter) => {
+          const chapterNum = parseChapterNumber(chapter.number);
+          if (chapterNum === null) return false;
+          return Math.abs(chapterNum - targetChapterNum) < 0.01;
+        });
+        if (matched) {
+          chapterId = matched.id;
+          resolvedChapterNum = matched.number;
+        }
+      }
+
+      if (!chapterId) {
+        onNavigate('details', anilistId || item.id);
+        return;
+      }
+
+      const chapterNum = parseChapterNumber(resolvedChapterNum);
       onNavigate('reader', {
-        chapterId: item.chapterId,
+        chapterId,
         seriesId: anilistId || item.id,
         anilistId: anilistId,
         providerSeriesId: providerDetails.id,
         providerMangaId: providerDetails.providerMangaId,
-        chapterNumber: !isNaN(Number(chapterNum)) ? chapterNum : undefined,
+        chapterNumber: chapterNum ?? undefined,
         chapters: providerDetails.chapters,
         seriesTitle: item.title,
         seriesImage: item.image,

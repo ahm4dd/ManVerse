@@ -678,9 +678,40 @@ async function createWindow() {
     },
   });
 
+  const normalizeAuthRedirect = (targetUrl) => {
+    try {
+      const parsed = new URL(targetUrl);
+      const base = new URL(uiUrl);
+      const hasAuthToken =
+        parsed.searchParams.has('token') || parsed.searchParams.get('error') === 'AUTH_ERROR';
+      const isAuthPath = parsed.pathname === '/auth/callback';
+      if (!hasAuthToken && !isAuthPath) return null;
+      if (parsed.origin === base.origin) return null;
+      parsed.protocol = base.protocol;
+      parsed.host = base.host;
+      return parsed.toString();
+    } catch {
+      return null;
+    }
+  };
+
   if (isDev) {
     win.webContents.openDevTools({ mode: 'detach' });
   }
+
+  win.webContents.on('will-redirect', (event, url) => {
+    const rewritten = normalizeAuthRedirect(url);
+    if (!rewritten) return;
+    event.preventDefault();
+    win.loadURL(rewritten);
+  });
+
+  win.webContents.on('will-navigate', (event, url) => {
+    const rewritten = normalizeAuthRedirect(url);
+    if (!rewritten) return;
+    event.preventDefault();
+    win.loadURL(rewritten);
+  });
 
   await win.loadURL(uiUrl);
   mainWindow = win;

@@ -594,9 +594,7 @@ export const anilistApi = {
   },
 
   async getLoginUrl() {
-    const redirectUri = `${API_URL}/api/auth/anilist/callback`;
-    const query = new URLSearchParams({ redirectUri });
-    const data = await apiRequest<{ authUrl: string }>(`/api/auth/anilist/login?${query}`, {
+    const data = await apiRequest<{ authUrl: string }>(`/api/auth/anilist/login`, {
       method: 'POST',
       skipAuth: true,
     });
