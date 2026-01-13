@@ -783,8 +783,16 @@ const Home: React.FC<HomeProps> = ({
                         <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">Your Watchlist</h3>
                         <h2 className="text-2xl font-bold text-white leading-none">Continue Reading</h2>
                      </div>
-                     <div className="text-xs text-gray-500 font-medium hidden sm:block">
-                        Drag to explore
+                     <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => onNavigate('library')}
+                          className="text-xs font-semibold text-primary hover:text-white transition-colors"
+                        >
+                          View library
+                        </button>
+                        <div className="text-xs text-gray-500 font-medium hidden sm:block">
+                          Drag to explore
+                        </div>
                      </div>
                   </div>
                   
@@ -825,7 +833,7 @@ const Home: React.FC<HomeProps> = ({
                               />
                           </div>
                         ))}
-                        <div className="w-[85vw] max-w-[320px] sm:w-[150px] aspect-[4/3] sm:aspect-video flex-shrink-0 snap-start">
+                        <div className="w-[70vw] max-w-[200px] h-[63.75vw] max-h-[240px] sm:w-[150px] sm:aspect-video sm:h-auto flex-shrink-0 snap-start">
                            <HistoryCard
                              isViewMore={true}
                              viewLabel="View Library"
@@ -850,8 +858,16 @@ const Home: React.FC<HomeProps> = ({
                         <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">Local Progress</h3>
                         <h2 className="text-2xl font-bold text-white leading-none">Recent Reads</h2>
                      </div>
-                     <div className="text-xs text-gray-500 font-medium hidden sm:block">
-                        Saved on this device
+                     <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => onNavigate('recent-reads')}
+                          className="text-xs font-semibold text-primary hover:text-white transition-colors"
+                        >
+                          View recent reads
+                        </button>
+                        <div className="text-xs text-gray-500 font-medium hidden sm:block">
+                          Saved on this device
+                        </div>
                      </div>
                   </div>
                   
@@ -892,7 +908,7 @@ const Home: React.FC<HomeProps> = ({
                               />
                           </div>
                         ))}
-                        <div className="w-[85vw] max-w-[320px] sm:w-[150px] aspect-[4/3] sm:aspect-video flex-shrink-0 snap-start">
+                        <div className="w-[70vw] max-w-[200px] h-[63.75vw] max-h-[240px] sm:w-[150px] sm:aspect-video sm:h-auto flex-shrink-0 snap-start">
                            <HistoryCard
                              isViewMore={true}
                              viewLabel="View Recent Reads"
