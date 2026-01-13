@@ -786,7 +786,7 @@ const Home: React.FC<HomeProps> = ({
                      <div className="flex items-center gap-3">
                         <button
                           onClick={() => onNavigate('library')}
-                          className="text-xs font-semibold text-primary hover:text-white transition-colors"
+                          className="inline-flex items-center gap-2 rounded-full border border-primary/40 bg-primary/15 px-3 py-1.5 text-xs font-semibold text-primary shadow-[0_0_12px_rgba(212,175,55,0.15)] transition hover:bg-primary/25 hover:text-white"
                         >
                           View library
                         </button>
@@ -861,7 +861,7 @@ const Home: React.FC<HomeProps> = ({
                      <div className="flex items-center gap-3">
                         <button
                           onClick={() => onNavigate('recent-reads')}
-                          className="text-xs font-semibold text-primary hover:text-white transition-colors"
+                          className="inline-flex items-center gap-2 rounded-full border border-primary/40 bg-primary/15 px-3 py-1.5 text-xs font-semibold text-primary shadow-[0_0_12px_rgba(212,175,55,0.15)] transition hover:bg-primary/25 hover:text-white"
                         >
                           View recent reads
                         </button>

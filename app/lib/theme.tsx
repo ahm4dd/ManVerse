@@ -9,6 +9,8 @@ export type ThemeOverrides = {
   surface: string;
   surfaceHighlight: string;
   textMain: string;
+  contrastMode: 'dark' | 'light' | 'custom';
+  contrastColor: string;
 };
 
 interface ThemeContextType {
@@ -16,6 +18,8 @@ interface ThemeContextType {
   setTheme: (theme: Theme) => void;
   themeOverrides: ThemeOverrides;
   setThemeOverrides: (overrides: ThemeOverrides) => void;
+  themePreview: ThemeOverrides | null;
+  setThemePreview: (overrides: ThemeOverrides | null) => void;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
@@ -28,6 +32,8 @@ const DEFAULT_THEME_OVERRIDES: ThemeOverrides = {
   surface: '#141414',
   surfaceHighlight: '#282828',
   textMain: '#fafafa',
+  contrastMode: 'dark',
+  contrastColor: '#000000',
 };
 
 const normalizeHex = (value: string) => {
@@ -100,7 +106,13 @@ const applyOverrides = (root: HTMLElement, overrides: ThemeOverrides) => {
   const textMuted = mixColors(textMain, background, 0.5);
   const textFaint = mixColors(textMain, background, 0.65);
   const secondary = textSecondary;
-  const bgContrast = luminance(background) > 0.4 ? [0, 0, 0] : [255, 255, 255];
+  const bgContrast = (() => {
+    if (overrides.contrastMode === 'light') return [255, 255, 255];
+    if (overrides.contrastMode === 'custom') {
+      return hexToRgb(overrides.contrastColor) || [0, 0, 0];
+    }
+    return [0, 0, 0];
+  })();
 
   root.style.setProperty('--c-primary', rgbToCss(primary));
   root.style.setProperty('--c-primary-hover', rgbToCss(primaryHover));
@@ -139,9 +151,11 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return DEFAULT_THEME_OVERRIDES;
     }
   });
+  const [themePreview, setThemePreview] = useState<ThemeOverrides | null>(null);
 
   useEffect(() => {
     const root = document.documentElement;
+    const activeOverrides = themePreview ?? themeOverrides;
     // Remove all previous theme classes
     root.classList.remove(
       'theme-cosmic', 
@@ -153,12 +167,23 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     // Add new theme class
     root.classList.add(`theme-${theme}`);
     localStorage.setItem('manverse_theme', theme);
-    localStorage.setItem(THEME_OVERRIDES_KEY, JSON.stringify(themeOverrides));
-    applyOverrides(root, themeOverrides);
-  }, [theme, themeOverrides]);
+    if (!themePreview) {
+      localStorage.setItem(THEME_OVERRIDES_KEY, JSON.stringify(themeOverrides));
+    }
+    applyOverrides(root, activeOverrides);
+  }, [theme, themeOverrides, themePreview]);
 
   return (
-    <ThemeContext.Provider value={{ theme, setTheme, themeOverrides, setThemeOverrides }}>
+    <ThemeContext.Provider
+      value={{
+        theme,
+        setTheme,
+        themeOverrides,
+        setThemeOverrides,
+        themePreview,
+        setThemePreview,
+      }}
+    >
       {children}
     </ThemeContext.Provider>
   );

@@ -13,7 +13,7 @@ type SettingsSection = 'account' | 'app' | 'hosting' | 'themes';
 type CustomTheme = {
   id: string;
   name: string;
-  overrides: Omit<ThemeOverrides, 'enabled'>;
+  overrides: Partial<Omit<ThemeOverrides, 'enabled'>>;
 };
 
 const SETTINGS_SECTIONS: Array<{
@@ -46,7 +46,13 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup }) => {
     redirectUri?: string;
   } | null>(null);
   const [activeSection, setActiveSection] = useState<SettingsSection>('account');
-  const { theme, setTheme, themeOverrides, setThemeOverrides } = useTheme();
+  const {
+    theme,
+    setTheme,
+    themeOverrides,
+    setThemeOverrides,
+    setThemePreview,
+  } = useTheme();
   const [hostingConfig, setHostingConfig] = useState({
     host: '',
     apiPort: '3001',
@@ -56,6 +62,9 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup }) => {
   const [customThemes, setCustomThemes] = useState<CustomTheme[]>([]);
   const [customThemeName, setCustomThemeName] = useState('');
   const [editingThemeId, setEditingThemeId] = useState<string | null>(null);
+  const [draftOverrides, setDraftOverrides] = useState<ThemeOverrides>(themeOverrides);
+  const [overridesDirty, setOverridesDirty] = useState(false);
+  const [pendingDeleteTheme, setPendingDeleteTheme] = useState<CustomTheme | null>(null);
 
   useEffect(() => {
     if (!desktopApi.isAvailable) return;
@@ -141,6 +150,25 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup }) => {
     localStorage.setItem(CUSTOM_THEMES_KEY, JSON.stringify(customThemes));
   }, [customThemes]);
 
+  useEffect(() => {
+    if (overridesDirty) return;
+    setDraftOverrides(themeOverrides);
+  }, [themeOverrides, overridesDirty]);
+
+  useEffect(() => {
+    if (!overridesDirty) {
+      setThemePreview(null);
+      return;
+    }
+    setThemePreview(draftOverrides);
+  }, [draftOverrides, overridesDirty, setThemePreview]);
+
+  useEffect(() => {
+    return () => {
+      setThemePreview(null);
+    };
+  }, [setThemePreview]);
+
   const toggleSetting = async (key: keyof DesktopSettings) => {
     if (!desktopApi.isAvailable || !desktopSettings) return;
     const next = await desktopApi.updateSetting(key, !desktopSettings[key]);
@@ -203,13 +231,11 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup }) => {
     return { ui, api };
   }, [hostingConfig]);
 
-  const themeOptions = useMemo(() => {
-    return themes.map((option) =>
-      option.id === 'custom'
-        ? { ...option, color: themeOverrides.primary }
-        : option,
-    );
-  }, [themeOverrides.primary]);
+  const displayOverrides = overridesDirty ? draftOverrides : themeOverrides;
+  const baseThemeOptions = useMemo(
+    () => themes.filter((option) => option.id !== 'custom'),
+    [],
+  );
 
   const persistCustomTheme = (next: CustomTheme[]) => {
     setCustomThemes(next);
@@ -409,6 +435,11 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup }) => {
           your main machine.
         </p>
 
+        <div className="mt-4 rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+          Run these steps on the host machine (desktop/server). Don’t try to set this up from a
+          phone or tablet.
+        </div>
+
         <div className="mt-4 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
           This exposes the app on your local network. Do not forward ports to the public internet
           unless you know exactly what you are doing.
@@ -524,27 +555,59 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup }) => {
   );
 
   const handleOverrideChange = (key: keyof ThemeOverrides, value: string | boolean) => {
-    setThemeOverrides({ ...themeOverrides, [key]: value });
+    setDraftOverrides((prev) => ({ ...prev, [key]: value }));
+    setOverridesDirty(true);
+    if (theme !== 'custom') {
+      setTheme('custom');
+    }
   };
 
-  const captureOverrides = (): Omit<ThemeOverrides, 'enabled'> => ({
-    primary: themeOverrides.primary,
-    background: themeOverrides.background,
-    surface: themeOverrides.surface,
-    surfaceHighlight: themeOverrides.surfaceHighlight,
-    textMain: themeOverrides.textMain,
+  const captureOverrides = (source: ThemeOverrides = draftOverrides): Omit<ThemeOverrides, 'enabled'> => ({
+    primary: source.primary,
+    background: source.background,
+    surface: source.surface,
+    surfaceHighlight: source.surfaceHighlight,
+    textMain: source.textMain,
+    contrastMode: source.contrastMode,
+    contrastColor: source.contrastColor,
   });
 
+  const resolveCustomOverrides = (
+    overrides?: Partial<Omit<ThemeOverrides, 'enabled'>>,
+  ): ThemeOverrides => ({
+    ...themeOverrides,
+    ...overrides,
+    enabled: true,
+  });
+
+  const handleApplyOverrides = () => {
+    setThemeOverrides(draftOverrides);
+    setOverridesDirty(false);
+    setThemePreview(null);
+  };
+
+  const handleDiscardOverrides = () => {
+    setDraftOverrides(themeOverrides);
+    setOverridesDirty(false);
+    setThemePreview(null);
+  };
+
   const handleApplyCustomTheme = (customTheme: CustomTheme) => {
+    const overrides = resolveCustomOverrides(customTheme.overrides);
     setTheme('custom');
-    setThemeOverrides({ ...customTheme.overrides, enabled: true });
+    setThemeOverrides(overrides);
+    setDraftOverrides(overrides);
+    setOverridesDirty(false);
+    setThemePreview(null);
   };
 
   const handleStartEditTheme = (customTheme: CustomTheme) => {
+    const overrides = resolveCustomOverrides(customTheme.overrides);
     setEditingThemeId(customTheme.id);
     setCustomThemeName(customTheme.name);
     setTheme('custom');
-    setThemeOverrides({ ...customTheme.overrides, enabled: true });
+    setDraftOverrides(overrides);
+    setOverridesDirty(true);
   };
 
   const handleSaveCustomTheme = () => {
@@ -564,26 +627,46 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup }) => {
     setCustomThemeName('');
   };
 
-  const handleDeleteCustomTheme = (customThemeId: string) => {
-    const next = customThemes.filter((theme) => theme.id !== customThemeId);
+  const handleDeleteCustomTheme = (customTheme: CustomTheme) => {
+    setPendingDeleteTheme(customTheme);
+  };
+
+  const confirmDeleteCustomTheme = () => {
+    if (!pendingDeleteTheme) return;
+    const next = customThemes.filter((theme) => theme.id !== pendingDeleteTheme.id);
     persistCustomTheme(next);
-    if (editingThemeId === customThemeId) {
+    if (editingThemeId === pendingDeleteTheme.id) {
       setEditingThemeId(null);
       setCustomThemeName('');
     }
+    setPendingDeleteTheme(null);
   };
 
   const renderThemesSection = () => (
     <div className="space-y-6">
       <div className="bg-surface border border-white/10 rounded-2xl p-6 shadow-xl">
-        <h2 className="text-xl font-bold text-white">Themes</h2>
-        <p className="text-base text-gray-300 mt-2">Pick a theme. Changes apply instantly.</p>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-xl font-bold text-white">Themes</h2>
+            <p className="text-base text-gray-300 mt-2">
+              Pick a base theme, then customize every color in real time.
+            </p>
+          </div>
+          {overridesDirty && (
+            <div className="text-xs font-semibold text-amber-200 bg-amber-500/10 border border-amber-500/30 px-3 py-1.5 rounded-full">
+              Previewing changes
+            </div>
+          )}
+        </div>
 
-        <div className="mt-6 grid gap-4 sm:grid-cols-2">
-          {themeOptions.map((option) => (
+        <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {baseThemeOptions.map((option) => (
             <button
               key={option.id}
-              onClick={() => setTheme(option.id as Theme)}
+              onClick={() => {
+                setTheme(option.id as Theme);
+                setThemePreview(null);
+              }}
               className={`rounded-2xl border px-4 py-5 text-left transition ${
                 theme === option.id
                   ? 'border-primary bg-primary/10'
@@ -593,7 +676,9 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup }) => {
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-lg font-bold text-white">{option.name}</div>
-                  <div className="text-xs text-gray-400 mt-1">Primary: {option.color}</div>
+                  <div className="text-xs text-gray-400 mt-1">
+                    Primary: {option.color.toUpperCase()}
+                  </div>
                 </div>
                 <div
                   className="h-8 w-8 rounded-full border border-white/20"
@@ -606,117 +691,81 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup }) => {
             </button>
           ))}
         </div>
-      </div>
-      <div className="bg-surface border border-white/10 rounded-2xl p-6 shadow-xl">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h3 className="text-lg font-bold text-white">Custom theme overrides</h3>
-            <p className="text-sm text-gray-400 mt-1">
-              Customize your palette without slowing anything down. Overrides apply on top of the selected theme.
-            </p>
+
+        <div className="my-6 flex items-center gap-3">
+          <div className="h-px flex-1 bg-white/10" />
+          <div className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">
+            Custom themes
           </div>
-          <button
-            onClick={() => handleOverrideChange('enabled', !themeOverrides.enabled)}
-            className={`px-4 py-2 rounded-lg text-sm font-bold border transition-colors ${
-              themeOverrides.enabled
-                ? 'bg-primary text-black border-primary'
-                : 'bg-surface text-gray-300 border-white/10 hover:text-white'
+          <div className="h-px flex-1 bg-white/10" />
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div
+            className={`rounded-2xl border px-4 py-5 text-left transition ${
+              theme === 'custom'
+                ? 'border-primary bg-primary/10'
+                : 'border-white/10 bg-surfaceHighlight/40 hover:bg-white/10'
             }`}
           >
-            {themeOverrides.enabled ? 'Enabled' : 'Disabled'}
-          </button>
-        </div>
-
-        <div className="mt-5 grid gap-4 md:grid-cols-2">
-          {[
-            { key: 'primary', label: 'Primary', value: themeOverrides.primary },
-            { key: 'background', label: 'Background', value: themeOverrides.background },
-            { key: 'surface', label: 'Surface', value: themeOverrides.surface },
-            { key: 'surfaceHighlight', label: 'Surface highlight', value: themeOverrides.surfaceHighlight },
-            { key: 'textMain', label: 'Text', value: themeOverrides.textMain, full: true },
-          ].map((item) => (
-            <label
-              key={item.key}
-              className={`flex items-center justify-between rounded-xl border border-white/10 bg-surfaceHighlight/40 px-4 py-3 text-sm text-gray-200 ${
-                item.full ? 'md:col-span-2' : ''
-              }`}
-            >
-              <div className="flex flex-col gap-1">
-                <span className="font-semibold">{item.label}</span>
-                <span className="text-xs font-mono text-gray-400">{item.value.toUpperCase()}</span>
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-lg font-bold text-white">Custom</div>
+                <div className="text-xs text-gray-400 mt-1">
+                  Primary: {displayOverrides.primary.toUpperCase()}
+                </div>
               </div>
-              <input
-                type="color"
-                value={item.value}
-                onChange={(e) =>
-                  handleOverrideChange(item.key as keyof ThemeOverrides, e.target.value)
-                }
-                className="h-8 w-12 rounded border border-white/20 bg-transparent"
-                disabled={!themeOverrides.enabled}
+              <div
+                className="h-8 w-8 rounded-full border border-white/20"
+                style={{ backgroundColor: displayOverrides.primary }}
               />
-            </label>
-          ))}
-        </div>
-
-        <div className="mt-4 text-xs text-gray-500">
-          Tip: use the Custom theme card as your base if you want full control.
-        </div>
-      </div>
-
-      <div className="bg-surface border border-white/10 rounded-2xl p-6 shadow-xl">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h3 className="text-lg font-bold text-white">Custom themes</h3>
-            <p className="text-sm text-gray-400 mt-1">
-              Save, edit, and reuse multiple custom palettes.
-            </p>
+            </div>
+            <div className="mt-4 flex items-center gap-2">
+              <button
+                onClick={() => setTheme('custom')}
+                className="text-xs font-semibold text-primary hover:text-white transition"
+              >
+                Use current
+              </button>
+              <button
+                onClick={() => {
+                  setTheme('custom');
+                  setOverridesDirty(false);
+                  setDraftOverrides(themeOverrides);
+                }}
+                className="text-xs font-semibold text-gray-300 hover:text-white transition"
+              >
+                Customize
+              </button>
+            </div>
           </div>
-          <button
-            onClick={handleSaveCustomTheme}
-            className="px-4 py-2 rounded-lg text-sm font-bold bg-primary text-black shadow-lg shadow-primary/30 transition hover:brightness-110"
-          >
-            {editingThemeId ? 'Save changes' : 'Save as new'}
-          </button>
-        </div>
 
-        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <input
-            value={customThemeName}
-            onChange={(e) => setCustomThemeName(e.target.value)}
-            placeholder="Theme name"
-            className="w-full sm:max-w-xs rounded-lg border border-white/10 bg-surfaceHighlight px-3 py-2.5 text-sm text-white focus:outline-none focus:border-primary"
-          />
-          {editingThemeId && (
-            <button
-              onClick={() => {
-                setEditingThemeId(null);
-                setCustomThemeName('');
-              }}
-              className="text-xs text-gray-400 hover:text-white transition"
-            >
-              Cancel edit
-            </button>
+          {customThemes.length === 0 && (
+            <div className="rounded-2xl border border-white/10 bg-surfaceHighlight/20 px-4 py-5 text-left text-sm text-gray-400">
+              No custom themes saved yet. Build one below.
+            </div>
           )}
-        </div>
 
-        {customThemes.length === 0 ? (
-          <div className="mt-4 text-sm text-gray-500">
-            No custom themes saved yet. Tweak the overrides above and click “Save as new”.
-          </div>
-        ) : (
-          <div className="mt-5 grid gap-3 md:grid-cols-2">
-            {customThemes.map((customTheme) => (
+          {customThemes.map((customTheme) => {
+            const resolved = resolveCustomOverrides(customTheme.overrides);
+            return (
               <div
                 key={customTheme.id}
-                className="rounded-xl border border-white/10 bg-surfaceHighlight/40 px-4 py-4 flex items-center justify-between"
+                className="rounded-2xl border border-white/10 bg-surfaceHighlight/40 px-4 py-5 text-left transition hover:bg-white/10"
               >
-                <div>
-                  <div className="text-sm font-semibold text-white">{customTheme.name}</div>
-                  <div className="text-xs text-gray-400 mt-1">
-                    Primary {customTheme.overrides.primary.toUpperCase()}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-lg font-bold text-white">{customTheme.name}</div>
+                    <div className="text-xs text-gray-400 mt-1">
+                      Primary: {resolved.primary.toUpperCase()}
+                    </div>
                   </div>
+                  <div
+                    className="h-8 w-8 rounded-full border border-white/20"
+                    style={{ backgroundColor: resolved.primary }}
+                  />
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="mt-4 flex items-center gap-2 flex-wrap">
                   <button
                     onClick={() => handleApplyCustomTheme(customTheme)}
                     className="text-xs font-semibold text-primary hover:text-white transition"
@@ -730,17 +779,184 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup }) => {
                     Edit
                   </button>
                   <button
-                    onClick={() => handleDeleteCustomTheme(customTheme.id)}
+                    onClick={() => handleDeleteCustomTheme(customTheme)}
                     className="text-xs font-semibold text-red-300 hover:text-red-100 transition"
                   >
                     Delete
                   </button>
                 </div>
               </div>
+            );
+          })}
+        </div>
+
+        <div className="mt-8 rounded-2xl border border-white/10 bg-surfaceHighlight/30 p-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 className="text-lg font-bold text-white">Theme builder</h3>
+              <p className="text-sm text-gray-400 mt-1">
+                Adjust colors live. Changes are previewed until you apply them.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={handleDiscardOverrides}
+                disabled={!overridesDirty}
+                className="px-3 py-2 rounded-lg text-xs font-semibold border border-white/10 text-gray-300 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Reset
+              </button>
+              <button
+                onClick={handleApplyOverrides}
+                disabled={!overridesDirty}
+                className="px-4 py-2 rounded-lg text-xs font-bold bg-primary text-black shadow-lg shadow-primary/30 transition hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Apply changes
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="text-sm text-gray-300">
+              Overrides are {draftOverrides.enabled ? 'enabled' : 'disabled'}.
+            </div>
+            <button
+              onClick={() => handleOverrideChange('enabled', !draftOverrides.enabled)}
+              className={`px-4 py-2 rounded-lg text-sm font-bold border transition-colors ${
+                draftOverrides.enabled
+                  ? 'bg-primary text-black border-primary'
+                  : 'bg-surface text-gray-300 border-white/10 hover:text-white'
+              }`}
+            >
+              {draftOverrides.enabled ? 'Enabled' : 'Disabled'}
+            </button>
+          </div>
+
+          <div className="mt-5 grid gap-4 md:grid-cols-2">
+            {[
+              { key: 'primary', label: 'Primary', value: draftOverrides.primary },
+              { key: 'background', label: 'Background', value: draftOverrides.background },
+              { key: 'surface', label: 'Surface', value: draftOverrides.surface },
+              { key: 'surfaceHighlight', label: 'Surface highlight', value: draftOverrides.surfaceHighlight },
+              { key: 'textMain', label: 'Text', value: draftOverrides.textMain, full: true },
+            ].map((item) => (
+              <label
+                key={item.key}
+                className={`flex items-center justify-between rounded-xl border border-white/10 bg-surfaceHighlight/40 px-4 py-3 text-sm text-gray-200 ${
+                  item.full ? 'md:col-span-2' : ''
+                }`}
+              >
+                <div className="flex flex-col gap-1">
+                  <span className="font-semibold">{item.label}</span>
+                  <span className="text-xs font-mono text-gray-400">{item.value.toUpperCase()}</span>
+                </div>
+                <input
+                  type="color"
+                  value={item.value}
+                  onInput={(e) =>
+                    handleOverrideChange(item.key as keyof ThemeOverrides, e.currentTarget.value)
+                  }
+                  onChange={(e) =>
+                    handleOverrideChange(item.key as keyof ThemeOverrides, e.target.value)
+                  }
+                  className="h-8 w-12 rounded border border-white/20 bg-transparent"
+                />
+              </label>
             ))}
           </div>
-        )}
+
+          <div className="mt-5 rounded-xl border border-white/10 bg-surfaceHighlight/40 px-4 py-4">
+            <div className="text-sm font-semibold text-white">Shadow contrast</div>
+            <p className="text-xs text-gray-400 mt-1">
+              Adjust the dark/light shadow bias for cards and overlays.
+            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              {(['dark', 'light', 'custom'] as const).map((mode) => (
+                <button
+                  key={mode}
+                  onClick={() => handleOverrideChange('contrastMode', mode)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+                    draftOverrides.contrastMode === mode
+                      ? 'bg-primary text-black border-primary'
+                      : 'bg-surface text-gray-300 border-white/10 hover:text-white'
+                  }`}
+                >
+                  {mode === 'dark' ? 'Dark' : mode === 'light' ? 'Light' : 'Custom'}
+                </button>
+              ))}
+              {draftOverrides.contrastMode === 'custom' && (
+                <div className="flex items-center gap-3 rounded-full border border-white/10 bg-surface px-3 py-1.5">
+                  <span className="text-xs font-mono text-gray-300">
+                    {draftOverrides.contrastColor.toUpperCase()}
+                  </span>
+                  <input
+                    type="color"
+                    value={draftOverrides.contrastColor}
+                    onInput={(e) => handleOverrideChange('contrastColor', e.currentTarget.value)}
+                    onChange={(e) => handleOverrideChange('contrastColor', e.target.value)}
+                    className="h-6 w-8 rounded border border-white/20 bg-transparent"
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <input
+              value={customThemeName}
+              onChange={(e) => setCustomThemeName(e.target.value)}
+              placeholder="Theme name"
+              className="w-full sm:max-w-xs rounded-lg border border-white/10 bg-surfaceHighlight px-3 py-2.5 text-sm text-white focus:outline-none focus:border-primary"
+            />
+            <div className="flex flex-wrap items-center gap-2">
+              {editingThemeId && (
+                <button
+                  onClick={() => {
+                    setEditingThemeId(null);
+                    setCustomThemeName('');
+                    setOverridesDirty(false);
+                    setDraftOverrides(themeOverrides);
+                  }}
+                  className="text-xs text-gray-400 hover:text-white transition"
+                >
+                  Cancel edit
+                </button>
+              )}
+              <button
+                onClick={handleSaveCustomTheme}
+                className="px-4 py-2 rounded-lg text-sm font-bold bg-primary text-black shadow-lg shadow-primary/30 transition hover:brightness-110"
+              >
+                {editingThemeId ? 'Save changes' : 'Save as new'}
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
+
+      {pendingDeleteTheme && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-surface p-6 shadow-2xl">
+            <h3 className="text-lg font-bold text-white">Delete theme?</h3>
+            <p className="text-sm text-gray-400 mt-2">
+              This will remove “{pendingDeleteTheme.name}” permanently.
+            </p>
+            <div className="mt-6 flex items-center justify-end gap-3">
+              <button
+                onClick={() => setPendingDeleteTheme(null)}
+                className="px-4 py-2 rounded-lg text-sm font-semibold text-gray-300 border border-white/10 hover:text-white"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDeleteCustomTheme}
+                className="px-4 py-2 rounded-lg text-sm font-semibold bg-red-500 text-white hover:bg-red-400"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 

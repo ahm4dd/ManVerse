@@ -41,16 +41,16 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
   if (isViewMore) {
     return (
       <div 
-        className="relative h-full w-full rounded-xl border border-white/10 bg-surfaceHighlight/30 flex flex-col items-center justify-center cursor-pointer hover:bg-white/5 transition-colors group aspect-video"
+        className="relative h-full w-full rounded-xl border border-primary/30 bg-gradient-to-br from-primary/10 via-surfaceHighlight/30 to-surface flex flex-col items-center justify-center cursor-pointer hover:border-primary/60 hover:bg-primary/10 transition-colors group aspect-video"
         onClick={() => {
           if (disableClick) return;
           onClick && onClick(item);
         }}
       >
-        <div className="w-12 h-12 rounded-full bg-surfaceHighlight flex items-center justify-center mb-3 group-hover:scale-110 transition-transform border border-white/5 shadow-lg">
-           <span className="text-gray-400 group-hover:text-white transition-colors">View</span>
+        <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform border border-primary/30 shadow-lg shadow-primary/20">
+           <span className="text-primary group-hover:text-white transition-colors">View</span>
         </div>
-        <span className="text-sm font-bold text-gray-400 group-hover:text-white transition-colors">
+        <span className="text-sm font-bold text-primary/80 group-hover:text-white transition-colors">
           {viewLabel || 'View Library'}
         </span>
       </div>
