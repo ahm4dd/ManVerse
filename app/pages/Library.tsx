@@ -465,7 +465,7 @@ const Library: React.FC<LibraryProps> = ({ onNavigate, user }) => {
       </div>
 
       {/* 2. Navigation Tabs */}
-      <div className="bg-surface/80 backdrop-blur sticky top-16 z-30 border-b border-white/5 px-4 md:px-8">
+      <div className="bg-surface/80 backdrop-blur border-b border-white/5 px-4 md:px-8">
          <div className="flex gap-8">
             {['Overview', 'Manga List', 'Stats', 'Offline'].map(tab => (
                <button 

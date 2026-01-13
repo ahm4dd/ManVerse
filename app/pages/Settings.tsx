@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft } from '../components/Icons';
 import { desktopApi, type DesktopSettings, type UpdateStatus } from '../lib/desktop';
 import { API_URL, apiRequest } from '../lib/api-client';
-import { useTheme, themes, type Theme } from '../lib/theme';
+import { useTheme, themes, type Theme, type ThemeOverrides } from '../lib/theme';
 
 interface SettingsProps {
   onBack: () => void;
@@ -40,7 +40,7 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup }) => {
     redirectUri?: string;
   } | null>(null);
   const [activeSection, setActiveSection] = useState<SettingsSection>('account');
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, themeOverrides, setThemeOverrides } = useTheme();
   const [hostingConfig, setHostingConfig] = useState({
     host: '',
     apiPort: '3001',
@@ -369,6 +369,20 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup }) => {
           your main machine.
         </p>
 
+        <div className="mt-4 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+          This exposes the app on your local network. Do not forward ports to the public internet
+          unless you know exactly what you are doing.
+          <a
+            className="ml-2 text-amber-100 underline underline-offset-2 hover:text-white"
+            href="https://github.com/ahm4dd/ManVerse/blob/main/docs/configuration.md#self-hosting"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Open the full guide
+          </a>
+          .
+        </div>
+
         {desktopApi.isAvailable && (
           <div className="mt-4 rounded-xl border border-white/10 bg-surfaceHighlight/40 px-4 py-3 text-sm text-gray-300">
             The desktop app runs locally by default. For LAN access, use the web build and the
@@ -469,6 +483,10 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup }) => {
     </div>
   );
 
+  const handleOverrideChange = (key: keyof ThemeOverrides, value: string | boolean) => {
+    setThemeOverrides({ ...themeOverrides, [key]: value });
+  };
+
   const renderThemesSection = () => (
     <div className="space-y-6">
       <div className="bg-surface border border-white/10 rounded-2xl p-6 shadow-xl">
@@ -501,6 +519,83 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup }) => {
               )}
             </button>
           ))}
+        </div>
+      </div>
+      <div className="bg-surface border border-white/10 rounded-2xl p-6 shadow-xl">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="text-lg font-bold text-white">Custom theme overrides</h3>
+            <p className="text-sm text-gray-400 mt-1">
+              Customize your palette without slowing anything down. Overrides apply on top of the selected theme.
+            </p>
+          </div>
+          <button
+            onClick={() => handleOverrideChange('enabled', !themeOverrides.enabled)}
+            className={`px-4 py-2 rounded-lg text-sm font-bold border transition-colors ${
+              themeOverrides.enabled
+                ? 'bg-primary text-black border-primary'
+                : 'bg-surface text-gray-300 border-white/10 hover:text-white'
+            }`}
+          >
+            {themeOverrides.enabled ? 'Enabled' : 'Disabled'}
+          </button>
+        </div>
+
+        <div className="mt-5 grid gap-4 md:grid-cols-2">
+          <label className="flex items-center justify-between rounded-xl border border-white/10 bg-surfaceHighlight/40 px-4 py-3 text-sm text-gray-200">
+            Primary
+            <input
+              type="color"
+              value={themeOverrides.primary}
+              onChange={(e) => handleOverrideChange('primary', e.target.value)}
+              className="h-8 w-12 rounded border border-white/20 bg-transparent"
+              disabled={!themeOverrides.enabled}
+            />
+          </label>
+          <label className="flex items-center justify-between rounded-xl border border-white/10 bg-surfaceHighlight/40 px-4 py-3 text-sm text-gray-200">
+            Background
+            <input
+              type="color"
+              value={themeOverrides.background}
+              onChange={(e) => handleOverrideChange('background', e.target.value)}
+              className="h-8 w-12 rounded border border-white/20 bg-transparent"
+              disabled={!themeOverrides.enabled}
+            />
+          </label>
+          <label className="flex items-center justify-between rounded-xl border border-white/10 bg-surfaceHighlight/40 px-4 py-3 text-sm text-gray-200">
+            Surface
+            <input
+              type="color"
+              value={themeOverrides.surface}
+              onChange={(e) => handleOverrideChange('surface', e.target.value)}
+              className="h-8 w-12 rounded border border-white/20 bg-transparent"
+              disabled={!themeOverrides.enabled}
+            />
+          </label>
+          <label className="flex items-center justify-between rounded-xl border border-white/10 bg-surfaceHighlight/40 px-4 py-3 text-sm text-gray-200">
+            Surface highlight
+            <input
+              type="color"
+              value={themeOverrides.surfaceHighlight}
+              onChange={(e) => handleOverrideChange('surfaceHighlight', e.target.value)}
+              className="h-8 w-12 rounded border border-white/20 bg-transparent"
+              disabled={!themeOverrides.enabled}
+            />
+          </label>
+          <label className="flex items-center justify-between rounded-xl border border-white/10 bg-surfaceHighlight/40 px-4 py-3 text-sm text-gray-200 md:col-span-2">
+            Text
+            <input
+              type="color"
+              value={themeOverrides.textMain}
+              onChange={(e) => handleOverrideChange('textMain', e.target.value)}
+              className="h-8 w-12 rounded border border-white/20 bg-transparent"
+              disabled={!themeOverrides.enabled}
+            />
+          </label>
+        </div>
+
+        <div className="mt-4 text-xs text-gray-500">
+          Tip: use the Custom theme card as your base if you want full control.
         </div>
       </div>
     </div>

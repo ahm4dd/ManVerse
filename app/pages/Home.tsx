@@ -825,7 +825,7 @@ const Home: React.FC<HomeProps> = ({
                               />
                           </div>
                         ))}
-                        <div className="w-[70vw] max-w-[200px] sm:w-[150px] aspect-[4/3] sm:aspect-video flex-shrink-0 snap-start">
+                        <div className="w-[85vw] max-w-[320px] sm:w-[150px] aspect-[4/3] sm:aspect-video flex-shrink-0 snap-start">
                            <HistoryCard
                              isViewMore={true}
                              viewLabel="View Library"
@@ -892,7 +892,7 @@ const Home: React.FC<HomeProps> = ({
                               />
                           </div>
                         ))}
-                        <div className="w-[70vw] max-w-[200px] sm:w-[150px] aspect-[4/3] sm:aspect-video flex-shrink-0 snap-start">
+                        <div className="w-[85vw] max-w-[320px] sm:w-[150px] aspect-[4/3] sm:aspect-video flex-shrink-0 snap-start">
                            <HistoryCard
                              isViewMore={true}
                              viewLabel="View Recent Reads"

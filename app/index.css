@@ -78,6 +78,24 @@
   --c-text-faint: 90 90 90;
 }
 
+/* 5. CUSTOM (Base values, overridden in runtime) */
+.theme-custom {
+  --c-background: 5 5 5;
+  --c-surface: 20 20 20;
+  --c-surface-highlight: 40 40 40;
+  --c-primary: 212 175 55;
+  --c-primary-hover: 240 210 100;
+  --c-on-primary: 0 0 0;
+  --c-secondary: 192 192 192;
+
+  --c-text-main: 250 250 250;
+  --c-bg-contrast: 0 0 0;
+
+  --c-text-secondary: 210 210 210;
+  --c-text-muted: 130 130 130;
+  --c-text-faint: 90 90 90;
+}
+
 html,
 body {
   background-color: rgb(var(--c-background));
