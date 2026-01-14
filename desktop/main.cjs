@@ -53,9 +53,10 @@ const normalizeHost = (raw, fallbackHost, fallbackPort) => {
 const defaultUiHost = '127.0.0.1';
 const defaultUiPort = Number(process.env.MANVERSE_UI_PORT || 3000);
 const normalizedUi = normalizeHost(process.env.MANVERSE_UI_HOST, defaultUiHost, defaultUiPort);
-const uiHost = normalizedUi.host;
+let uiBindHost = normalizedUi.host;
+let uiAdvertisedHost = normalizedUi.host;
 let uiPort = normalizedUi.port;
-let uiUrl = `http://${uiHost}:${uiPort}`;
+let uiUrl = `http://${uiAdvertisedHost}:${uiPort}`;
 const defaultRedirectUri = `http://localhost:${apiPort}/api/auth/anilist/callback`;
 
 const getBundledBunPath = () => {
@@ -180,6 +181,8 @@ const defaultSettings = {
   anilistClientId: '',
   anilistClientSecret: '',
   anilistRedirectUri: '',
+  lanAccessEnabled: false,
+  lanHost: '',
 };
 let appSettings = null;
 let notifierTimer = null;
@@ -239,6 +242,66 @@ function saveSettings(settings) {
   } catch {
     // ignore
   }
+}
+
+function formatHostForUrl(host) {
+  if (!host) return host;
+  if (host.startsWith('[') && host.endsWith(']')) return host;
+  return host.includes(':') ? `[${host}]` : host;
+}
+
+function buildUrl(host, port) {
+  return `http://${formatHostForUrl(host)}:${port}`;
+}
+
+function getLanAddresses() {
+  const nets = os.networkInterfaces();
+  const results = [];
+  Object.entries(nets).forEach(([name, entries]) => {
+    if (!entries) return;
+    entries.forEach((net) => {
+      const family = typeof net.family === 'string' ? net.family : net.family === 4 ? 'IPv4' : 'IPv6';
+      if (net.internal) return;
+      if (!net.address) return;
+      if (family === 'IPv4' && net.address.startsWith('169.254.')) return;
+      if (family === 'IPv6' && net.address.startsWith('fe80:')) return;
+      results.push({ name, address: net.address, family });
+    });
+  });
+  return results;
+}
+
+function resolveLanHost(preferredHost) {
+  const trimmed = String(preferredHost || '').trim();
+  const addresses = getLanAddresses();
+  if (trimmed) {
+    const match = addresses.find((entry) => entry.address === trimmed);
+    return match ? match.address : trimmed;
+  }
+  return addresses[0]?.address || normalizedUi.host;
+}
+
+function applyLanConfigFromSettings() {
+  const settings = getSettings();
+  if (settings.lanAccessEnabled) {
+    const resolvedHost = resolveLanHost(settings.lanHost);
+    uiBindHost = resolvedHost.includes(':') ? '::' : '0.0.0.0';
+    uiAdvertisedHost = resolvedHost;
+  } else {
+    uiBindHost = normalizedUi.host;
+    uiAdvertisedHost = normalizedUi.host;
+  }
+  uiUrl = buildUrl(uiAdvertisedHost, uiPort);
+}
+
+function buildCorsOrigins(settings) {
+  const origins = new Set();
+  origins.add(buildUrl(normalizedUi.host, uiPort));
+  origins.add(buildUrl('localhost', uiPort));
+  if (settings.lanAccessEnabled) {
+    origins.add(buildUrl(resolveLanHost(settings.lanHost), uiPort));
+  }
+  return Array.from(origins).join(',');
 }
 
 function loadNotifierEvents() {
@@ -361,6 +424,24 @@ async function restartApiProcess() {
   startApi();
 }
 
+async function restartUiServer() {
+  if (uiProcess) {
+    await killProcessTree(uiProcess, 'UI');
+    uiProcess = null;
+  }
+  if (uiServer) {
+    await new Promise((resolve) => {
+      uiServer.close(() => resolve());
+    });
+    uiServer = null;
+  }
+  if (isDev) {
+    startUiDevServer();
+    return;
+  }
+  await startUiStaticServer();
+}
+
 async function updateSetting(key, value) {
   const settings = { ...loadSettings(), [key]: value };
   saveSettings(settings);
@@ -385,6 +466,71 @@ async function updateSetting(key, value) {
     await restartApiProcess();
   }
   return settings;
+}
+
+function getLanInfo() {
+  const settings = getSettings();
+  const addresses = getLanAddresses();
+  const selectedHost = typeof settings.lanHost === 'string' ? settings.lanHost.trim() : '';
+  const displayHost = selectedHost || addresses[0]?.address || null;
+  const resolvedHost = resolveLanHost(selectedHost);
+  const uiHost = displayHost || uiAdvertisedHost;
+  const apiHost = displayHost || (settings.lanAccessEnabled ? resolvedHost : 'localhost');
+  const uiRunning = Boolean(uiProcess && uiProcess.exitCode == null) || Boolean(uiServer?.listening);
+  const apiRunning = Boolean(apiProcess && apiProcess.exitCode == null);
+
+  return {
+    enabled: Boolean(settings.lanAccessEnabled),
+    host: displayHost,
+    uiPort,
+    apiPort,
+    uiUrl: buildUrl(uiHost, uiPort),
+    apiUrl: buildUrl(apiHost, apiPort),
+    bindHost: uiBindHost,
+    addresses,
+    uiRunning,
+    apiRunning,
+  };
+}
+
+async function setLanAccess(payload) {
+  const settings = loadSettings();
+  const enabled = Boolean(payload?.enabled);
+  const hostProvided = Object.prototype.hasOwnProperty.call(payload || {}, 'host');
+  const host = hostProvided && typeof payload.host === 'string' ? payload.host.trim() : settings.lanHost;
+  const nextSettings = {
+    ...settings,
+    lanAccessEnabled: enabled,
+    lanHost: host || '',
+  };
+  saveSettings(nextSettings);
+  applyLanConfigFromSettings();
+  await restartUiServer();
+  await restartApiProcess();
+  return getLanInfo();
+}
+
+async function checkUrlOk(url, timeoutMs = 2000) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { method: 'GET', signal: controller.signal });
+    return response.ok;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function checkLanHealth(payload) {
+  const settings = getSettings();
+  const customHost = typeof payload?.host === 'string' ? payload.host.trim() : '';
+  const resolvedHost = customHost || (settings.lanAccessEnabled ? resolveLanHost(settings.lanHost) : 'localhost');
+  const uiCheckUrl = buildUrl(resolvedHost, uiPort);
+  const apiCheckUrl = `${buildUrl(resolvedHost, apiPort)}/health`;
+  const [uiOk, apiOk] = await Promise.all([checkUrlOk(uiCheckUrl), checkUrlOk(apiCheckUrl)]);
+  return { ui: uiOk, api: apiOk };
 }
 
 function killProcessTree(child, label) {
@@ -458,7 +604,7 @@ function startApi() {
     PORT: String(apiPort),
     FRONTEND_URL: uiUrl,
     FRONTEND_AUTH_PATH: process.env.FRONTEND_AUTH_PATH || '/',
-    CORS_ORIGIN: uiUrl,
+    CORS_ORIGIN: buildCorsOrigins(settings),
     PATH: bunDir + path.delimiter + (process.env.PATH || ''),
     NODE_PATH: path.join(apiDir, 'node_modules'),
     JWT_SECRET: settings.jwtSecret,
@@ -497,7 +643,7 @@ function startUiDevServer() {
   if (process.env.MANVERSE_EXTERNAL_UI === 'true') return;
 
   const appDir = path.join(rootDir, 'app');
-  const args = ['run', 'dev', '--', '--host', '127.0.0.1', '--port', String(uiPort)];
+  const args = ['run', 'dev', '--', '--host', uiBindHost, '--port', String(uiPort)];
   const env = {
     ...process.env,
     VITE_API_URL: apiUrl,
@@ -618,7 +764,10 @@ async function startUiStaticServer() {
         const address = uiServer.address();
         if (address && typeof address === 'object') {
           uiPort = address.port;
-          uiUrl = `http://${uiHost}:${uiPort}`;
+          if (host) {
+            uiBindHost = host;
+          }
+          uiUrl = buildUrl(uiAdvertisedHost, uiPort);
         }
         resolve();
       };
@@ -628,14 +777,16 @@ async function startUiStaticServer() {
     });
 
   try {
-    await listenOnPort(uiPort, uiHost);
+    await listenOnPort(uiPort, uiBindHost);
   } catch (error) {
     if (error && error.code === 'EADDRINUSE') {
-      await listenOnPort(0, uiHost);
+      await listenOnPort(0, uiBindHost);
       return;
     }
     if (error && (error.code === 'EADDRNOTAVAIL' || error.code === 'EAFNOSUPPORT')) {
-      await listenOnPort(0, '127.0.0.1');
+      uiBindHost = '127.0.0.1';
+      uiAdvertisedHost = '127.0.0.1';
+      await listenOnPort(0, uiBindHost);
       return;
     }
     dialog.showErrorBox('ManVerse UI failed', error.message || String(error));
@@ -806,6 +957,7 @@ function initAutoUpdates() {
 
 async function bootstrap() {
   ensureWritableTemp();
+  applyLanConfigFromSettings();
   startUiDevServer();
   await startUiStaticServer();
   startApi();
@@ -850,6 +1002,9 @@ app.whenReady().then(() => {
   ipcMain.handle('manverse:updateSetting', async (_event, payload) =>
     updateSetting(payload?.key, payload?.value),
   );
+  ipcMain.handle('manverse:getLanInfo', () => getLanInfo());
+  ipcMain.handle('manverse:setLanAccess', async (_event, payload) => setLanAccess(payload));
+  ipcMain.handle('manverse:checkLanHealth', async (_event, payload) => checkLanHealth(payload));
   ipcMain.handle('manverse:window-minimize', () => {
     mainWindow?.minimize();
     return { ok: true };

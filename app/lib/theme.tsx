@@ -13,6 +13,12 @@ export type ThemeOverrides = {
   contrastColor: string;
 };
 
+export type CustomTheme = {
+  id: string;
+  name: string;
+  overrides: Partial<Omit<ThemeOverrides, 'enabled'>>;
+};
+
 interface ThemeContextType {
   theme: Theme;
   setTheme: (theme: Theme) => void;
@@ -20,11 +26,17 @@ interface ThemeContextType {
   setThemeOverrides: (overrides: ThemeOverrides) => void;
   themePreview: ThemeOverrides | null;
   setThemePreview: (overrides: ThemeOverrides | null) => void;
+  customThemes: CustomTheme[];
+  setCustomThemes: (themes: CustomTheme[]) => void;
+  activeCustomThemeId: string | null;
+  setActiveCustomThemeId: (id: string | null) => void;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 const THEME_OVERRIDES_KEY = 'manverse_theme_overrides';
+const CUSTOM_THEMES_KEY = 'manverse_custom_themes_v1';
+const ACTIVE_CUSTOM_THEME_KEY = 'manverse_active_custom_theme';
 const DEFAULT_THEME_OVERRIDES: ThemeOverrides = {
   enabled: false,
   primary: '#d4af37',
@@ -152,10 +164,50 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   });
   const [themePreview, setThemePreview] = useState<ThemeOverrides | null>(null);
+  const [customThemes, setCustomThemes] = useState<CustomTheme[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const raw = localStorage.getItem(CUSTOM_THEMES_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  });
+  const [activeCustomThemeId, setActiveCustomThemeId] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const stored = localStorage.getItem(ACTIVE_CUSTOM_THEME_KEY);
+    return stored || null;
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(CUSTOM_THEMES_KEY, JSON.stringify(customThemes));
+  }, [customThemes]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (activeCustomThemeId) {
+      localStorage.setItem(ACTIVE_CUSTOM_THEME_KEY, activeCustomThemeId);
+    } else {
+      localStorage.removeItem(ACTIVE_CUSTOM_THEME_KEY);
+    }
+  }, [activeCustomThemeId]);
+
+  useEffect(() => {
+    if (!activeCustomThemeId) return;
+    if (!customThemes.some((theme) => theme.id === activeCustomThemeId)) {
+      setActiveCustomThemeId(null);
+    }
+  }, [activeCustomThemeId, customThemes]);
 
   useEffect(() => {
     const root = document.documentElement;
-    const activeOverrides = themePreview ?? themeOverrides;
+    const activeOverrides =
+      theme === 'custom'
+        ? themePreview ?? themeOverrides
+        : { ...themeOverrides, enabled: false };
     // Remove all previous theme classes
     root.classList.remove(
       'theme-cosmic', 
@@ -182,6 +234,10 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setThemeOverrides,
         themePreview,
         setThemePreview,
+        customThemes,
+        setCustomThemes,
+        activeCustomThemeId,
+        setActiveCustomThemeId,
       }}
     >
       {children}

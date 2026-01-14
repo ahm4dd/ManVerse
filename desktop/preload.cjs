@@ -33,4 +33,7 @@ contextBridge.exposeInMainWorld('manverse', {
       ipcRenderer.removeListener('manverse:window-state', listener);
     };
   },
+  getLanInfo: () => ipcRenderer.invoke('manverse:getLanInfo'),
+  setLanAccess: (payload) => ipcRenderer.invoke('manverse:setLanAccess', payload),
+  checkLanHealth: (payload) => ipcRenderer.invoke('manverse:checkLanHealth', payload),
 });

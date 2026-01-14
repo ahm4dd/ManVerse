@@ -31,6 +31,30 @@ export type DesktopWindowState = {
   isMaximized: boolean;
 };
 
+export type LanAddress = {
+  address: string;
+  family: 'IPv4' | 'IPv6';
+  name: string;
+};
+
+export type LanAccessInfo = {
+  enabled: boolean;
+  host: string | null;
+  uiPort: number;
+  apiPort: number;
+  uiUrl: string;
+  apiUrl: string;
+  bindHost: string;
+  addresses: LanAddress[];
+  uiRunning: boolean;
+  apiRunning: boolean;
+};
+
+export type LanHealth = {
+  api: boolean;
+  ui: boolean;
+};
+
 type DesktopBridge = {
   getSettings: () => Promise<DesktopSettings>;
   updateSetting: (key: keyof DesktopSettings, value: unknown) => Promise<DesktopSettings>;
@@ -45,6 +69,9 @@ type DesktopBridge = {
   closeWindow?: () => Promise<{ ok: boolean }>;
   getWindowState?: () => Promise<DesktopWindowState>;
   onWindowState?: (callback: (state: DesktopWindowState) => void) => () => void;
+  getLanInfo?: () => Promise<LanAccessInfo>;
+  setLanAccess?: (payload: { enabled: boolean; host?: string | null }) => Promise<LanAccessInfo>;
+  checkLanHealth?: (payload: { host?: string | null }) => Promise<LanHealth>;
 };
 
 const bridge = typeof window !== 'undefined' ? (window as any).manverse : null;
@@ -123,5 +150,25 @@ export const desktopApi = {
       return () => {};
     }
     return bridge.onWindowState(callback);
+  },
+  getLanInfo: async (): Promise<LanAccessInfo> => {
+    if (!bridge?.getLanInfo) {
+      throw new Error('Desktop bridge unavailable');
+    }
+    return bridge.getLanInfo();
+  },
+  setLanAccess: async (
+    payload: { enabled: boolean; host?: string | null },
+  ): Promise<LanAccessInfo> => {
+    if (!bridge?.setLanAccess) {
+      throw new Error('Desktop bridge unavailable');
+    }
+    return bridge.setLanAccess(payload);
+  },
+  checkLanHealth: async (payload: { host?: string | null }): Promise<LanHealth> => {
+    if (!bridge?.checkLanHealth) {
+      throw new Error('Desktop bridge unavailable');
+    }
+    return bridge.checkLanHealth(payload);
   },
 };

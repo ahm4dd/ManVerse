@@ -1,7 +1,31 @@
 const DEFAULT_API_URL = 'http://localhost:3001';
 const TOKEN_KEY = 'manverse_token';
 
-export const API_URL = import.meta.env.VITE_API_URL || DEFAULT_API_URL;
+const resolveApiUrl = () => {
+  const envUrl = import.meta.env.VITE_API_URL || DEFAULT_API_URL;
+  if (typeof window === 'undefined') return envUrl;
+  try {
+    const parsed = new URL(envUrl);
+    const runtimeHost = window.location.hostname;
+    const isEnvLocal =
+      parsed.hostname === 'localhost' ||
+      parsed.hostname === '127.0.0.1' ||
+      parsed.hostname === '::1';
+    const isRuntimeLocal =
+      runtimeHost === 'localhost' ||
+      runtimeHost === '127.0.0.1' ||
+      runtimeHost === '::1';
+    if (isEnvLocal && runtimeHost && !isRuntimeLocal) {
+      parsed.hostname = runtimeHost;
+      return parsed.toString().replace(/\/$/, '');
+    }
+  } catch {
+    // Ignore invalid URLs
+  }
+  return envUrl;
+};
+
+export const API_URL = resolveApiUrl();
 
 export function getStoredToken(): string | null {
   if (typeof window === 'undefined') return null;

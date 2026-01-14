@@ -1,8 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft } from '../components/Icons';
-import { desktopApi, type DesktopSettings, type UpdateStatus } from '../lib/desktop';
+import {
+  desktopApi,
+  type DesktopSettings,
+  type UpdateStatus,
+  type LanAccessInfo,
+  type LanHealth,
+} from '../lib/desktop';
 import { API_URL, apiRequest } from '../lib/api-client';
-import { useTheme, themes, type Theme, type ThemeOverrides } from '../lib/theme';
+import { useTheme, themes, type Theme, type ThemeOverrides, type CustomTheme } from '../lib/theme';
 
 interface SettingsProps {
   onBack: () => void;
@@ -10,12 +16,6 @@ interface SettingsProps {
 }
 
 type SettingsSection = 'account' | 'app' | 'hosting' | 'themes';
-type CustomTheme = {
-  id: string;
-  name: string;
-  overrides: Partial<Omit<ThemeOverrides, 'enabled'>>;
-};
-
 const SETTINGS_SECTIONS: Array<{
   id: SettingsSection;
   label: string;
@@ -26,9 +26,6 @@ const SETTINGS_SECTIONS: Array<{
   { id: 'hosting', label: 'Self-hosting', description: 'Run on your network for phones/tablets.' },
   { id: 'themes', label: 'Themes', description: 'Pick a look that fits your vibe.' },
 ];
-
-const HOSTING_STORAGE_KEY = 'manverse_self_host_config_v1';
-const CUSTOM_THEMES_KEY = 'manverse_custom_themes_v1';
 
 const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup }) => {
   const [desktopSettings, setDesktopSettings] = useState<DesktopSettings | null>(null);
@@ -52,14 +49,17 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup }) => {
     themeOverrides,
     setThemeOverrides,
     setThemePreview,
+    customThemes,
+    setCustomThemes,
+    activeCustomThemeId,
+    setActiveCustomThemeId,
   } = useTheme();
-  const [hostingConfig, setHostingConfig] = useState({
-    host: '',
-    apiPort: '3001',
-    uiPort: '3000',
-    allowedHosts: '',
-  });
-  const [customThemes, setCustomThemes] = useState<CustomTheme[]>([]);
+  const [lanInfo, setLanInfo] = useState<LanAccessInfo | null>(null);
+  const [lanHostInput, setLanHostInput] = useState('');
+  const [lanHealth, setLanHealth] = useState<LanHealth | null>(null);
+  const [lanBusy, setLanBusy] = useState(false);
+  const [lanError, setLanError] = useState<string | null>(null);
+  const [copiedLabel, setCopiedLabel] = useState<string | null>(null);
   const [customThemeName, setCustomThemeName] = useState('');
   const [editingThemeId, setEditingThemeId] = useState<string | null>(null);
   const [draftOverrides, setDraftOverrides] = useState<ThemeOverrides>(themeOverrides);
@@ -78,6 +78,13 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup }) => {
           clientSecret: settings.anilistClientSecret || '',
           redirectUri: settings.anilistRedirectUri || '',
         });
+        try {
+          const info = await desktopApi.getLanInfo();
+          setLanInfo(info);
+          setLanHostInput(info.host || '');
+        } catch {
+          // ignore
+        }
       } finally {
         setLoading(false);
       }
@@ -113,42 +120,6 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup }) => {
       unsubscribe();
     };
   }, []);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    try {
-      const raw = localStorage.getItem(HOSTING_STORAGE_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      setHostingConfig((prev) => ({ ...prev, ...parsed }));
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    localStorage.setItem(HOSTING_STORAGE_KEY, JSON.stringify(hostingConfig));
-  }, [hostingConfig]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    try {
-      const raw = localStorage.getItem(CUSTOM_THEMES_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        setCustomThemes(parsed);
-      }
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    localStorage.setItem(CUSTOM_THEMES_KEY, JSON.stringify(customThemes));
-  }, [customThemes]);
 
   useEffect(() => {
     if (overridesDirty) return;
@@ -222,14 +193,95 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup }) => {
       setSaveState('error');
     }
   };
+  const lanEnabled = Boolean(lanInfo?.enabled);
+  const lanAddresses = lanInfo?.addresses ?? [];
+  const lanUiUrl = lanInfo?.uiUrl || '';
+  const lanApiUrl = lanInfo?.apiUrl || '';
 
-  const hostingSummary = useMemo(() => {
-    const host = hostingConfig.host.trim();
-    if (!host) return null;
-    const ui = `http://${host}:${hostingConfig.uiPort}`;
-    const api = `http://${host}:${hostingConfig.apiPort}`;
-    return { ui, api };
-  }, [hostingConfig]);
+  const refreshLanInfo = async () => {
+    if (!desktopApi.isAvailable) return;
+    setLanBusy(true);
+    setLanError(null);
+    try {
+      const info = await desktopApi.getLanInfo();
+      setLanInfo(info);
+      if (!lanHostInput) {
+        setLanHostInput(info.host || '');
+      }
+    } catch {
+      setLanError('Unable to load LAN details.');
+    } finally {
+      setLanBusy(false);
+    }
+  };
+
+  const handleLanToggle = async () => {
+    if (!desktopApi.isAvailable) return;
+    setLanBusy(true);
+    setLanError(null);
+    try {
+      const info = await desktopApi.setLanAccess({
+        enabled: !lanEnabled,
+        host: lanHostInput.trim(),
+      });
+      setLanInfo(info);
+      setLanHostInput(info.host || lanHostInput);
+    } catch {
+      setLanError('Failed to update LAN access.');
+    } finally {
+      setLanBusy(false);
+    }
+  };
+
+  const handleLanApplyHost = async () => {
+    if (!desktopApi.isAvailable) return;
+    setLanBusy(true);
+    setLanError(null);
+    try {
+      const info = await desktopApi.setLanAccess({
+        enabled: lanEnabled,
+        host: lanHostInput.trim(),
+      });
+      setLanInfo(info);
+      setLanHostInput(info.host || lanHostInput);
+    } catch {
+      setLanError('Failed to update the LAN host.');
+    } finally {
+      setLanBusy(false);
+    }
+  };
+
+  const handleLanHealthCheck = async () => {
+    if (!desktopApi.isAvailable) return;
+    setLanBusy(true);
+    setLanError(null);
+    try {
+      const result = await desktopApi.checkLanHealth({ host: lanHostInput.trim() });
+      setLanHealth(result);
+    } catch {
+      setLanError('Health check failed.');
+    } finally {
+      setLanBusy(false);
+    }
+  };
+
+  const handleCopy = async (value: string, label: string) => {
+    if (!value || typeof window === 'undefined') return;
+    try {
+      await navigator.clipboard.writeText(value);
+    } catch {
+      const fallback = document.createElement('textarea');
+      fallback.value = value;
+      fallback.style.position = 'fixed';
+      fallback.style.opacity = '0';
+      document.body.appendChild(fallback);
+      fallback.select();
+      document.execCommand('copy');
+      document.body.removeChild(fallback);
+    }
+    setCopiedLabel(label);
+    window.setTimeout(() => setCopiedLabel(null), 1200);
+  };
 
   const displayOverrides = overridesDirty ? draftOverrides : themeOverrides;
   const baseThemeOptions = useMemo(
@@ -426,133 +478,264 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup }) => {
     </div>
   );
 
-  const renderHostingSection = () => (
-    <div className="space-y-6">
-      <div className="bg-surface border border-white/10 rounded-2xl p-6 shadow-xl">
-        <h2 className="text-xl font-bold text-white">Self-hosting guide</h2>
-        <p className="text-base text-gray-300 mt-2">
-          Use this when you want to open ManVerse on your phone or tablet while the API runs on
-          your main machine.
-        </p>
+  const renderHostingSection = () => {
+    const docsBase = 'https://github.com/ahm4dd/ManVerse/blob/main';
+    const guideUrl = `${docsBase}/Self-hosting-guide.md`;
+    const quickStartUrl = `${docsBase}/docs/self-hosting-quick-start.md`;
+    const productionUrl = `${docsBase}/docs/self-hosting-production.md`;
+    const troubleshootingUrl = `${docsBase}/docs/self-hosting-troubleshooting.md`;
 
-        <div className="mt-4 rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
-          Run these steps on the host machine (desktop/server). Don’t try to set this up from a
-          phone or tablet.
-        </div>
+    return (
+      <div className="space-y-6">
+        <div className="bg-surface border border-white/10 rounded-2xl p-6 shadow-xl">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-xl font-bold text-white">Self-hosting guide</h2>
+              <p className="text-base text-gray-300 mt-2">
+                Use this when you want to open ManVerse on your phone or tablet while the API runs
+                on your main machine.
+              </p>
+            </div>
+            <a
+              className="inline-flex items-center justify-center rounded-xl bg-primary px-5 py-3 text-sm font-bold text-black shadow-lg shadow-primary/30 transition hover:brightness-110"
+              href={guideUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Open full guide
+            </a>
+          </div>
 
-        <div className="mt-4 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-          This exposes the app on your local network. Do not forward ports to the public internet
-          unless you know exactly what you are doing.
-          <a
-            className="ml-2 text-amber-100 underline underline-offset-2 hover:text-white"
-            href="https://github.com/ahm4dd/ManVerse/blob/main/docs/configuration.md#self-hosting"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Open the full guide
-          </a>
-          .
+          <div className="mt-4 rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+            Run these steps on the host machine (desktop/server). Don't try to set this up from a
+            phone or tablet.
+          </div>
+
+          <div className="mt-4 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+            This exposes the app on your local network. Do not forward ports to the public internet
+            unless you know exactly what you are doing.
+          </div>
+
+          {desktopApi.isAvailable && (
+            <div className="mt-4 rounded-xl border border-white/10 bg-surfaceHighlight/40 px-4 py-3 text-sm text-gray-300">
+              Use the LAN Access section below to share the desktop app with devices on your Wi-Fi.
+            </div>
+          )}
+
+          <div className="mt-6 grid gap-3 text-sm text-gray-300 sm:grid-cols-2">
+            <div className="rounded-xl border border-white/10 bg-surfaceHighlight/40 px-4 py-3">
+              Host machine stays on and connected to the same Wi-Fi as your phone.
+            </div>
+            <div className="rounded-xl border border-white/10 bg-surfaceHighlight/40 px-4 py-3">
+              The UI points to the API URL and AniList redirect matches the host.
+            </div>
+            <div className="rounded-xl border border-white/10 bg-surfaceHighlight/40 px-4 py-3">
+              Firewall allows ports for UI and API (LAN only).
+            </div>
+            <div className="rounded-xl border border-white/10 bg-surfaceHighlight/40 px-4 py-3">
+              Avoid public exposure unless you add HTTPS and auth.
+            </div>
+          </div>
+
+          <div className="mt-5 flex flex-wrap gap-2 text-sm">
+            <a
+              className="rounded-lg border border-emerald-300/60 bg-emerald-400 px-3 py-2 font-semibold text-black shadow-md shadow-emerald-400/30 hover:brightness-110"
+              href={quickStartUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Quick start (LAN)
+            </a>
+            <a
+              className="rounded-lg border border-white/15 bg-surface px-3 py-2 font-semibold text-gray-200 shadow-sm hover:bg-surfaceHighlight/60 hover:text-white"
+              href={productionUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Production setup
+            </a>
+            <a
+              className="rounded-lg border border-white/15 bg-surface px-3 py-2 font-semibold text-gray-200 shadow-sm hover:bg-surfaceHighlight/60 hover:text-white"
+              href={troubleshootingUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Troubleshooting
+            </a>
+          </div>
         </div>
 
         {desktopApi.isAvailable && (
-          <div className="mt-4 rounded-xl border border-white/10 bg-surfaceHighlight/40 px-4 py-3 text-sm text-gray-300">
-            The desktop app runs locally by default. For LAN access, use the web build and the
-            commands below on the host machine.
+          <div className="bg-surface border border-white/10 rounded-2xl p-6 shadow-xl">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="flex items-center gap-3">
+                  <h2 className="text-xl font-bold text-white">LAN Access</h2>
+                  <span
+                    className={`text-xs font-semibold px-2 py-1 rounded-full ${
+                      lanEnabled ? 'bg-emerald-500/20 text-emerald-200' : 'bg-white/10 text-gray-300'
+                    }`}
+                  >
+                    {lanEnabled ? 'Active' : 'Off'}
+                  </span>
+                </div>
+                <p className="text-base text-gray-300 mt-2">
+                  Expose the desktop UI and API to other devices on your local network.
+                </p>
+              </div>
+              <button
+                onClick={handleLanToggle}
+                disabled={lanBusy || !lanInfo}
+                className={`px-4 py-2 rounded-lg text-sm font-bold border transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
+                  lanEnabled
+                    ? 'bg-rose-500/20 text-rose-200 border-rose-500/40'
+                    : 'bg-primary text-black border-primary'
+                }`}
+              >
+                {lanEnabled ? 'Stop LAN access' : 'Enable LAN access'}
+              </button>
+            </div>
+
+            {!lanInfo && (
+              <div className="mt-4 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+                LAN access controls require the latest desktop app build.
+              </div>
+            )}
+
+            <div className="mt-5 grid gap-4 lg:grid-cols-2">
+              <div>
+                <label className="text-sm font-semibold text-gray-300">Advertised host</label>
+                <input
+                  list="lan-hosts"
+                  value={lanHostInput}
+                  onChange={(e) => setLanHostInput(e.target.value)}
+                  placeholder="e.g. 192.168.1.25 or my-pc.local"
+                  className="mt-2 w-full rounded-lg border border-white/10 bg-surfaceHighlight px-3 py-2.5 text-base text-white focus:outline-none focus:border-primary"
+                />
+                <datalist id="lan-hosts">
+                  {lanAddresses.map((entry) => (
+                    <option
+                      key={`${entry.name}-${entry.address}`}
+                      value={entry.address}
+                    >{`${entry.address} (${entry.name}, ${entry.family})`}</option>
+                  ))}
+                </datalist>
+                <p className="mt-2 text-xs text-gray-500">
+                  Pick the IP address your phone can reach. Hostnames like `my-pc.local` also work
+                  if your network supports mDNS.
+                </p>
+                {lanAddresses.length === 0 && (
+                  <div className="mt-2 text-xs text-amber-200">
+                    No LAN addresses detected yet. Connect to Wi-Fi or enter a hostname manually.
+                  </div>
+                )}
+              </div>
+              <div className="rounded-xl border border-white/10 bg-surfaceHighlight/40 px-4 py-3 text-sm text-gray-300">
+                <div className="font-semibold text-white">Status</div>
+                <div className="mt-2 flex flex-col gap-1">
+                  <div>
+                    UI server:{' '}
+                    <span className={lanInfo?.uiRunning ? 'text-emerald-200' : 'text-amber-200'}>
+                      {lanInfo?.uiRunning ? 'Running' : 'Stopped'}
+                    </span>
+                  </div>
+                  <div>
+                    API server:{' '}
+                    <span className={lanInfo?.apiRunning ? 'text-emerald-200' : 'text-amber-200'}>
+                      {lanInfo?.apiRunning ? 'Running' : 'Stopped'}
+                    </span>
+                  </div>
+                  {lanHealth && (
+                    <div className="text-xs text-gray-400">
+                      Last check: UI {lanHealth.ui ? 'ok' : 'down'} - API{' '}
+                      {lanHealth.api ? 'ok' : 'down'}
+                    </div>
+                  )}
+                </div>
+                <div className="mt-3 text-xs text-gray-500">
+                  Binding: {lanInfo?.bindHost || '--'} - UI port {lanInfo?.uiPort ?? 3000} - API port{' '}
+                  {lanInfo?.apiPort ?? 3001}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                onClick={handleLanApplyHost}
+                disabled={lanBusy || !lanInfo}
+                className="px-3 py-2 rounded-lg text-xs font-semibold border border-white/10 bg-surfaceHighlight/40 text-gray-300 hover:text-white disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                Apply host
+              </button>
+              <button
+                onClick={handleLanHealthCheck}
+                disabled={lanBusy || !lanInfo}
+                className="px-3 py-2 rounded-lg text-xs font-semibold border border-white/10 bg-surfaceHighlight/40 text-gray-300 hover:text-white disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                Check health
+              </button>
+              <button
+                onClick={refreshLanInfo}
+                disabled={lanBusy || !lanInfo}
+                className="px-3 py-2 rounded-lg text-xs font-semibold border border-white/10 bg-surfaceHighlight/40 text-gray-300 hover:text-white disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                Refresh
+              </button>
+              {lanBusy && <span className="text-xs text-gray-400 self-center">Working...</span>}
+            </div>
+
+            {lanError && (
+              <div className="mt-3 rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+                {lanError}
+              </div>
+            )}
+
+            <div className="mt-5 grid gap-3 md:grid-cols-2">
+              <div className="rounded-xl border border-white/10 bg-surfaceHighlight/40 px-4 py-3 text-sm text-gray-300">
+                <div className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                  LAN UI URL
+                </div>
+                <div className="mt-1 text-sm text-white break-all">{lanUiUrl || '--'}</div>
+                <button
+                  onClick={() => handleCopy(lanUiUrl, 'ui')}
+                  disabled={!lanUiUrl}
+                  className="mt-2 text-xs font-semibold text-primary hover:text-white disabled:text-gray-500"
+                >
+                  {copiedLabel === 'ui' ? 'Copied' : 'Copy'}
+                </button>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-surfaceHighlight/40 px-4 py-3 text-sm text-gray-300">
+                <div className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                  LAN API URL
+                </div>
+                <div className="mt-1 text-sm text-white break-all">{lanApiUrl || '--'}</div>
+                <button
+                  onClick={() => handleCopy(lanApiUrl, 'api')}
+                  disabled={!lanApiUrl}
+                  className="mt-2 text-xs font-semibold text-primary hover:text-white disabled:text-gray-500"
+                >
+                  {copiedLabel === 'api' ? 'Copied' : 'Copy'}
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
-        <div className="mt-6 grid gap-4 md:grid-cols-2">
-          <div>
-            <label className="text-sm font-semibold text-gray-300">Host IP / hostname</label>
-            <input
-              value={hostingConfig.host}
-              onChange={(e) => setHostingConfig((prev) => ({ ...prev, host: e.target.value }))}
-              placeholder="e.g. 192.168.1.25 or my-pc.local"
-              className="mt-2 w-full rounded-lg border border-white/10 bg-surfaceHighlight px-3 py-2.5 text-base text-white focus:outline-none focus:border-primary"
-            />
-            <p className="mt-2 text-xs text-gray-500">
-              Use the LAN IP of the machine running the API + web app.
-            </p>
-          </div>
-          <div>
-            <label className="text-sm font-semibold text-gray-300">Allowed hosts (Vite)</label>
-            <input
-              value={hostingConfig.allowedHosts}
-              onChange={(e) =>
-                setHostingConfig((prev) => ({ ...prev, allowedHosts: e.target.value }))
-              }
-              placeholder="ahm4dd-laptop.local,192.168.1.25"
-              className="mt-2 w-full rounded-lg border border-white/10 bg-surfaceHighlight px-3 py-2.5 text-base text-white focus:outline-none focus:border-primary"
-            />
-            <p className="mt-2 text-xs text-gray-500">
-              Comma-separated list. Add this to `VITE_ALLOWED_HOSTS` in `app/.env.local`.
-            </p>
-          </div>
-          <div>
-            <label className="text-sm font-semibold text-gray-300">UI port</label>
-            <input
-              value={hostingConfig.uiPort}
-              onChange={(e) => setHostingConfig((prev) => ({ ...prev, uiPort: e.target.value }))}
-              className="mt-2 w-full rounded-lg border border-white/10 bg-surfaceHighlight px-3 py-2.5 text-base text-white focus:outline-none focus:border-primary"
-            />
-          </div>
-          <div>
-            <label className="text-sm font-semibold text-gray-300">API port</label>
-            <input
-              value={hostingConfig.apiPort}
-              onChange={(e) => setHostingConfig((prev) => ({ ...prev, apiPort: e.target.value }))}
-              className="mt-2 w-full rounded-lg border border-white/10 bg-surfaceHighlight px-3 py-2.5 text-base text-white focus:outline-none focus:border-primary"
-            />
-          </div>
-        </div>
-
-        {hostingSummary && (
-          <div className="mt-5 rounded-xl border border-white/10 bg-surfaceHighlight/40 px-4 py-3 text-sm text-gray-300">
-            <div className="font-semibold text-white">Suggested URLs</div>
-            <div className="mt-2">Web UI: {hostingSummary.ui}</div>
-            <div className="mt-1">API: {hostingSummary.api}</div>
-          </div>
-        )}
-
-        <div className="mt-6 space-y-3 text-sm text-gray-300">
-          <div className="font-semibold text-white">Quick steps</div>
-          <ol className="list-decimal list-inside space-y-2 text-gray-300">
-            <li>Run the API on your host machine (ensure port {hostingConfig.apiPort} is open).</li>
-            <li>
-              Start the web UI with:
-              <span className="block mt-1 text-gray-200">
-                `bun run dev:app -- --host 0.0.0.0 --port {hostingConfig.uiPort}`
-              </span>
-            </li>
-            <li>
-              Set `VITE_API_URL=http://&lt;host&gt;:{hostingConfig.apiPort}` in `app/.env.local`.
-            </li>
-            <li>
-              Add your hostname/IPs to `VITE_ALLOWED_HOSTS` and open the UI from your phone.
-            </li>
-          </ol>
-        </div>
-
-        <div className="mt-6 rounded-xl border border-white/10 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-          You may need to allow ports {hostingConfig.uiPort} and {hostingConfig.apiPort} in your
-          firewall for LAN access.
-        </div>
-      </div>
-
-      <div className="bg-surface border border-white/10 rounded-2xl p-6 shadow-xl">
-        <h2 className="text-xl font-bold text-white">Current runtime</h2>
-        <p className="text-sm text-gray-400 mt-1">These are the URLs the app sees right now.</p>
-        <div className="mt-4 grid gap-3 text-sm text-gray-300">
-          <div>
-            <span className="text-gray-500">Current UI:</span> {currentOrigin || 'Unknown'}
-          </div>
-          <div>
-            <span className="text-gray-500">Current API:</span> {API_URL}
+        <div className="bg-surface border border-white/10 rounded-2xl p-6 shadow-xl">
+          <h2 className="text-xl font-bold text-white">Current runtime</h2>
+          <p className="text-sm text-gray-400 mt-1">These are the URLs the app sees right now.</p>
+          <div className="mt-4 grid gap-3 text-sm text-gray-300">
+            <div>
+              <span className="text-gray-500">Current UI:</span> {currentOrigin || 'Unknown'}
+            </div>
+            <div>
+              <span className="text-gray-500">Current API:</span> {API_URL}
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const handleOverrideChange = (key: keyof ThemeOverrides, value: string | boolean) => {
     setDraftOverrides((prev) => ({ ...prev, [key]: value }));
@@ -599,6 +782,7 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup }) => {
     setDraftOverrides(overrides);
     setOverridesDirty(false);
     setThemePreview(null);
+    setActiveCustomThemeId(customTheme.id);
   };
 
   const handleStartEditTheme = (customTheme: CustomTheme) => {
@@ -608,6 +792,7 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup }) => {
     setTheme('custom');
     setDraftOverrides(overrides);
     setOverridesDirty(true);
+    setActiveCustomThemeId(customTheme.id);
   };
 
   const handleSaveCustomTheme = () => {
@@ -639,6 +824,9 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup }) => {
       setEditingThemeId(null);
       setCustomThemeName('');
     }
+    if (activeCustomThemeId === pendingDeleteTheme.id) {
+      setActiveCustomThemeId(null);
+    }
     setPendingDeleteTheme(null);
   };
 
@@ -665,6 +853,12 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup }) => {
               key={option.id}
               onClick={() => {
                 setTheme(option.id as Theme);
+                setActiveCustomThemeId(null);
+                if (themeOverrides.enabled) {
+                  setThemeOverrides({ ...themeOverrides, enabled: false });
+                }
+                setDraftOverrides((prev) => ({ ...prev, enabled: false }));
+                setOverridesDirty(false);
                 setThemePreview(null);
               }}
               className={`rounded-2xl border px-4 py-5 text-left transition ${
@@ -703,7 +897,7 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup }) => {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <div
             className={`rounded-2xl border px-4 py-5 text-left transition ${
-              theme === 'custom'
+              theme === 'custom' && !activeCustomThemeId
                 ? 'border-primary bg-primary/10'
                 : 'border-white/10 bg-surfaceHighlight/40 hover:bg-white/10'
             }`}
@@ -722,7 +916,15 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup }) => {
             </div>
             <div className="mt-4 flex items-center gap-2">
               <button
-                onClick={() => setTheme('custom')}
+                onClick={() => {
+                  setTheme('custom');
+                  if (!themeOverrides.enabled) {
+                    const next = { ...themeOverrides, enabled: true };
+                    setThemeOverrides(next);
+                    setDraftOverrides(next);
+                  }
+                  setActiveCustomThemeId(null);
+                }}
                 className="text-xs font-semibold text-primary hover:text-white transition"
               >
                 Use current
@@ -730,14 +932,19 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup }) => {
               <button
                 onClick={() => {
                   setTheme('custom');
+                  const next = { ...themeOverrides, enabled: true };
+                  setThemeOverrides(next);
+                  setDraftOverrides(next);
                   setOverridesDirty(false);
-                  setDraftOverrides(themeOverrides);
                 }}
                 className="text-xs font-semibold text-gray-300 hover:text-white transition"
               >
                 Customize
               </button>
             </div>
+            {theme === 'custom' && !activeCustomThemeId && (
+              <div className="mt-3 text-xs text-primary font-semibold">Active theme</div>
+            )}
           </div>
 
           {customThemes.length === 0 && (
@@ -751,7 +958,12 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup }) => {
             return (
               <div
                 key={customTheme.id}
-                className="rounded-2xl border border-white/10 bg-surfaceHighlight/40 px-4 py-5 text-left transition hover:bg-white/10"
+                onClick={() => handleApplyCustomTheme(customTheme)}
+                className={`rounded-2xl border bg-surfaceHighlight/40 px-4 py-5 text-left transition hover:bg-white/10 cursor-pointer ${
+                  theme === 'custom' && activeCustomThemeId === customTheme.id
+                    ? 'border-primary bg-primary/10'
+                    : 'border-white/10'
+                }`}
               >
                 <div className="flex items-center justify-between">
                   <div>
@@ -767,24 +979,27 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup }) => {
                 </div>
                 <div className="mt-4 flex items-center gap-2 flex-wrap">
                   <button
-                    onClick={() => handleApplyCustomTheme(customTheme)}
-                    className="text-xs font-semibold text-primary hover:text-white transition"
-                  >
-                    Apply
-                  </button>
-                  <button
-                    onClick={() => handleStartEditTheme(customTheme)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleStartEditTheme(customTheme);
+                    }}
                     className="text-xs font-semibold text-gray-300 hover:text-white transition"
                   >
                     Edit
                   </button>
                   <button
-                    onClick={() => handleDeleteCustomTheme(customTheme)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleDeleteCustomTheme(customTheme);
+                    }}
                     className="text-xs font-semibold text-red-300 hover:text-red-100 transition"
                   >
                     Delete
                   </button>
                 </div>
+                {theme === 'custom' && activeCustomThemeId === customTheme.id && (
+                  <div className="mt-3 text-xs text-primary font-semibold">Active theme</div>
+                )}
               </div>
             );
           })}

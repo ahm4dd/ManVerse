@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import Home from './pages/Home';
 import Details from './pages/Details';
 import Reader from './pages/Reader';
@@ -14,7 +14,7 @@ import DesktopTitleBar from './components/DesktopTitleBar';
 import { anilistApi } from './lib/anilist';
 import { getStoredToken } from './lib/api-client';
 import { Chapter } from './types';
-import { ThemeProvider, useTheme, themes } from './lib/theme';
+import { ThemeProvider, useTheme, themes, type CustomTheme } from './lib/theme';
 import { NotificationProvider, useNotification } from './lib/notifications';
 import { AnimatePresence, motion } from 'framer-motion';
 import PageTransition from './components/PageTransition';
@@ -89,9 +89,41 @@ const AppContent: React.FC = () => {
   const [viewData, setViewData] = useState<any>(null);
   const [user, setUser] = useState<any>(null);
   const [isVerifying, setIsVerifying] = useState(false);
-  const { theme, setTheme } = useTheme();
+  const {
+    theme,
+    setTheme,
+    themeOverrides,
+    setThemeOverrides,
+    setThemePreview,
+    customThemes,
+    activeCustomThemeId,
+    setActiveCustomThemeId,
+  } = useTheme();
   const { notify } = useNotification();
   const isPhoneLayout = useMediaQuery('(max-width: 768px)');
+
+  const baseThemes = useMemo(() => themes.filter((option) => option.id !== 'custom'), []);
+
+  const handleSelectTheme = (nextTheme: string) => {
+    setTheme(nextTheme as any);
+    setThemePreview(null);
+    setActiveCustomThemeId(null);
+    if (nextTheme !== 'custom' && themeOverrides.enabled) {
+      setThemeOverrides({ ...themeOverrides, enabled: false });
+    }
+  };
+
+  const handleSelectCustomTheme = (customTheme?: CustomTheme) => {
+    const nextOverrides = {
+      ...themeOverrides,
+      ...(customTheme?.overrides ?? {}),
+      enabled: true,
+    };
+    setTheme('custom');
+    setThemeOverrides(nextOverrides);
+    setThemePreview(null);
+    setActiveCustomThemeId(customTheme?.id ?? null);
+  };
   
   // Menus
   const [showThemeMenu, setShowThemeMenu] = useState(false);
@@ -937,20 +969,66 @@ const AppContent: React.FC = () => {
                           onClick={() => setShowThemeMenu(false)}
                         />
                         <div className="absolute right-0 mt-2 w-64 bg-surface border border-white/10 rounded-2xl shadow-xl z-20 py-3 overflow-hidden animate-fade-in ring-1 ring-black/50">
-                          {/* Theme items */}
-                           <div className="px-5 py-2 text-[11px] font-bold text-gray-500 uppercase tracking-widest opacity-80">
-                             Appearance
-                           </div>
-                           {themes.map(t => (
-                             <button
-                               key={t.id}
-                               onClick={() => { setTheme(t.id); setShowThemeMenu(false); }}
-                               className={`w-full text-left px-5 py-3 text-[15px] font-medium flex items-center gap-3 hover:bg-white/5 transition-colors ${theme === t.id ? 'text-primary bg-primary/5' : 'text-gray-300'}`}
-                             >
-                               <div className="w-3.5 h-3.5 rounded-full border border-white/10 shadow-sm" style={{ backgroundColor: t.color }} />
-                               {t.name}
-                             </button>
-                           ))}
+                          <div className="px-5 py-2 text-[11px] font-bold text-gray-500 uppercase tracking-widest opacity-80">
+                            Appearance
+                          </div>
+                          {baseThemes.map((t) => (
+                            <button
+                              key={t.id}
+                              onClick={() => {
+                                handleSelectTheme(t.id);
+                                setShowThemeMenu(false);
+                              }}
+                              className={`w-full text-left px-5 py-3 text-[15px] font-medium flex items-center gap-3 hover:bg-white/5 transition-colors ${theme === t.id ? 'text-primary bg-primary/5' : 'text-gray-300'}`}
+                            >
+                              <div
+                                className="w-3.5 h-3.5 rounded-full border border-white/10 shadow-sm"
+                                style={{ backgroundColor: t.color }}
+                              />
+                              {t.name}
+                            </button>
+                          ))}
+
+                          <div className="px-5 pt-3 pb-2 text-[11px] font-bold text-gray-500 uppercase tracking-widest opacity-80">
+                            Custom themes
+                          </div>
+                          <button
+                            onClick={() => {
+                              handleSelectCustomTheme();
+                              setShowThemeMenu(false);
+                            }}
+                            className={`w-full text-left px-5 py-3 text-[15px] font-medium flex items-center gap-3 hover:bg-white/5 transition-colors ${
+                              theme === 'custom' && !activeCustomThemeId
+                                ? 'text-primary bg-primary/5'
+                                : 'text-gray-300'
+                            }`}
+                          >
+                            <div
+                              className="w-3.5 h-3.5 rounded-full border border-white/10 shadow-sm"
+                              style={{ backgroundColor: themeOverrides.primary }}
+                            />
+                            Custom
+                          </button>
+                          {customThemes.map((customTheme) => (
+                            <button
+                              key={customTheme.id}
+                              onClick={() => {
+                                handleSelectCustomTheme(customTheme);
+                                setShowThemeMenu(false);
+                              }}
+                              className={`w-full text-left px-5 py-3 text-[15px] font-medium flex items-center gap-3 hover:bg-white/5 transition-colors ${
+                                theme === 'custom' && activeCustomThemeId === customTheme.id
+                                  ? 'text-primary bg-primary/5'
+                                  : 'text-gray-300'
+                              }`}
+                            >
+                              <div
+                                className="w-3.5 h-3.5 rounded-full border border-white/10 shadow-sm"
+                                style={{ backgroundColor: customTheme.overrides.primary || themeOverrides.primary }}
+                              />
+                              {customTheme.name}
+                            </button>
+                          ))}
                         </div>
                       </>
                     )}
