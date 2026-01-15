@@ -10,9 +10,11 @@ import Settings from './pages/Settings';
 import { PaletteIcon, BellIcon, SearchIcon, FilterIcon, XIcon, ChevronDown, SyncIcon, MenuIcon, ChevronUp } from './components/Icons';
 import NotificationsMenu from './components/NotificationsMenu';
 import AniListSetupModal from './components/AniListSetupModal';
+import AniListRedirectModal from './components/AniListRedirectModal';
 import DesktopTitleBar from './components/DesktopTitleBar';
 import { anilistApi } from './lib/anilist';
 import { getApiUrl, getStoredToken } from './lib/api-client';
+import { confirmRedirectUri, getExpectedAniListRedirectUrl, getRedirectConfirmationState, normalizeRedirectUri } from './lib/anilist-redirect';
 import { Chapter } from './types';
 import { ThemeProvider, useTheme, themes, type CustomTheme } from './lib/theme';
 import { NotificationProvider, useNotification } from './lib/notifications';
@@ -20,7 +22,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import PageTransition from './components/PageTransition';
 import SearchFilters, { FilterState } from './components/SearchFilters';
 import { providerOptions, type Source, isProviderSource } from './lib/providers';
-import { desktopApi, type UpdateStatus } from './lib/desktop';
+import { desktopApi, type LanAccessInfo, type UpdateStatus } from './lib/desktop';
 import { useMediaQuery } from './lib/useMediaQuery';
 
 type View =
@@ -55,6 +57,18 @@ type NavState = {
 type NavOptions = {
   replace?: boolean;
 };
+
+type RedirectGuardState = {
+  expectedRedirectUri: string;
+  configuredRedirectUri: string | null;
+  mismatch: boolean;
+  reason: 'missing' | 'mismatch' | null;
+  requiresConfirmation: boolean;
+  blocked: boolean;
+  source: 'env' | 'runtime' | 'none' | null;
+};
+
+type RedirectModalReason = 'missing' | 'mismatch' | 'confirm' | 'error' | null;
 
 const NAV_STATE_KEY = 'manverse_nav_state_v1';
 const HOME_STATE_KEY = 'manverse_home_state_v2';
@@ -140,6 +154,9 @@ const AppContent: React.FC = () => {
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
   const [updateBannerDismissed, setUpdateBannerDismissed] = useState(false);
   const [showSetupGuide, setShowSetupGuide] = useState(false);
+  const [redirectGuard, setRedirectGuard] = useState<RedirectGuardState | null>(null);
+  const [showRedirectModal, setShowRedirectModal] = useState(false);
+  const [redirectModalReason, setRedirectModalReason] = useState<RedirectModalReason>(null);
 
   // Global Search State
   const [searchQuery, setSearchQuery] = useState('');
@@ -328,6 +345,14 @@ const AppContent: React.FC = () => {
     desktopApi.isAvailable &&
     updateStatus?.state === 'downloaded' &&
     !updateBannerDismissed;
+  const loginBlocked = Boolean(redirectGuard?.blocked);
+  const loginBlockMessage = loginBlocked
+    ? redirectGuard?.requiresConfirmation
+      ? 'LAN hosting changed. Confirm the redirect URL before logging in.'
+      : redirectGuard?.reason === 'missing'
+        ? 'Add the redirect URL in Settings to enable AniList login.'
+        : 'Redirect URL mismatch. Fix it in Settings before logging in.'
+    : null;
 
   // Load User Function (Extracted for re-use)
   const loadUser = async () => {
@@ -420,6 +445,9 @@ const AppContent: React.FC = () => {
             : 'AniList login failed. Check your redirect URL and try again.';
       notify(authMessage, 'error');
       logDesktop('auth.error', { error: authError });
+      if (upper === 'INVALID_CLIENT' || upper === 'REDIRECT_MISMATCH') {
+        void refreshRedirectGuard({ forceModal: true, reason: 'error' });
+      }
     }
 
     if (token || authError) {
@@ -435,6 +463,7 @@ const AppContent: React.FC = () => {
     window.history.replaceState(initialState, '', buildUrl(initialState.view, initialState.data));
 
     loadUser();
+    void refreshRedirectGuard();
   }, []);
 
   useEffect(() => {
@@ -542,8 +571,93 @@ const AppContent: React.FC = () => {
     navigate('home', undefined, { replace: true });
   };
 
+  const refreshRedirectGuard = async (options?: {
+    lanInfo?: LanAccessInfo | null;
+    forceModal?: boolean;
+    reason?: RedirectModalReason;
+  }) => {
+    let lanInfo = options?.lanInfo ?? null;
+    if (!lanInfo && desktopApi.isAvailable) {
+      try {
+        lanInfo = await desktopApi.getLanInfo();
+      } catch {
+        lanInfo = null;
+      }
+    }
+    const expectedRedirectUri = getExpectedAniListRedirectUrl(lanInfo);
+    const status = await anilistApi.getCredentialStatus();
+    if (!status) {
+      const guard: RedirectGuardState = {
+        expectedRedirectUri,
+        configuredRedirectUri: null,
+        mismatch: true,
+        reason: 'missing',
+        requiresConfirmation: false,
+        blocked: true,
+        source: null,
+      };
+      setRedirectGuard(guard);
+      if (options?.forceModal) {
+        setRedirectModalReason(options.reason ?? 'error');
+        setShowRedirectModal(true);
+      }
+      return guard;
+    }
+
+    const configuredRedirectUri = normalizeRedirectUri(status.redirectUri);
+    const expectedNormalized = normalizeRedirectUri(expectedRedirectUri);
+    const mismatch = !configuredRedirectUri || configuredRedirectUri !== expectedNormalized;
+    const reason: RedirectGuardState['reason'] = !configuredRedirectUri
+      ? 'missing'
+      : mismatch
+        ? 'mismatch'
+        : null;
+    const confirmation = getRedirectConfirmationState(expectedRedirectUri);
+    const requiresConfirmation = confirmation.requiresConfirmation;
+    const blocked = mismatch || requiresConfirmation;
+    const guard: RedirectGuardState = {
+      expectedRedirectUri,
+      configuredRedirectUri: configuredRedirectUri || null,
+      mismatch,
+      reason,
+      requiresConfirmation,
+      blocked,
+      source: status.source ?? null,
+    };
+    setRedirectGuard(guard);
+    if (blocked && (options?.forceModal || reason || requiresConfirmation)) {
+      setRedirectModalReason(options?.reason ?? reason ?? (requiresConfirmation ? 'confirm' : null));
+      setShowRedirectModal(true);
+    }
+    return guard;
+  };
+
+  const ensureRedirectReady = async () => {
+    const guard = await refreshRedirectGuard({ forceModal: true });
+    return !guard.blocked;
+  };
+
+  const handleConfirmRedirect = async () => {
+    if (!redirectGuard?.expectedRedirectUri) {
+      setShowRedirectModal(false);
+      setRedirectModalReason(null);
+      return;
+    }
+    confirmRedirectUri(redirectGuard.expectedRedirectUri);
+    const guard = await refreshRedirectGuard({ forceModal: false });
+    if (guard.blocked) {
+      setRedirectModalReason(guard.reason ?? 'confirm');
+      setShowRedirectModal(true);
+      return;
+    }
+    setShowRedirectModal(false);
+    setRedirectModalReason(null);
+  };
+
   const handleOAuthLogin = async () => {
     try {
+      const canLogin = await ensureRedirectReady();
+      if (!canLogin) return;
       const authUrl = await anilistApi.getLoginUrl();
       window.location.href = authUrl;
     } catch (error) {
@@ -561,6 +675,14 @@ const AppContent: React.FC = () => {
   const handleDemoLogin = () => {
     anilistApi.setToken('DEMO_MODE_TOKEN');
     handleLoginSuccess();
+  };
+
+  const openRedirectFix = () => {
+    const reason = redirectGuard?.requiresConfirmation
+      ? 'confirm'
+      : redirectGuard?.reason ?? 'error';
+    setRedirectModalReason(reason);
+    setShowRedirectModal(true);
   };
 
   const handleSearchSubmit = (e: React.FormEvent) => {
@@ -876,12 +998,33 @@ const AppContent: React.FC = () => {
                             <button
                               onClick={() => {
                                 setShowLoginMenu(false);
+                                if (loginBlocked) {
+                                  openRedirectFix();
+                                  return;
+                                }
                                 handleOAuthLogin();
                               }}
-                              className="mx-2 mb-1 flex w-[calc(100%-1rem)] items-center justify-center rounded-lg bg-gradient-to-r from-[#02A9FF] to-[#7AD9FF] px-4 py-2.5 text-xs font-bold text-white shadow-lg shadow-blue-500/30 transition hover:brightness-110"
+                              disabled={loginBlocked}
+                              className={`mx-2 mb-1 flex w-[calc(100%-1rem)] items-center justify-center rounded-lg bg-gradient-to-r from-[#02A9FF] to-[#7AD9FF] px-4 py-2.5 text-xs font-bold text-white shadow-lg shadow-blue-500/30 transition ${
+                                loginBlocked ? 'opacity-60 cursor-not-allowed' : 'hover:brightness-110'
+                              }`}
                             >
                               Continue with AniList
                             </button>
+                            {loginBlocked && (
+                              <div className="mx-2 mb-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-200">
+                                <div>{loginBlockMessage}</div>
+                                <button
+                                  onClick={() => {
+                                    setShowLoginMenu(false);
+                                    openRedirectFix();
+                                  }}
+                                  className="mt-1 text-xs font-semibold text-primary hover:text-white"
+                                >
+                                  Fix redirect URL
+                                </button>
+                              </div>
+                            )}
                             <button
                               onClick={() => {
                                 setShowLoginMenu(false);
@@ -1204,12 +1347,33 @@ const AppContent: React.FC = () => {
                           <button
                             onClick={() => {
                               setShowLoginMenu(false);
+                              if (loginBlocked) {
+                                openRedirectFix();
+                                return;
+                              }
                               handleOAuthLogin();
                             }}
-                            className="mx-2 mb-1 flex w-[calc(100%-1rem)] items-center justify-center rounded-lg bg-gradient-to-r from-[#02A9FF] to-[#7AD9FF] px-4 py-2.5 text-xs font-bold text-white shadow-lg shadow-blue-500/30 transition hover:brightness-110"
+                            disabled={loginBlocked}
+                            className={`mx-2 mb-1 flex w-[calc(100%-1rem)] items-center justify-center rounded-lg bg-gradient-to-r from-[#02A9FF] to-[#7AD9FF] px-4 py-2.5 text-xs font-bold text-white shadow-lg shadow-blue-500/30 transition ${
+                              loginBlocked ? 'opacity-60 cursor-not-allowed' : 'hover:brightness-110'
+                            }`}
                           >
                             Continue with AniList
                           </button>
+                          {loginBlocked && (
+                            <div className="mx-2 mb-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-200">
+                              <div>{loginBlockMessage}</div>
+                              <button
+                                onClick={() => {
+                                  setShowLoginMenu(false);
+                                  openRedirectFix();
+                                }}
+                                className="mt-1 text-xs font-semibold text-primary hover:text-white"
+                              >
+                                Fix redirect URL
+                              </button>
+                            </div>
+                          )}
                           <button
                             onClick={() => {
                               setShowLoginMenu(false);
@@ -1444,7 +1608,13 @@ const AppContent: React.FC = () => {
           )}
           {currentView === 'settings' && (
             <PageTransition key="settings">
-              <Settings onBack={handleBack} onOpenSetup={() => setShowSetupGuide(true)} />
+              <Settings
+                onBack={handleBack}
+                onOpenSetup={() => setShowSetupGuide(true)}
+                onLanChange={(info) => {
+                  void refreshRedirectGuard({ lanInfo: info, forceModal: true, reason: 'confirm' });
+                }}
+              />
             </PageTransition>
           )}
 
@@ -1475,6 +1645,10 @@ const AppContent: React.FC = () => {
               <Login
                 onLoginSuccess={handleLoginSuccess}
                 onOpenSetup={() => setShowSetupGuide(true)}
+                loginBlocked={loginBlocked}
+                loginBlockMessage={loginBlockMessage}
+                onFixRedirect={openRedirectFix}
+                onEnsureRedirect={ensureRedirectReady}
               />
             </PageTransition>
           )}
@@ -1500,6 +1674,18 @@ const AppContent: React.FC = () => {
       <AniListSetupModal
         open={showSetupGuide}
         onClose={() => setShowSetupGuide(false)}
+        onOpenSettings={() => navigate('settings')}
+      />
+      <AniListRedirectModal
+        open={showRedirectModal}
+        expectedRedirectUri={redirectGuard?.expectedRedirectUri || getExpectedAniListRedirectUrl()}
+        configuredRedirectUri={redirectGuard?.configuredRedirectUri}
+        reason={redirectModalReason}
+        onClose={() => {
+          setShowRedirectModal(false);
+          setRedirectModalReason(null);
+        }}
+        onConfirm={handleConfirmRedirect}
         onOpenSettings={() => navigate('settings')}
       />
     </div>

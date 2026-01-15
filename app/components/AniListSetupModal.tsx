@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { XIcon, ChevronRight, ChevronLeft } from './Icons';
 import { getApiUrl } from '../lib/api-client';
+import { buildRedirectUri } from '../lib/anilist-redirect';
 
 interface AniListSetupModalProps {
   open: boolean;
@@ -34,7 +35,7 @@ const AniListSetupModal: React.FC<AniListSetupModalProps> = ({
   onOpenSettings,
 }) => {
   const [stepIndex, setStepIndex] = useState(0);
-  const redirectUri = `${getApiUrl()}/api/auth/anilist/callback`;
+  const redirectUri = buildRedirectUri(getApiUrl());
 
   const steps = useMemo<SetupStep[]>(
     () => [

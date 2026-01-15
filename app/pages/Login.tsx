@@ -6,13 +6,32 @@ import { ChevronRight, StarIcon } from '../components/Icons';
 interface LoginProps {
   onLoginSuccess?: () => void;
   onOpenSetup?: () => void;
+  loginBlocked?: boolean;
+  loginBlockMessage?: string | null;
+  onFixRedirect?: () => void;
+  onEnsureRedirect?: () => Promise<boolean>;
 }
 
-const Login: React.FC<LoginProps> = ({ onLoginSuccess, onOpenSetup }) => {
+const Login: React.FC<LoginProps> = ({
+  onLoginSuccess,
+  onOpenSetup,
+  loginBlocked,
+  loginBlockMessage,
+  onFixRedirect,
+  onEnsureRedirect,
+}) => {
   const [loginError, setLoginError] = useState<string | null>(null);
 
   const handleLoginClick = async () => {
     setLoginError(null);
+    if (loginBlocked) {
+      onFixRedirect?.();
+      return;
+    }
+    if (onEnsureRedirect) {
+      const ready = await onEnsureRedirect();
+      if (!ready) return;
+    }
     try {
       const authUrl = await anilistApi.getLoginUrl();
       window.location.href = authUrl;
@@ -68,7 +87,12 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess, onOpenSetup }) => {
             <div className="flex flex-col sm:flex-row items-center gap-4">
               <button 
                 onClick={handleLoginClick}
-                className="flex items-center gap-3 pl-6 pr-8 py-3.5 bg-[#02A9FF] hover:bg-[#0297e6] text-white font-semibold text-sm tracking-wide rounded-full shadow-lg shadow-blue-500/20 transition-all hover:scale-[1.02] active:scale-95"
+                disabled={Boolean(loginBlocked)}
+                className={`flex items-center gap-3 pl-6 pr-8 py-3.5 bg-[#02A9FF] text-white font-semibold text-sm tracking-wide rounded-full shadow-lg shadow-blue-500/20 transition-all ${
+                  loginBlocked
+                    ? 'opacity-60 cursor-not-allowed'
+                    : 'hover:bg-[#0297e6] hover:scale-[1.02] active:scale-95'
+                }`}
               >
                 {/* AniList Logo SVG */}
                 <svg className="w-6 h-6 fill-white" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -89,6 +113,17 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess, onOpenSetup }) => {
             {loginError && (
               <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-200">
                 {loginError}
+              </div>
+            )}
+            {loginBlocked && loginBlockMessage && (
+              <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-200">
+                <div>{loginBlockMessage}</div>
+                <button
+                  onClick={() => onFixRedirect?.()}
+                  className="mt-2 text-xs font-semibold text-primary hover:text-white"
+                >
+                  Fix redirect URL
+                </button>
               </div>
             )}
 

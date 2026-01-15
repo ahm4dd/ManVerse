@@ -384,11 +384,10 @@ const callbackRoute = createRoute({
 auth.openapi(callbackRoute, async (c) => {
   const { code, state } = c.req.valid('query');
   if (!code) {
-    return jsonError(
-      c,
-      { code: 'MISSING_CODE', message: 'Authorization code is required' },
-      400,
-    );
+    const redirectUrl = new URL(getFrontendBaseUrl(c));
+    redirectUrl.pathname = getFrontendAuthPath();
+    redirectUrl.searchParams.set('error', 'MISSING_CODE');
+    return c.redirect(redirectUrl.toString());
   }
 
   try {

@@ -8,11 +8,13 @@ import {
   type LanHealth,
 } from '../lib/desktop';
 import { apiRequest, getApiUrl } from '../lib/api-client';
+import { buildRedirectUri } from '../lib/anilist-redirect';
 import { useTheme, themes, type Theme, type ThemeOverrides, type CustomTheme } from '../lib/theme';
 
 interface SettingsProps {
   onBack: () => void;
   onOpenSetup?: () => void;
+  onLanChange?: (info: LanAccessInfo) => void;
 }
 
 type SettingsSection = 'account' | 'app' | 'hosting' | 'themes';
@@ -27,7 +29,7 @@ const SETTINGS_SECTIONS: Array<{
   { id: 'themes', label: 'Themes', description: 'Pick a look that fits your vibe.' },
 ];
 
-const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup }) => {
+const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup, onLanChange }) => {
   const [desktopSettings, setDesktopSettings] = useState<DesktopSettings | null>(null);
   const [loading, setLoading] = useState(false);
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
@@ -150,7 +152,7 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup }) => {
   const launchOnStartup = Boolean(desktopSettings?.launchOnStartup);
   const updateReady = updateStatus?.state === 'downloaded';
   const apiUrl = getApiUrl();
-  const defaultRedirectUri = `${apiUrl}/api/auth/anilist/callback`;
+  const defaultRedirectUri = buildRedirectUri(apiUrl);
   const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
 
   const handleSaveCredentials = async () => {
@@ -198,8 +200,8 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup }) => {
   const lanAddresses = lanInfo?.addresses ?? [];
   const lanUiUrl = lanInfo?.uiUrl || '';
   const lanApiUrl = lanInfo?.apiUrl || '';
-  const localRedirectUri = `${apiUrl}/api/auth/anilist/callback`;
-  const lanRedirectUri = lanApiUrl ? `${lanApiUrl}/api/auth/anilist/callback` : '';
+  const localRedirectUri = buildRedirectUri(apiUrl);
+  const lanRedirectUri = lanApiUrl ? buildRedirectUri(lanApiUrl) : '';
   const showLanRedirectWarning = lanEnabled && Boolean(lanRedirectUri);
 
   const refreshLanInfo = async () => {
@@ -230,6 +232,7 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup }) => {
       });
       setLanInfo(info);
       setLanHostInput(info.host || lanHostInput);
+      onLanChange?.(info);
     } catch {
       setLanError('Failed to update LAN access.');
     } finally {
@@ -248,6 +251,7 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup }) => {
       });
       setLanInfo(info);
       setLanHostInput(info.host || lanHostInput);
+      onLanChange?.(info);
     } catch {
       setLanError('Failed to update the LAN host.');
     } finally {
