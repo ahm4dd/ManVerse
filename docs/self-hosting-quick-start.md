@@ -6,6 +6,20 @@ machine. This assumes both devices are on the same Wi-Fi or hotspot.
 If you are not sure what any step does, read `Self-hosting-guide.md` first.
 That guide also explains how to use a stable `.local` hostname on every OS.
 
+## Desktop app quick start (AppImage / Electron)
+
+If you are using the desktop app, you do not need to set up Bun or env files.
+
+1) Open Settings -> Self-hosting -> LAN Access.
+2) Choose an advertised host (LAN IP or `.local`) and enable LAN access.
+3) Copy the LAN UI URL to your phone/tablet and open it in a browser.
+4) In AniList developer settings, add redirect URLs for:
+   - Desktop app: `http://127.0.0.1:3001/api/auth/anilist/callback` (or `http://localhost:3001/...`)
+   - LAN devices: `http://YOUR_HOST_IP:3001/api/auth/anilist/callback`
+5) Sign in on each device using the matching UI URL.
+
+If you want a headless or server setup instead, follow the steps below.
+
 ## What you need
 
 - A host machine that stays on.

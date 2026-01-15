@@ -1,5 +1,5 @@
 import { Series, SeriesDetails } from '../types';
-import { API_URL, apiRequest, getStoredToken, setStoredToken } from './api-client';
+import { apiRequest, getApiUrl, getStoredToken, setStoredToken } from './api-client';
 
 const ANILIST_API = 'https://graphql.anilist.co';
 // NOTE: Replace with your actual Client ID from https://anilist.co/settings/developer
@@ -8,14 +8,55 @@ const DEMO_TOKEN = 'DEMO_MODE_TOKEN';
 const USER_CACHE_KEY = 'manverse_user';
 const USER_CACHE_TTL_MS = 5 * 60 * 1000;
 
+function isDesktopRuntime(): boolean {
+  return typeof window !== 'undefined' && Boolean((window as any).manverse);
+}
+
+function normalizeApiUrl(value: string): string {
+  return value.replace(/\/$/, '');
+}
+
+function getCacheApiUrl(): string {
+  try {
+    return normalizeApiUrl(getApiUrl());
+  } catch {
+    return '';
+  }
+}
+
+function logDesktopAuth(message: string, data?: Record<string, unknown>) {
+  if (typeof window === 'undefined') return;
+  const bridge = (window as any).manverse;
+  if (bridge?.log) {
+    bridge.log({ message, data: data ?? null });
+  }
+}
+
+function decodeJwtPayload(token: string): any | null {
+  if (typeof window === 'undefined') return null;
+  const parts = token.split('.');
+  if (parts.length < 2) return null;
+  try {
+    const normalized = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+    const json = atob(padded);
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
+
 function readCachedUser(token: string): any | null {
   if (typeof window === 'undefined') return null;
+  if (isDesktopRuntime()) return null;
   try {
     const raw = localStorage.getItem(USER_CACHE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed?.token || !parsed?.expiresAt || !parsed?.user) return null;
     if (parsed.token !== token) return null;
+    if (parsed.apiUrl && parsed.apiUrl !== getCacheApiUrl()) return null;
+    if (!parsed.apiUrl && getCacheApiUrl()) return null;
     if (Date.now() > parsed.expiresAt) {
       localStorage.removeItem(USER_CACHE_KEY);
       return null;
@@ -28,9 +69,11 @@ function readCachedUser(token: string): any | null {
 
 function writeCachedUser(token: string, user: any) {
   if (typeof window === 'undefined') return;
+  if (isDesktopRuntime()) return;
   const payload = {
     token,
     user,
+    apiUrl: getCacheApiUrl(),
     expiresAt: Date.now() + USER_CACHE_TTL_MS,
   };
   localStorage.setItem(USER_CACHE_KEY, JSON.stringify(payload));
@@ -579,8 +622,9 @@ export const anilistApi = {
   token: typeof window !== 'undefined' ? getStoredToken() : null,
 
   setToken(token: string) {
-    this.token = token;
-    setStoredToken(token);
+    const normalized = token.trim();
+    this.token = normalized;
+    setStoredToken(normalized);
     clearCachedUser();
   },
 
@@ -594,10 +638,47 @@ export const anilistApi = {
   },
 
   async getLoginUrl() {
-    const data = await apiRequest<{ authUrl: string }>(`/api/auth/anilist/login`, {
-      method: 'POST',
-      skipAuth: true,
-    });
+    const params = new URLSearchParams();
+    if (typeof window !== 'undefined' && window.location?.origin) {
+      const status = await this.getCredentialStatus();
+      const runtimeHost = window.location.hostname;
+      const isLocalHost = (host: string) =>
+        host === 'localhost' || host === '127.0.0.1' || host === '::1';
+      const isEquivalentHost = (a: string, b: string) =>
+        a === b || (isLocalHost(a) && isLocalHost(b));
+      let resolvedRedirectUri: string | null = null;
+
+      if (status?.redirectUri) {
+        try {
+          const statusHost = new URL(status.redirectUri).hostname;
+          if (isEquivalentHost(statusHost, runtimeHost)) {
+            resolvedRedirectUri = status.redirectUri;
+          }
+        } catch {
+          // ignore invalid status redirectUri
+        }
+      }
+
+      if (!resolvedRedirectUri) {
+        const apiUrl = new URL(getApiUrl());
+        if (runtimeHost && !isEquivalentHost(apiUrl.hostname, runtimeHost)) {
+          apiUrl.hostname = runtimeHost;
+        }
+        resolvedRedirectUri = `${apiUrl.origin}/api/auth/anilist/callback`;
+      }
+      params.set('redirectUri', resolvedRedirectUri);
+      params.set('returnTo', window.location.origin);
+    } else {
+      params.set('redirectUri', `${getApiUrl()}/api/auth/anilist/callback`);
+    }
+    const query = params.toString();
+    const data = await apiRequest<{ authUrl: string }>(
+      `/api/auth/anilist/login${query ? `?${query}` : ''}`,
+      {
+        method: 'POST',
+        skipAuth: true,
+      },
+    );
     return data.authUrl;
   },
 
@@ -619,22 +700,108 @@ export const anilistApi = {
     if (!this.token) return null;
     const cached = readCachedUser(this.token);
     if (cached) return cached;
+    let fallbackUser: any | null = null;
+    const payload = decodeJwtPayload(this.token);
+    if (payload) {
+      const rawId = payload.id ?? payload.userId ?? null;
+      const numericId =
+        typeof rawId === 'number'
+          ? rawId
+          : typeof rawId === 'string'
+            ? Number(rawId)
+            : null;
+      const resolvedId = Number.isFinite(numericId) ? numericId : null;
+      const username = payload.username || payload.name;
+      if (resolvedId !== null || username) {
+        fallbackUser = {
+          id: resolvedId,
+          name: username || 'Account',
+          avatar: payload.avatar ?? undefined,
+        };
+      }
+      if (!payload.anilistToken) {
+        logDesktopAuth('auth.jwt.missing_anilist', {
+          keys: Object.keys(payload),
+        });
+      }
+    } else {
+      logDesktopAuth('auth.jwt.decode_failed');
+    }
+
+    logDesktopAuth('auth.user.fetch', {
+      apiUrl: getApiUrl(),
+      tokenLength: this.token.length,
+      hasAnilistToken: Boolean(payload?.anilistToken),
+    });
+
+    const recoverAuthToken = async () => {
+      if (!this.token) return null;
+      logDesktopAuth('auth.recover.start', { tokenLength: this.token.length });
+      try {
+        const payload = await apiRequest<{ token: string; user: any }>('/api/auth/recover', {
+          method: 'POST',
+          skipAuth: true,
+          body: JSON.stringify({ token: this.token }),
+        });
+        if (payload?.token) {
+          this.setToken(payload.token);
+          if (payload.user) {
+            writeCachedUser(this.token, payload.user);
+          }
+          logDesktopAuth('auth.recover.ok', {
+            tokenLength: payload.token.length,
+            userId: payload.user?.id ?? null,
+          });
+          return payload.user ?? null;
+        }
+      } catch (error) {
+        const err = error as Error & { status?: number; code?: string };
+        logDesktopAuth('auth.recover.failed', {
+          status: err?.status ?? null,
+          code: err?.code ?? null,
+          message: err?.message ?? null,
+        });
+      }
+      return null;
+    };
+
     try {
       const user = await apiRequest<any>('/api/anilist/me');
       writeCachedUser(this.token, user);
+      logDesktopAuth('auth.user.ok', { id: user?.id ?? null });
       return user;
     } catch (e) {
-      console.error("Auth check failed:", e);
+      console.error('AniList profile fetch failed:', e);
       const err = e as Error & { status?: number; code?: string };
       const message = err?.message?.toLowerCase?.() || '';
+      logDesktopAuth('auth.user.failed', {
+        status: err?.status ?? null,
+        code: err?.code ?? null,
+        message: err?.message ?? null,
+      });
       const isAuthError =
         err?.status === 401 ||
         err?.code === 'AUTH_REQUIRED' ||
         err?.code === 'AUTH_ERROR' ||
+        err?.code === 'INVALID_TOKEN' ||
+        err?.code === 'ANILIST_TOKEN_MISSING' ||
         message.includes('token') ||
         message.includes('authorization');
       if (isAuthError) {
+        if (err?.code === 'INVALID_TOKEN') {
+          const recovered = await recoverAuthToken();
+          if (recovered) return recovered;
+        }
+        logDesktopAuth('auth.user.logout', {
+          reason: err?.code || err?.status || 'auth_error',
+        });
         this.logout();
+        return null;
+      }
+      if (fallbackUser) {
+        writeCachedUser(this.token, fallbackUser);
+        logDesktopAuth('auth.user.fallback', { id: fallbackUser?.id ?? null });
+        return fallbackUser;
       }
       return null;
     }

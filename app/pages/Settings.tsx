@@ -7,7 +7,7 @@ import {
   type LanAccessInfo,
   type LanHealth,
 } from '../lib/desktop';
-import { API_URL, apiRequest } from '../lib/api-client';
+import { apiRequest, getApiUrl } from '../lib/api-client';
 import { useTheme, themes, type Theme, type ThemeOverrides, type CustomTheme } from '../lib/theme';
 
 interface SettingsProps {
@@ -149,7 +149,8 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup }) => {
   const notifierEnabled = Boolean(desktopSettings?.notifierEnabled);
   const launchOnStartup = Boolean(desktopSettings?.launchOnStartup);
   const updateReady = updateStatus?.state === 'downloaded';
-  const defaultRedirectUri = `${API_URL}/api/auth/anilist/callback`;
+  const apiUrl = getApiUrl();
+  const defaultRedirectUri = `${apiUrl}/api/auth/anilist/callback`;
   const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
 
   const handleSaveCredentials = async () => {
@@ -197,6 +198,8 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup }) => {
   const lanAddresses = lanInfo?.addresses ?? [];
   const lanUiUrl = lanInfo?.uiUrl || '';
   const lanApiUrl = lanInfo?.apiUrl || '';
+  const localRedirectUri = `${apiUrl}/api/auth/anilist/callback`;
+  const lanRedirectUri = lanApiUrl ? `${lanApiUrl}/api/auth/anilist/callback` : '';
 
   const refreshLanInfo = async () => {
     if (!desktopApi.isAvailable) return;
@@ -718,6 +721,40 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup }) => {
                 </button>
               </div>
             </div>
+
+            <div className="mt-4 rounded-xl border border-white/10 bg-surfaceHighlight/40 px-4 py-3 text-sm text-gray-300">
+              <div className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                AniList redirect URLs
+              </div>
+              <div className="mt-2 space-y-2">
+                <div>
+                  <div className="text-xs text-gray-500">Desktop app (local)</div>
+                  <div className="text-sm text-white break-all">{localRedirectUri}</div>
+                  <button
+                    onClick={() => handleCopy(localRedirectUri, 'local-redirect')}
+                    className="mt-1 text-xs font-semibold text-primary hover:text-white"
+                  >
+                    {copiedLabel === 'local-redirect' ? 'Copied' : 'Copy'}
+                  </button>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500">LAN devices</div>
+                  <div className="text-sm text-white break-all">
+                    {lanRedirectUri || 'Enable LAN access to generate a LAN redirect URL.'}
+                  </div>
+                  <button
+                    onClick={() => handleCopy(lanRedirectUri, 'lan-redirect')}
+                    disabled={!lanRedirectUri}
+                    className="mt-1 text-xs font-semibold text-primary hover:text-white disabled:text-gray-500"
+                  >
+                    {copiedLabel === 'lan-redirect' ? 'Copied' : 'Copy'}
+                  </button>
+                </div>
+              </div>
+              <div className="mt-3 text-xs text-gray-500">
+                Add both URLs to your AniList app if you want desktop and LAN logins to work.
+              </div>
+            </div>
           </div>
         )}
 
@@ -729,7 +766,7 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup }) => {
               <span className="text-gray-500">Current UI:</span> {currentOrigin || 'Unknown'}
             </div>
             <div>
-              <span className="text-gray-500">Current API:</span> {API_URL}
+              <span className="text-gray-500">Current API:</span> {apiUrl}
             </div>
           </div>
         </div>

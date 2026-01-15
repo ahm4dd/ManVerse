@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { XIcon, ChevronRight, ChevronLeft } from './Icons';
-import { API_URL } from '../lib/api-client';
+import { getApiUrl } from '../lib/api-client';
 
 interface AniListSetupModalProps {
   open: boolean;
@@ -34,7 +34,7 @@ const AniListSetupModal: React.FC<AniListSetupModalProps> = ({
   onOpenSettings,
 }) => {
   const [stepIndex, setStepIndex] = useState(0);
-  const redirectUri = `${API_URL}/api/auth/anilist/callback`;
+  const redirectUri = `${getApiUrl()}/api/auth/anilist/callback`;
 
   const steps = useMemo<SetupStep[]>(
     () => [
@@ -58,6 +58,7 @@ const AniListSetupModal: React.FC<AniListSetupModalProps> = ({
         bullets: [
           'Paste this exact URL into the Redirect URL field.',
           'Make sure there are no trailing slashes or typos.',
+          'If you use LAN access, add the LAN API redirect from Settings → Self-hosting.',
         ],
         code: redirectUri,
       },

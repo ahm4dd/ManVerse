@@ -1,6 +1,6 @@
 import { Series, SeriesDetails, ChapterPage } from '../types';
 import { anilistApi, SearchFilters } from './anilist';
-import { API_URL, apiRequest, getStoredToken } from './api-client';
+import { apiRequest, getApiUrl, getStoredToken } from './api-client';
 import {
   Providers,
   type ProviderType,
@@ -515,7 +515,7 @@ export const api = {
         page.headerForImage ||
         providerReferer(Providers.AsuraScans) ||
         providerBaseUrl(Providers.AsuraScans);
-      const proxyUrl = `${API_URL}/api/chapters/image?url=${encodeURIComponent(page.img)}&referer=${encodeURIComponent(referer)}`;
+      const proxyUrl = `${getApiUrl()}/api/chapters/image?url=${encodeURIComponent(page.img)}&referer=${encodeURIComponent(referer)}`;
       return { page: page.page, src: proxyUrl };
     });
   },
@@ -635,7 +635,7 @@ export const api = {
 
   getDownloadFileUrl: (downloadId: number): string => {
     const token = getStoredToken();
-    const url = new URL(`${API_URL}/api/downloads/${downloadId}/file`);
+    const url = new URL(`${getApiUrl()}/api/downloads/${downloadId}/file`);
     if (token) {
       url.searchParams.set('token', token);
     }

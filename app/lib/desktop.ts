@@ -64,6 +64,8 @@ type DesktopBridge = {
   getNotifierEvents?: () => Promise<NotifierEvent[]>;
   markAllNotifierRead?: () => Promise<NotifierEvent[]>;
   onNotifierEvents?: (callback: (events: NotifierEvent[]) => void) => () => void;
+  consumeAuthToken?: () => Promise<string | null>;
+  log?: (payload: { message: string; data?: Record<string, unknown> | null }) => Promise<{ ok: boolean }>;
   minimizeWindow?: () => Promise<{ ok: boolean }>;
   toggleMaximize?: () => Promise<{ ok: boolean; isMaximized: boolean }>;
   closeWindow?: () => Promise<{ ok: boolean }>;
@@ -128,6 +130,18 @@ export const desktopApi = {
       return () => {};
     }
     return bridge.onNotifierEvents(callback);
+  },
+  consumeAuthToken: async (): Promise<string | null> => {
+    if (!bridge?.consumeAuthToken) {
+      return null;
+    }
+    return bridge.consumeAuthToken();
+  },
+  log: async (message: string, data?: Record<string, unknown> | null): Promise<void> => {
+    if (!bridge?.log) {
+      return;
+    }
+    await bridge.log({ message, data: data ?? null });
   },
   minimizeWindow: async (): Promise<void> => {
     if (!bridge?.minimizeWindow) return;

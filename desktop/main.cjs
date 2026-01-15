@@ -57,7 +57,7 @@ let uiBindHost = normalizedUi.host;
 let uiAdvertisedHost = normalizedUi.host;
 let uiPort = normalizedUi.port;
 let uiUrl = `http://${uiAdvertisedHost}:${uiPort}`;
-const defaultRedirectUri = `http://localhost:${apiPort}/api/auth/anilist/callback`;
+let apiBindHost = normalizedUi.host;
 
 const getBundledBunPath = () => {
   if (!app.isPackaged) return null;
@@ -78,6 +78,22 @@ let isShuttingDown = false;
 let allowBackgroundClose = false;
 let apiRestarting = false;
 let isMaximized = false;
+let pendingAuthToken = null;
+
+function logDesktop(message, data = null) {
+  try {
+    const logPath = path.join(app.getPath('userData'), 'desktop.log');
+    fs.mkdirSync(path.dirname(logPath), { recursive: true });
+    const payload = {
+      ts: new Date().toISOString(),
+      message,
+      data,
+    };
+    fs.appendFileSync(logPath, `${JSON.stringify(payload)}\n`);
+  } catch {
+    // ignore logging failures
+  }
+}
 
 const shouldDisableSandbox =
   process.platform === 'linux' &&
@@ -287,9 +303,11 @@ function applyLanConfigFromSettings() {
     const resolvedHost = resolveLanHost(settings.lanHost);
     uiBindHost = resolvedHost.includes(':') ? '::' : '0.0.0.0';
     uiAdvertisedHost = resolvedHost;
+    apiBindHost = uiBindHost;
   } else {
     uiBindHost = normalizedUi.host;
     uiAdvertisedHost = normalizedUi.host;
+    apiBindHost = normalizedUi.host;
   }
   uiUrl = buildUrl(uiAdvertisedHost, uiPort);
 }
@@ -595,13 +613,16 @@ function startApi() {
   const settings = getSettings();
   const puppeteerCacheDir = path.join(app.getPath('userData'), 'puppeteer');
   const puppeteerExecutable = resolvePuppeteerExecutable(puppeteerCacheDir);
-  const redirectUri =
-    settings.anilistRedirectUri && settings.anilistRedirectUri.trim().length > 0
-      ? settings.anilistRedirectUri.trim()
-      : defaultRedirectUri;
+  const redirectUri = [
+    settings.anilistRedirectUri,
+    process.env.ANILIST_REDIRECT_URI,
+  ]
+    .map((value) => (typeof value === 'string' ? value.trim() : ''))
+    .find((value) => value);
   const env = {
     ...process.env,
     PORT: String(apiPort),
+    MANVERSE_API_HOST: apiBindHost,
     FRONTEND_URL: uiUrl,
     FRONTEND_AUTH_PATH: process.env.FRONTEND_AUTH_PATH || '/',
     CORS_ORIGIN: buildCorsOrigins(settings),
@@ -610,11 +631,13 @@ function startApi() {
     JWT_SECRET: settings.jwtSecret,
     ANILIST_CLIENT_ID: settings.anilistClientId || process.env.ANILIST_CLIENT_ID || '',
     ANILIST_CLIENT_SECRET: settings.anilistClientSecret || process.env.ANILIST_CLIENT_SECRET || '',
-    ANILIST_REDIRECT_URI: redirectUri,
     PUPPETEER_CACHE_DIR: puppeteerCacheDir,
     ...(puppeteerExecutable ? { PUPPETEER_EXECUTABLE_PATH: puppeteerExecutable } : {}),
     ...(process.platform === 'win32' ? { PUPPETEER_DISABLE_GPU: 'true' } : {}),
   };
+  if (redirectUri) {
+    env.ANILIST_REDIRECT_URI = redirectUri;
+  }
 
   apiProcess = spawnProcess(bunPath, args, {
     cwd: apiDir,
@@ -809,6 +832,12 @@ async function waitForUrl(url, timeoutMs = 30000) {
 }
 
 async function createWindow() {
+  process.env.MANVERSE_RENDERER_API_URL = buildUrl(uiAdvertisedHost, apiPort);
+  logDesktop('window.create', {
+    isDev,
+    uiUrl,
+    apiUrl: process.env.MANVERSE_RENDERER_API_URL,
+  });
   const iconPath = path.join(__dirname, 'assets', 'icon.png');
   const win = new BrowserWindow({
     width: 1280,
@@ -833,10 +862,20 @@ async function createWindow() {
     try {
       const parsed = new URL(targetUrl);
       const base = new URL(uiUrl);
-      const hasAuthToken =
-        parsed.searchParams.has('token') || parsed.searchParams.get('error') === 'AUTH_ERROR';
+      const token = parsed.searchParams.get('token');
+      const hasAuthToken = Boolean(token) || parsed.searchParams.get('error') === 'AUTH_ERROR';
       const isAuthPath = parsed.pathname === '/auth/callback';
       if (!hasAuthToken && !isAuthPath) return null;
+      if (token) {
+        pendingAuthToken = token;
+      }
+      logDesktop('auth.redirect', {
+        origin: parsed.origin,
+        path: parsed.pathname,
+        hasToken: Boolean(token),
+        tokenLength: token ? token.length : 0,
+        error: parsed.searchParams.get('error') || null,
+      });
       if (parsed.origin === base.origin) return null;
       parsed.protocol = base.protocol;
       parsed.host = base.host;
@@ -972,11 +1011,14 @@ async function bootstrap() {
   }
 }
 
-app.on('before-quit', (event) => {
+async function shutdownApp(exitCode = 0) {
   if (isShuttingDown) return;
-  event.preventDefault();
   isShuttingDown = true;
   app.isQuitting = true;
+
+  if (uiServer && typeof uiServer.closeAllConnections === 'function') {
+    uiServer.closeAllConnections();
+  }
 
   const shutdownTasks = [];
   if (uiServer) {
@@ -989,12 +1031,30 @@ app.on('before-quit', (event) => {
   shutdownTasks.push(killProcessTree(apiProcess, 'API'));
   shutdownTasks.push(killProcessTree(uiProcess, 'UI'));
 
-  Promise.all(shutdownTasks)
-    .catch(() => {})
-    .finally(() => {
-      app.exit(0);
-    });
+  await Promise.allSettled(shutdownTasks);
+  uiServer = null;
+  apiProcess = null;
+  uiProcess = null;
+  app.exit(exitCode);
+}
+
+const handleShutdownSignal = () => {
+  if (isShuttingDown) return;
+  if (!app.isReady()) {
+    process.exit(0);
+    return;
+  }
+  void shutdownApp(0);
+};
+
+app.on('before-quit', (event) => {
+  if (isShuttingDown) return;
+  event.preventDefault();
+  void shutdownApp(0);
 });
+
+process.on('SIGTERM', handleShutdownSignal);
+process.on('SIGINT', handleShutdownSignal);
 
 app.whenReady().then(() => {
   app.setAppUserModelId('com.ahm4dd.manverse');
@@ -1028,6 +1088,21 @@ app.whenReady().then(() => {
   ipcMain.handle('manverse:getUpdateStatus', () => updateStatus);
   ipcMain.handle('manverse:installUpdate', () => {
     autoUpdater.quitAndInstall();
+    return { ok: true };
+  });
+  ipcMain.handle('manverse:consumeAuthToken', () => {
+    const token = pendingAuthToken;
+    pendingAuthToken = null;
+    logDesktop('auth.consume', {
+      tokenPresent: Boolean(token),
+      tokenLength: token ? token.length : 0,
+    });
+    return token;
+  });
+  ipcMain.handle('manverse:log', (_event, payload) => {
+    if (payload?.message) {
+      logDesktop(payload.message, payload.data ?? null);
+    }
     return { ok: true };
   });
   ipcMain.handle('manverse:getNotifierEvents', () => loadNotifierEvents());

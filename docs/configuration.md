@@ -106,6 +106,12 @@ Set these when launching the desktop app.
 - `MANVERSE_UI_PORT`
   - Port for the bundled UI server.
   - Default: `3000`
+- `MANVERSE_UI_HOST`
+  - Host/interface for the bundled UI server.
+  - Default: `127.0.0.1`
+- `MANVERSE_API_HOST`
+  - Host/interface for the bundled API server.
+  - Default: `127.0.0.1` (LAN access switches to `0.0.0.0` automatically)
 - `MANVERSE_EXTERNAL_UI`
   - Set to `true` to prevent Electron from starting the UI dev server.
 - `MANVERSE_DISABLE_UPDATES`
@@ -127,6 +133,18 @@ The desktop shell stores UI toggles in a JSON file under the Electron user data 
   - Base interval in minutes for background checks.
 - `pollJitterMinutes`
   - Random jitter in minutes added to the base interval.
+- `jwtSecret`
+  - Internal secret used to sign JWTs (generated automatically).
+- `anilistClientId`
+  - Stored AniList client ID (desktop app only).
+- `anilistClientSecret`
+  - Stored AniList client secret (desktop app only).
+- `anilistRedirectUri`
+  - Optional AniList redirect URL override (desktop app only).
+- `lanAccessEnabled`
+  - Whether LAN access is enabled.
+- `lanHost`
+  - The advertised LAN host (IP or `.local` hostname).
 
 ## Build + CI
 

@@ -1,6 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('manverse', {
+  apiUrl: process.env.MANVERSE_RENDERER_API_URL || '',
   getSettings: () => ipcRenderer.invoke('manverse:getSettings'),
   updateSetting: (key, value) =>
     ipcRenderer.invoke('manverse:updateSetting', { key, value }),
@@ -15,6 +16,8 @@ contextBridge.exposeInMainWorld('manverse', {
   },
   getNotifierEvents: () => ipcRenderer.invoke('manverse:getNotifierEvents'),
   markAllNotifierRead: () => ipcRenderer.invoke('manverse:markAllNotifierRead'),
+  consumeAuthToken: () => ipcRenderer.invoke('manverse:consumeAuthToken'),
+  log: (payload) => ipcRenderer.invoke('manverse:log', payload),
   onNotifierEvents: (callback) => {
     const listener = (_event, payload) => callback(payload);
     ipcRenderer.on('manverse:notifier-events', listener);

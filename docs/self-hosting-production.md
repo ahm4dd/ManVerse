@@ -5,6 +5,9 @@ outside your LAN. This is more complex than the quick start.
 
 If you are new to self-hosting, read `Self-hosting-guide.md` first.
 
+If you are using the desktop app (AppImage/Windows/macOS), use Settings -> Self-hosting
+instead of this guide.
+
 ## Overview
 
 - Build the UI into static files.
@@ -26,6 +29,9 @@ ANILIST_CLIENT_SECRET=your_secret
 ANILIST_REDIRECT_URI=https://your-domain-or-ip/api/auth/anilist/callback
 NODE_ENV=production
 ```
+
+If you also plan to sign in locally on the host machine, add a local redirect URL in your
+AniList developer settings (for example `http://127.0.0.1:3001/api/auth/anilist/callback`).
 
 Create `app/.env.local`:
 

@@ -183,19 +183,26 @@ IP on that network only. It does not follow you across different networks.
 
 ---
 
-## Mode 1: Desktop app + LAN access
+## Mode 1: Desktop app + LAN access (recommended for most people)
 
-This mode uses the Electron app, but you want to access it from a phone/tablet.
+This mode uses the Electron app and exposes it to your LAN using the built-in LAN Access toggle.
 
 ### What this does
-- The desktop app runs the API locally (default 3001).
-- The UI is also local (default 3000), but in production build it is bound to 127.0.0.1.
-- To access from another device, you must run a UI server that binds to 0.0.0.0
-  or otherwise exposes the UI to your LAN.
+- The desktop app runs the API (default 3001) and UI (default 3000).
+- LAN Access binds the UI/API to your LAN so phones/tablets can reach it.
+- AniList redirects must use the same host your clients use.
 
-### Recommended approach
-Use the headless approach for the UI (Mode 2), and keep the desktop app for API only.
-If you use the desktop app only, LAN access will not be available by default.
+### Steps (desktop app)
+1) Open Settings -> Self-hosting -> LAN Access.
+2) Choose an advertised host (LAN IP or `.local`), then enable LAN access.
+3) Copy the LAN UI URL and open it on your phone/tablet.
+4) In AniList developer settings, add redirect URLs for:
+   - Desktop app: `http://127.0.0.1:3001/api/auth/anilist/callback` (or `http://localhost:3001/...`)
+   - LAN devices: `http://YOUR_HOST_IP:3001/api/auth/anilist/callback`
+5) Sign in from each device using the matching UI URL.
+
+Note: AniList allows multiple redirect URLs per app. Use the same host you open in the browser
+(IP vs `.local` vs `localhost`).
 
 ---
 
@@ -500,15 +507,21 @@ Repeat for the UI with `bun run dev:app -- --host 0.0.0.0 --port 3000`.
 AniList uses redirect URLs. If the redirect URL does not match exactly,
 login will fail.
 
-If you self-host on LAN:
+If you self-host on LAN, add the LAN redirect URL:
 
 ```
 http://YOUR_HOST_IP:3001/api/auth/anilist/callback
 ```
 
-Make sure this is set in:
-- `ANILIST_REDIRECT_URI` (API env)
-- Your AniList developer app settings
+If you also use the desktop app locally, add the local redirect URL too:
+
+```
+http://127.0.0.1:3001/api/auth/anilist/callback
+```
+
+Make sure these are set in:
+- `ANILIST_REDIRECT_URI` (API env, if you manage it manually)
+- Your AniList developer app settings (you can add multiple entries)
 
 ---
 

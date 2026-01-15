@@ -8,6 +8,7 @@ import { getJwtSecret } from '../utils/jwt.ts';
 export const requireAuth: MiddlewareHandler<HonoEnv> = async (c, next) => {
   const header = c.req.header('Authorization');
   if (!header || !header.startsWith('Bearer ')) {
+    console.warn('Auth header missing', { path: c.req.path });
     return jsonError(
       c,
       {
@@ -24,6 +25,10 @@ export const requireAuth: MiddlewareHandler<HonoEnv> = async (c, next) => {
     c.set('auth', payload);
     await next();
   } catch (error) {
+    console.warn('Auth token verification failed', {
+      path: c.req.path,
+      message: error instanceof Error ? error.message : String(error),
+    });
     return jsonError(
       c,
       {
@@ -46,6 +51,7 @@ export const requireAuthOrQuery: MiddlewareHandler<HonoEnv> = async (c, next) =>
   }
 
   if (!token) {
+    console.warn('Auth header missing', { path: c.req.path });
     return jsonError(
       c,
       {
@@ -61,6 +67,10 @@ export const requireAuthOrQuery: MiddlewareHandler<HonoEnv> = async (c, next) =>
     c.set('auth', payload);
     await next();
   } catch (error) {
+    console.warn('Auth token verification failed', {
+      path: c.req.path,
+      message: error instanceof Error ? error.message : String(error),
+    });
     return jsonError(
       c,
       {

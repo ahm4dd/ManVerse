@@ -12,7 +12,7 @@ import NotificationsMenu from './components/NotificationsMenu';
 import AniListSetupModal from './components/AniListSetupModal';
 import DesktopTitleBar from './components/DesktopTitleBar';
 import { anilistApi } from './lib/anilist';
-import { getStoredToken } from './lib/api-client';
+import { getApiUrl, getStoredToken } from './lib/api-client';
 import { Chapter } from './types';
 import { ThemeProvider, useTheme, themes, type CustomTheme } from './lib/theme';
 import { NotificationProvider, useNotification } from './lib/notifications';
@@ -101,6 +101,10 @@ const AppContent: React.FC = () => {
   } = useTheme();
   const { notify } = useNotification();
   const isPhoneLayout = useMediaQuery('(max-width: 768px)');
+  const logDesktop = (message: string, data?: Record<string, unknown>) => {
+    if (!desktopApi.isAvailable) return;
+    desktopApi.log(message, data).catch(() => {});
+  };
 
   const baseThemes = useMemo(() => themes.filter((option) => option.id !== 'custom'), []);
 
@@ -375,6 +379,13 @@ const AppContent: React.FC = () => {
     const ignoreStoredNav =
       Boolean(token || authError) || window.location.pathname !== '/';
 
+    logDesktop('auth.init', {
+      origin: window.location.origin,
+      apiUrl: getApiUrl(),
+      tokenInUrl: Boolean(token),
+      authError,
+    });
+
     if (!token && storedToken && storedToken !== anilistApi.token) {
       anilistApi.setToken(storedToken);
     }
@@ -382,6 +393,26 @@ const AppContent: React.FC = () => {
     if (token) {
       setIsVerifying(true);
       anilistApi.setToken(token);
+      logDesktop('auth.token.set', { source: 'url', tokenLength: token.length });
+    }
+
+    if (!token && !authError && desktopApi.isAvailable) {
+      desktopApi
+        .consumeAuthToken()
+        .then((pendingToken) => {
+          if (!pendingToken) return;
+          setIsVerifying(true);
+          anilistApi.setToken(pendingToken);
+          logDesktop('auth.token.set', { source: 'ipc', tokenLength: pendingToken.length });
+          loadUser();
+        })
+        .catch(() => {});
+    }
+
+    if (authError) {
+      anilistApi.logout();
+      notify('AniList login failed. Check your redirect URL and try again.', 'error');
+      logDesktop('auth.error', { error: authError });
     }
 
     if (token || authError) {

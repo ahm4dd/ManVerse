@@ -19,6 +19,8 @@ import notificationsRoutes from './routes/notifications.ts';
 
 const app = new OpenAPIHono<HonoEnv>({ defaultHook: openApiHook });
 const port = Number(Bun.env.PORT || 3001);
+const rawHost = Bun.env.MANVERSE_API_HOST;
+const hostname = rawHost && rawHost.trim().length > 0 ? rawHost.trim() : undefined;
 
 app.use('*', async (c, next) => {
   c.set('requestId', randomUUID());
@@ -95,10 +97,13 @@ app.onError(handleError);
 
 const server = {
   port,
+  hostname,
   fetch: app.fetch,
 };
 
-console.log(`ManVerse API listening on http://localhost:${port}`);
+const displayHost =
+  hostname && hostname !== '0.0.0.0' && hostname !== '::' ? hostname : 'localhost';
+console.log(`ManVerse API listening on http://${displayHost}:${port}`);
 
 export { app };
 export default server;
