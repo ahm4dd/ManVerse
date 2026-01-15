@@ -30,8 +30,8 @@ ANILIST_REDIRECT_URI=https://your-domain-or-ip/api/auth/anilist/callback
 NODE_ENV=production
 ```
 
-If you also plan to sign in locally on the host machine, add a local redirect URL in your
-AniList developer settings (for example `http://127.0.0.1:3001/api/auth/anilist/callback`).
+AniList supports one redirect URL at a time. Use the same host you open in the browser,
+and update the redirect URL if you switch hosts.
 
 Create `app/.env.local`:
 

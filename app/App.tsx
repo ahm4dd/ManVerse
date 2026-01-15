@@ -6,15 +6,16 @@ import Login from './pages/Login';
 import Library from './pages/Library';
 import Recommendations from './pages/Recommendations';
 import RecentReads from './pages/RecentReads';
-import Settings from './pages/Settings';
+import Settings, { type SettingsSection } from './pages/Settings';
 import { PaletteIcon, BellIcon, SearchIcon, FilterIcon, XIcon, ChevronDown, SyncIcon, MenuIcon, ChevronUp } from './components/Icons';
 import NotificationsMenu from './components/NotificationsMenu';
 import AniListSetupModal from './components/AniListSetupModal';
 import AniListRedirectModal from './components/AniListRedirectModal';
+import RestartPromptModal from './components/RestartPromptModal';
 import DesktopTitleBar from './components/DesktopTitleBar';
 import { anilistApi } from './lib/anilist';
-import { getApiUrl, getStoredToken } from './lib/api-client';
-import { confirmRedirectUri, getExpectedAniListRedirectUrl, getRedirectConfirmationState, normalizeRedirectUri } from './lib/anilist-redirect';
+import { getApiUrl, getStoredToken, setRuntimeApiUrl } from './lib/api-client';
+import { confirmRedirectUri, getExpectedAniListRedirectUrl, getRedirectConfirmationState, normalizeRedirectUri, normalizeRedirectUriForCompare } from './lib/anilist-redirect';
 import { Chapter } from './types';
 import { ThemeProvider, useTheme, themes, type CustomTheme } from './lib/theme';
 import { NotificationProvider, useNotification } from './lib/notifications';
@@ -157,6 +158,12 @@ const AppContent: React.FC = () => {
   const [redirectGuard, setRedirectGuard] = useState<RedirectGuardState | null>(null);
   const [showRedirectModal, setShowRedirectModal] = useState(false);
   const [redirectModalReason, setRedirectModalReason] = useState<RedirectModalReason>(null);
+  const [restartPrompt, setRestartPrompt] = useState<{
+    title: string;
+    description: string;
+  } | null>(null);
+  const [settingsTargetSection, setSettingsTargetSection] = useState<SettingsSection | null>(null);
+  const [settingsTargetNonce, setSettingsTargetNonce] = useState(0);
 
   // Global Search State
   const [searchQuery, setSearchQuery] = useState('');
@@ -400,6 +407,7 @@ const AppContent: React.FC = () => {
     const params = new URLSearchParams(window.location.search);
     const token = params.get('token');
     const authError = params.get('error');
+    const forceRedirect = params.get('redirect');
     const storedToken = getStoredToken();
     const ignoreStoredNav =
       Boolean(token || authError) || window.location.pathname !== '/';
@@ -439,7 +447,7 @@ const AppContent: React.FC = () => {
       const upper = authError.toUpperCase();
       const authMessage =
         upper === 'INVALID_CLIENT'
-          ? 'AniList rejected this redirect URL. Add the LAN redirect URL in Settings → Self-hosting, then try again.'
+          ? 'AniList rejected this redirect URL. Update it to the LAN redirect URL in Settings → Self-hosting, then try again.'
           : upper === 'REDIRECT_MISMATCH'
             ? 'AniList redirect URL mismatch. Double-check the redirect URL in Settings and on the AniList app.'
             : 'AniList login failed. Check your redirect URL and try again.';
@@ -454,6 +462,9 @@ const AppContent: React.FC = () => {
       params.delete('token');
       params.delete('error');
     }
+    if (forceRedirect) {
+      params.delete('redirect');
+    }
 
     const initialState = resolveInitialState(params, { ignoreStored: ignoreStoredNav });
     setCurrentView(initialState.view);
@@ -463,7 +474,11 @@ const AppContent: React.FC = () => {
     window.history.replaceState(initialState, '', buildUrl(initialState.view, initialState.data));
 
     loadUser();
-    void refreshRedirectGuard();
+    void refreshRedirectGuard(
+      forceRedirect === 'confirm'
+        ? { forceModal: true, reason: 'confirm' }
+        : undefined,
+    );
   }, []);
 
   useEffect(() => {
@@ -483,6 +498,19 @@ const AppContent: React.FC = () => {
     return () => {
       unsubscribe();
     };
+  }, []);
+
+  useEffect(() => {
+    if (!desktopApi.isAvailable) return;
+    desktopApi
+      .getLanInfo()
+      .then((info) => {
+        if (info?.apiUrl) {
+          setRuntimeApiUrl(info.apiUrl);
+        }
+        void refreshRedirectGuard({ lanInfo: info });
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -531,6 +559,12 @@ const AppContent: React.FC = () => {
     navigate('home', undefined, { replace: true });
   };
 
+  const openSettingsSection = (section: SettingsSection | null) => {
+    setSettingsTargetSection(section);
+    setSettingsTargetNonce((prev) => prev + 1);
+    navigate('settings');
+  };
+
   useEffect(() => {
     const handlePopState = (event: PopStateEvent) => {
       const state = (event.state as NavState | null)?.app ? (event.state as NavState) : null;
@@ -571,10 +605,27 @@ const AppContent: React.FC = () => {
     navigate('home', undefined, { replace: true });
   };
 
+  const delay = (ms: number) =>
+    new Promise<void>((resolve) => {
+      window.setTimeout(resolve, ms);
+    });
+
+  const waitForCredentialStatus = async (timeoutMs = 12000) => {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      const status = await anilistApi.getCredentialStatus();
+      if (status) return status;
+      await delay(400);
+    }
+    return null;
+  };
+
   const refreshRedirectGuard = async (options?: {
     lanInfo?: LanAccessInfo | null;
     forceModal?: boolean;
     reason?: RedirectModalReason;
+    suppressModal?: boolean;
+    autoConfirm?: boolean;
   }) => {
     let lanInfo = options?.lanInfo ?? null;
     if (!lanInfo && desktopApi.isAvailable) {
@@ -605,17 +656,18 @@ const AppContent: React.FC = () => {
     }
 
     const configuredRedirectUri = normalizeRedirectUri(status.redirectUri);
-    const expectedNormalized = normalizeRedirectUri(expectedRedirectUri);
-    const mismatch = !configuredRedirectUri || configuredRedirectUri !== expectedNormalized;
+    const configuredCompare = normalizeRedirectUriForCompare(status.redirectUri);
+    const expectedNormalized = normalizeRedirectUriForCompare(expectedRedirectUri);
+    const mismatch = !configuredCompare || configuredCompare !== expectedNormalized;
     const reason: RedirectGuardState['reason'] = !configuredRedirectUri
       ? 'missing'
       : mismatch
         ? 'mismatch'
         : null;
-    const confirmation = getRedirectConfirmationState(expectedRedirectUri);
-    const requiresConfirmation = confirmation.requiresConfirmation;
-    const blocked = mismatch || requiresConfirmation;
-    const guard: RedirectGuardState = {
+    let confirmation = getRedirectConfirmationState(expectedRedirectUri);
+    let requiresConfirmation = confirmation.requiresConfirmation;
+    let blocked = mismatch || requiresConfirmation;
+    let guard: RedirectGuardState = {
       expectedRedirectUri,
       configuredRedirectUri: configuredRedirectUri || null,
       mismatch,
@@ -624,8 +676,19 @@ const AppContent: React.FC = () => {
       blocked,
       source: status.source ?? null,
     };
+    if (options?.autoConfirm && !mismatch) {
+      confirmRedirectUri(expectedRedirectUri);
+      confirmation = getRedirectConfirmationState(expectedRedirectUri);
+      requiresConfirmation = confirmation.requiresConfirmation;
+      blocked = mismatch || requiresConfirmation;
+      guard = { ...guard, requiresConfirmation, blocked };
+    }
     setRedirectGuard(guard);
-    if (blocked && (options?.forceModal || reason || requiresConfirmation)) {
+    const forcedReason = options?.forceModal && options?.reason ? options.reason : null;
+    if (!options?.suppressModal && forcedReason) {
+      setRedirectModalReason(forcedReason);
+      setShowRedirectModal(true);
+    } else if (!options?.suppressModal && blocked && (options?.forceModal || reason || requiresConfirmation)) {
       setRedirectModalReason(options?.reason ?? reason ?? (requiresConfirmation ? 'confirm' : null));
       setShowRedirectModal(true);
     }
@@ -644,7 +707,27 @@ const AppContent: React.FC = () => {
       return;
     }
     confirmRedirectUri(redirectGuard.expectedRedirectUri);
-    const guard = await refreshRedirectGuard({ forceModal: false });
+    const expectedNormalized = normalizeRedirectUriForCompare(redirectGuard.expectedRedirectUri);
+    const expectedForSave = normalizeRedirectUri(redirectGuard.expectedRedirectUri);
+    const configuredNormalized = normalizeRedirectUriForCompare(redirectGuard.configuredRedirectUri || '');
+    const didUpdate = desktopApi.isAvailable && expectedNormalized !== configuredNormalized;
+    if (didUpdate) {
+      try {
+        await desktopApi.updateSetting('anilistRedirectUri', expectedForSave);
+      } catch {
+        // ignore
+      }
+    }
+    const status = await waitForCredentialStatus();
+    const guard = await refreshRedirectGuard({ forceModal: false, autoConfirm: true });
+    if (didUpdate) {
+      setRestartPrompt({
+        title: 'Restart to apply AniList changes',
+        description: status
+          ? 'Redirect URL saved. Restart the app if login stays locked.'
+          : 'ManVerse is restarting the local API to apply the new redirect URL. Restart the app if login stays locked.',
+      });
+    }
     if (guard.blocked) {
       setRedirectModalReason(guard.reason ?? 'confirm');
       setShowRedirectModal(true);
@@ -652,6 +735,35 @@ const AppContent: React.FC = () => {
     }
     setShowRedirectModal(false);
     setRedirectModalReason(null);
+  };
+
+  const handleSaveRedirectUri = async (value: string): Promise<{ ok: boolean; message?: string }> => {
+    const normalized = normalizeRedirectUri(value);
+    if (!normalized) {
+      return { ok: false, message: 'Enter a redirect URL before saving.' };
+    }
+    if (!desktopApi.isAvailable) {
+      return { ok: false, message: 'Open Settings to update the redirect URL.' };
+    }
+    try {
+      await desktopApi.updateSetting('anilistRedirectUri', normalized);
+    } catch {
+      return { ok: false, message: 'Unable to save the redirect URL.' };
+    }
+    const status = await waitForCredentialStatus();
+    const guard = await refreshRedirectGuard({ forceModal: false });
+    if (desktopApi.isAvailable) {
+      setRestartPrompt({
+        title: 'Restart to apply AniList changes',
+        description: status
+          ? 'Redirect URL saved. Restart the app if login stays locked.'
+          : 'ManVerse is restarting the local API to apply the new redirect URL. Restart the app if login stays locked.',
+      });
+    }
+    if (guard.blocked) {
+      return { ok: false, message: 'Redirect URL still mismatched. Update AniList and try again.' };
+    }
+    return { ok: true, message: 'Saved. Update AniList, then confirm below.' };
   };
 
   const handleOAuthLogin = async () => {
@@ -669,6 +781,19 @@ const AppContent: React.FC = () => {
         return;
       }
       notify('AniList login failed. Check your credentials and API log.', 'error');
+    }
+  };
+
+  const handleCredentialsSaved = async () => {
+    const status = await waitForCredentialStatus();
+    await refreshRedirectGuard({ forceModal: false, autoConfirm: true });
+    if (desktopApi.isAvailable) {
+      setRestartPrompt({
+        title: 'Restart to apply AniList credentials',
+        description: status
+          ? 'AniList credentials were saved. Restart the app if login stays locked.'
+          : 'ManVerse is restarting the local API to apply your AniList credentials. Restart the app if login stays locked.',
+      });
     }
   };
 
@@ -951,7 +1076,7 @@ const AppContent: React.FC = () => {
                             <button
                               onClick={() => {
                                 setShowProfileMenu(false);
-                                navigate('settings');
+                                openSettingsSection('account');
                               }}
                               className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
                             >
@@ -1046,7 +1171,7 @@ const AppContent: React.FC = () => {
                             <button
                               onClick={() => {
                                 setShowLoginMenu(false);
-                                navigate('settings');
+                                openSettingsSection('account');
                               }}
                               className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
                             >
@@ -1299,7 +1424,7 @@ const AppContent: React.FC = () => {
                           <button
                             onClick={() => {
                               setShowProfileMenu(false);
-                              navigate('settings');
+                              openSettingsSection('account');
                             }}
                             className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
                           >
@@ -1395,7 +1520,7 @@ const AppContent: React.FC = () => {
                           <button
                             onClick={() => {
                               setShowLoginMenu(false);
-                              navigate('settings');
+                              openSettingsSection('account');
                             }}
                             className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
                           >
@@ -1500,7 +1625,7 @@ const AppContent: React.FC = () => {
                     </button>
                   )}
                   <button
-                    onClick={() => navigate('settings')}
+                    onClick={() => openSettingsSection('account')}
                     className={`w-full rounded-xl px-4 py-3 text-left transition-colors ${
                       currentView === 'settings'
                         ? 'bg-primary/15 text-white'
@@ -1611,8 +1736,26 @@ const AppContent: React.FC = () => {
               <Settings
                 onBack={handleBack}
                 onOpenSetup={() => setShowSetupGuide(true)}
+                initialSection={settingsTargetSection ?? undefined}
+                sectionRequestId={settingsTargetNonce}
+                onCredentialsSaved={handleCredentialsSaved}
                 onLanChange={(info) => {
-                  void refreshRedirectGuard({ lanInfo: info, forceModal: true, reason: 'confirm' });
+                  if (info?.apiUrl) {
+                    setRuntimeApiUrl(info.apiUrl);
+                  }
+                  let shouldReload = false;
+                  if (info?.uiUrl) {
+                    try {
+                      shouldReload = new URL(info.uiUrl).origin !== window.location.origin;
+                    } catch {
+                      shouldReload = false;
+                    }
+                  }
+                  if (shouldReload) {
+                    void refreshRedirectGuard({ lanInfo: info, suppressModal: true });
+                  } else {
+                    void refreshRedirectGuard({ lanInfo: info, forceModal: true, reason: 'confirm' });
+                  }
                 }}
               />
             </PageTransition>
@@ -1674,7 +1817,7 @@ const AppContent: React.FC = () => {
       <AniListSetupModal
         open={showSetupGuide}
         onClose={() => setShowSetupGuide(false)}
-        onOpenSettings={() => navigate('settings')}
+        onOpenSettings={() => openSettingsSection('account')}
       />
       <AniListRedirectModal
         open={showRedirectModal}
@@ -1686,7 +1829,22 @@ const AppContent: React.FC = () => {
           setRedirectModalReason(null);
         }}
         onConfirm={handleConfirmRedirect}
-        onOpenSettings={() => navigate('settings')}
+        onOpenSettings={() => {
+          setShowRedirectModal(false);
+          setRedirectModalReason(null);
+          openSettingsSection('account');
+        }}
+        onSaveRedirectUri={desktopApi.isAvailable ? handleSaveRedirectUri : undefined}
+      />
+      <RestartPromptModal
+        open={Boolean(restartPrompt)}
+        title={restartPrompt?.title || 'Restart required'}
+        description={restartPrompt?.description || ''}
+        onLater={() => setRestartPrompt(null)}
+        onRestart={() => {
+          setRestartPrompt(null);
+          void desktopApi.restartApp();
+        }}
       />
     </div>
   );

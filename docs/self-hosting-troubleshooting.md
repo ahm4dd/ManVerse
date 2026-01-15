@@ -21,8 +21,8 @@ Use this checklist when the UI loads but features do not work, or when the UI do
 - If the login just refreshes without signing in, the redirect host usually does not match
   the URL you opened in the browser.
 - Update `ANILIST_REDIRECT_URI` and the AniList app settings.
-- Add both the local redirect URL (`127.0.0.1` or `localhost`) and the LAN redirect URL
-  if you sign in from desktop and from phones.
+- AniList supports one redirect URL at a time. Use the URL that matches the host you open
+  in the browser, and update it when you switch between local and LAN.
 - Make sure the scheme and port match exactly (HTTP vs HTTPS).
 
 ## Chapters or images do not load

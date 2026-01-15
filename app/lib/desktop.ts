@@ -69,6 +69,7 @@ type DesktopBridge = {
   minimizeWindow?: () => Promise<{ ok: boolean }>;
   toggleMaximize?: () => Promise<{ ok: boolean; isMaximized: boolean }>;
   closeWindow?: () => Promise<{ ok: boolean }>;
+  restartApp?: () => Promise<{ ok: boolean }>;
   getWindowState?: () => Promise<DesktopWindowState>;
   onWindowState?: (callback: (state: DesktopWindowState) => void) => () => void;
   getLanInfo?: () => Promise<LanAccessInfo>;
@@ -154,6 +155,10 @@ export const desktopApi = {
   closeWindow: async (): Promise<void> => {
     if (!bridge?.closeWindow) return;
     await bridge.closeWindow();
+  },
+  restartApp: async (): Promise<void> => {
+    if (!bridge?.restartApp) return;
+    await bridge.restartApp();
   },
   getWindowState: async (): Promise<DesktopWindowState | null> => {
     if (!bridge?.getWindowState) return null;

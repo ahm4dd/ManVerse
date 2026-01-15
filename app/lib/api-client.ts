@@ -1,6 +1,7 @@
 const DEFAULT_API_URL = 'http://localhost:3001';
 const TOKEN_KEY = 'manverse_token';
 const RUNTIME_TOKEN_KEY = '__manverse_token';
+let runtimeApiUrl: string | null = null;
 
 const isLocalHost = (host: string) =>
   host === 'localhost' || host === '127.0.0.1' || host === '::1';
@@ -10,6 +11,9 @@ const resolveApiUrl = () => {
   if (typeof window === 'undefined') return envUrl;
   try {
     const parsed = new URL(envUrl);
+    if (runtimeApiUrl) {
+      return new URL(runtimeApiUrl).toString().replace(/\/$/, '');
+    }
     const runtimeOverride = (window as any).manverse?.apiUrl;
     if (typeof runtimeOverride === 'string' && runtimeOverride.trim()) {
       return new URL(runtimeOverride.trim()).toString().replace(/\/$/, '');
@@ -41,6 +45,9 @@ const resolveApiUrl = () => {
 
 export const API_URL = resolveApiUrl();
 export const getApiUrl = () => resolveApiUrl();
+export function setRuntimeApiUrl(url: string | null): void {
+  runtimeApiUrl = url ? url.trim() : null;
+}
 
 function logDesktop(message: string, data?: Record<string, unknown>) {
   if (typeof window === 'undefined') return;

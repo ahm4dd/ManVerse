@@ -13,10 +13,10 @@ If you are using the desktop app, you do not need to set up Bun or env files.
 1) Open Settings -> Self-hosting -> LAN Access.
 2) Choose an advertised host (LAN IP or `.local`) and enable LAN access.
 3) Copy the LAN UI URL to your phone/tablet and open it in a browser.
-4) In AniList developer settings, add redirect URLs for:
-   - Desktop app: `http://127.0.0.1:3001/api/auth/anilist/callback` (or `http://localhost:3001/...`)
-   - LAN devices: `http://YOUR_HOST_IP:3001/api/auth/anilist/callback`
-5) Sign in on each device using the matching UI URL.
+4) In AniList developer settings, set the redirect URL to:
+   - `http://YOUR_HOST_IP:3001/api/auth/anilist/callback`
+   (Use the LAN host; the desktop app uses the LAN host while LAN access is enabled.)
+5) Sign in on the desktop app and other devices using the LAN UI URL.
 
 If you want a headless or server setup instead, follow the steps below.
 

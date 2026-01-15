@@ -270,6 +270,10 @@ function buildUrl(host, port) {
   return `http://${formatHostForUrl(host)}:${port}`;
 }
 
+function updateRendererApiUrl() {
+  process.env.MANVERSE_RENDERER_API_URL = buildUrl(uiAdvertisedHost, apiPort);
+}
+
 function getLanAddresses() {
   const nets = os.networkInterfaces();
   const results = [];
@@ -490,15 +494,17 @@ function getLanInfo() {
   const settings = getSettings();
   const addresses = getLanAddresses();
   const selectedHost = typeof settings.lanHost === 'string' ? settings.lanHost.trim() : '';
-  const displayHost = selectedHost || addresses[0]?.address || null;
+  const lanEnabled = Boolean(settings.lanAccessEnabled);
+  const savedHost = selectedHost || null;
+  const displayHost = lanEnabled ? selectedHost || addresses[0]?.address || null : savedHost;
   const resolvedHost = resolveLanHost(selectedHost);
-  const uiHost = displayHost || uiAdvertisedHost;
-  const apiHost = displayHost || (settings.lanAccessEnabled ? resolvedHost : 'localhost');
+  const uiHost = lanEnabled ? displayHost || uiAdvertisedHost : uiAdvertisedHost;
+  const apiHost = lanEnabled ? displayHost || resolvedHost : 'localhost';
   const uiRunning = Boolean(uiProcess && uiProcess.exitCode == null) || Boolean(uiServer?.listening);
   const apiRunning = Boolean(apiProcess && apiProcess.exitCode == null);
 
   return {
-    enabled: Boolean(settings.lanAccessEnabled),
+    enabled: lanEnabled,
     host: displayHost,
     uiPort,
     apiPort,
@@ -516,6 +522,7 @@ async function setLanAccess(payload) {
   const enabled = Boolean(payload?.enabled);
   const hostProvided = Object.prototype.hasOwnProperty.call(payload || {}, 'host');
   const host = hostProvided && typeof payload.host === 'string' ? payload.host.trim() : settings.lanHost;
+  const previousUiUrl = uiUrl;
   const nextSettings = {
     ...settings,
     lanAccessEnabled: enabled,
@@ -525,6 +532,11 @@ async function setLanAccess(payload) {
   applyLanConfigFromSettings();
   await restartUiServer();
   await restartApiProcess();
+  if (previousUiUrl !== uiUrl) {
+    void reloadMainWindow('lan-toggle');
+  } else {
+    updateRendererApiUrl();
+  }
   return getLanInfo();
 }
 
@@ -832,7 +844,7 @@ async function waitForUrl(url, timeoutMs = 30000) {
 }
 
 async function createWindow() {
-  process.env.MANVERSE_RENDERER_API_URL = buildUrl(uiAdvertisedHost, apiPort);
+  updateRendererApiUrl();
   logDesktop('window.create', {
     isDev,
     uiUrl,
@@ -946,6 +958,65 @@ async function createWindow() {
   });
 }
 
+async function reloadMainWindow(reason) {
+  if (!mainWindow || mainWindow.isDestroyed() || isShuttingDown || app.isQuitting) return;
+  updateRendererApiUrl();
+  let targetUrl = uiUrl;
+  try {
+    const currentUrl = mainWindow.webContents.getURL();
+    if (currentUrl && currentUrl.startsWith('http')) {
+      const parsed = new URL(currentUrl);
+      const base = new URL(uiUrl);
+      parsed.protocol = base.protocol;
+      parsed.host = base.host;
+      if (reason === 'lan-toggle') {
+        parsed.searchParams.set('redirect', 'confirm');
+      }
+      targetUrl = parsed.toString();
+    }
+  } catch {
+    targetUrl = uiUrl;
+  }
+  logDesktop('window.reload', {
+    reason,
+    uiUrl: targetUrl,
+    apiUrl: process.env.MANVERSE_RENDERER_API_URL,
+  });
+  if (!pendingAuthToken) {
+    try {
+      const token = await mainWindow.webContents.executeJavaScript(
+        "localStorage.getItem('manverse_token')",
+        true,
+      );
+      if (typeof token === 'string' && token) {
+        pendingAuthToken = token;
+        logDesktop('auth.token.capture', { tokenLength: token.length });
+      }
+    } catch (error) {
+      logDesktop('auth.token.capture_failed', { message: error?.message || String(error) });
+    }
+  }
+  try {
+    await waitForUrl(targetUrl, 15000);
+  } catch (error) {
+    logDesktop('window.reload.wait_failed', {
+      reason,
+      uiUrl: targetUrl,
+      message: error?.message || String(error),
+    });
+  }
+  if (!mainWindow || mainWindow.isDestroyed() || isShuttingDown || app.isQuitting) return;
+  try {
+    await mainWindow.loadURL(targetUrl);
+  } catch (error) {
+    logDesktop('window.reload.failed', {
+      reason,
+      uiUrl: targetUrl,
+      message: error?.message || String(error),
+    });
+  }
+}
+
 function initAutoUpdates() {
   if (isDev || process.env.MANVERSE_DISABLE_UPDATES === 'true') {
     return;
@@ -1038,6 +1109,19 @@ async function shutdownApp(exitCode = 0) {
   app.exit(exitCode);
 }
 
+async function restartApp() {
+  if (isShuttingDown) return { ok: false };
+  try {
+    const args = process.argv.slice(1);
+    logDesktop('app.restart', { args });
+    app.relaunch({ args });
+  } catch (error) {
+    logDesktop('app.restart.failed', { message: error?.message || String(error) });
+  }
+  await shutdownApp(0);
+  return { ok: true };
+}
+
 const handleShutdownSignal = () => {
   if (isShuttingDown) return;
   if (!app.isReady()) {
@@ -1090,6 +1174,7 @@ app.whenReady().then(() => {
     autoUpdater.quitAndInstall();
     return { ok: true };
   });
+  ipcMain.handle('manverse:restartApp', async () => restartApp());
   ipcMain.handle('manverse:consumeAuthToken', () => {
     const token = pendingAuthToken;
     pendingAuthToken = null;

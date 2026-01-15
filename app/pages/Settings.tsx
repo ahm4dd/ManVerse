@@ -11,13 +11,17 @@ import { apiRequest, getApiUrl } from '../lib/api-client';
 import { buildRedirectUri } from '../lib/anilist-redirect';
 import { useTheme, themes, type Theme, type ThemeOverrides, type CustomTheme } from '../lib/theme';
 
+export type SettingsSection = 'account' | 'app' | 'hosting' | 'themes';
+
 interface SettingsProps {
   onBack: () => void;
   onOpenSetup?: () => void;
   onLanChange?: (info: LanAccessInfo) => void;
+  onCredentialsSaved?: () => void;
+  initialSection?: SettingsSection;
+  sectionRequestId?: number;
 }
 
-type SettingsSection = 'account' | 'app' | 'hosting' | 'themes';
 const SETTINGS_SECTIONS: Array<{
   id: SettingsSection;
   label: string;
@@ -29,7 +33,14 @@ const SETTINGS_SECTIONS: Array<{
   { id: 'themes', label: 'Themes', description: 'Pick a look that fits your vibe.' },
 ];
 
-const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup, onLanChange }) => {
+const Settings: React.FC<SettingsProps> = ({
+  onBack,
+  onOpenSetup,
+  onLanChange,
+  onCredentialsSaved,
+  initialSection,
+  sectionRequestId,
+}) => {
   const [desktopSettings, setDesktopSettings] = useState<DesktopSettings | null>(null);
   const [loading, setLoading] = useState(false);
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
@@ -44,7 +55,9 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup, onLanChange })
     source: 'env' | 'runtime' | 'none';
     redirectUri?: string;
   } | null>(null);
-  const [activeSection, setActiveSection] = useState<SettingsSection>('account');
+  const [activeSection, setActiveSection] = useState<SettingsSection>(
+    initialSection ?? 'account',
+  );
   const {
     theme,
     setTheme,
@@ -93,6 +106,12 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup, onLanChange })
     };
     void load();
   }, []);
+
+  useEffect(() => {
+    if (initialSection) {
+      setActiveSection(initialSection);
+    }
+  }, [initialSection, sectionRequestId]);
 
   useEffect(() => {
     if (desktopApi.isAvailable) return;
@@ -190,6 +209,11 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup, onLanChange })
         }>('/api/auth/anilist/status', { skipAuth: true });
         setCredentialStatus(status);
       }
+      try {
+        await onCredentialsSaved?.();
+      } catch {
+        // ignore downstream refresh failures
+      }
       setSaveState('saved');
       window.setTimeout(() => setSaveState('idle'), 1500);
     } catch {
@@ -198,11 +222,13 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup, onLanChange })
   };
   const lanEnabled = Boolean(lanInfo?.enabled);
   const lanAddresses = lanInfo?.addresses ?? [];
-  const lanUiUrl = lanInfo?.uiUrl || '';
-  const lanApiUrl = lanInfo?.apiUrl || '';
+  const lanUiUrl = lanInfo?.enabled ? lanInfo.uiUrl : '';
+  const lanApiUrl = lanInfo?.enabled ? lanInfo.apiUrl : '';
   const localRedirectUri = buildRedirectUri(apiUrl);
   const lanRedirectUri = lanApiUrl ? buildRedirectUri(lanApiUrl) : '';
   const showLanRedirectWarning = lanEnabled && Boolean(lanRedirectUri);
+  const requiredRedirectUri =
+    lanEnabled && lanRedirectUri ? lanRedirectUri : localRedirectUri;
 
   const refreshLanInfo = async () => {
     if (!desktopApi.isAvailable) return;
@@ -733,13 +759,18 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup, onLanChange })
               </div>
               {showLanRedirectWarning && (
                 <div className="mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
-                  LAN hosting is enabled. Add the LAN redirect URL to your AniList app or logins
-                  from other devices will fail with “invalid_client”.
+                  LAN hosting is enabled. Use the LAN redirect URL for AniList so the desktop app
+                  and other devices sign in through the same host.
                 </div>
               )}
               <div className="mt-2 space-y-2">
                 <div>
-                  <div className="text-xs text-gray-500">Desktop app (local)</div>
+                  <div className="text-xs text-gray-500">
+                    Local mode (LAN off){' '}
+                    {requiredRedirectUri === localRedirectUri && (
+                      <span className="text-emerald-300">• Required</span>
+                    )}
+                  </div>
                   <div className="text-sm text-white break-all">{localRedirectUri}</div>
                   <button
                     onClick={() => handleCopy(localRedirectUri, 'local-redirect')}
@@ -749,7 +780,12 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup, onLanChange })
                   </button>
                 </div>
                 <div>
-                  <div className="text-xs text-gray-500">LAN devices</div>
+                  <div className="text-xs text-gray-500">
+                    LAN mode (LAN on){' '}
+                    {requiredRedirectUri === lanRedirectUri && lanRedirectUri && (
+                      <span className="text-emerald-300">• Required</span>
+                    )}
+                  </div>
                   <div className="text-sm text-white break-all">
                     {lanRedirectUri || 'Enable LAN access to generate a LAN redirect URL.'}
                   </div>
@@ -763,7 +799,8 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup, onLanChange })
                 </div>
               </div>
               <div className="mt-3 text-xs text-gray-500">
-                Add both URLs to your AniList app if you want desktop and LAN logins to work.
+                AniList supports one redirect URL at a time. When LAN is enabled, use the LAN URL
+                for both the desktop app and other devices. When LAN is off, use the local URL.
               </div>
             </div>
           </div>

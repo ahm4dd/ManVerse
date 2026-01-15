@@ -196,13 +196,12 @@ This mode uses the Electron app and exposes it to your LAN using the built-in LA
 1) Open Settings -> Self-hosting -> LAN Access.
 2) Choose an advertised host (LAN IP or `.local`), then enable LAN access.
 3) Copy the LAN UI URL and open it on your phone/tablet.
-4) In AniList developer settings, add redirect URLs for:
-   - Desktop app: `http://127.0.0.1:3001/api/auth/anilist/callback` (or `http://localhost:3001/...`)
-   - LAN devices: `http://YOUR_HOST_IP:3001/api/auth/anilist/callback`
-5) Sign in from each device using the matching UI URL.
+4) In AniList developer settings, set the redirect URL to:
+   - `http://YOUR_HOST_IP:3001/api/auth/anilist/callback`
+5) Sign in from the desktop app and any LAN device using the LAN UI URL.
 
-Note: AniList allows multiple redirect URLs per app. Use the same host you open in the browser
-(IP vs `.local` vs `localhost`).
+Note: AniList supports one redirect URL at a time. When LAN Access is enabled, the desktop app
+uses the LAN host too, so everyone should use the LAN URL.
 
 ---
 
@@ -507,21 +506,21 @@ Repeat for the UI with `bun run dev:app -- --host 0.0.0.0 --port 3000`.
 AniList uses redirect URLs. If the redirect URL does not match exactly,
 login will fail.
 
-If you self-host on LAN, add the LAN redirect URL:
+If you self-host on LAN, set the redirect URL to the LAN host:
 
 ```
 http://YOUR_HOST_IP:3001/api/auth/anilist/callback
 ```
 
-If you also use the desktop app locally, add the local redirect URL too:
+If you switch back to local-only access, update it to the local redirect URL:
 
 ```
 http://127.0.0.1:3001/api/auth/anilist/callback
 ```
 
-Make sure these are set in:
+Make sure this is set in:
 - `ANILIST_REDIRECT_URI` (API env, if you manage it manually)
-- Your AniList developer app settings (you can add multiple entries)
+- Your AniList developer app settings
 
 ---
 

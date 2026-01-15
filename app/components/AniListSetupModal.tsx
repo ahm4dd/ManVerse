@@ -59,7 +59,7 @@ const AniListSetupModal: React.FC<AniListSetupModalProps> = ({
         bullets: [
           'Paste this exact URL into the Redirect URL field.',
           'Make sure there are no trailing slashes or typos.',
-          'If you use LAN access, add the LAN API redirect from Settings → Self-hosting.',
+          'If you use LAN access, replace it with the LAN API redirect from Settings → Self-hosting.',
         ],
         code: redirectUri,
       },

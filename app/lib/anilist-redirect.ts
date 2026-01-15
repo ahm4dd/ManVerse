@@ -4,8 +4,24 @@ import type { LanAccessInfo } from './desktop';
 const REDIRECT_LAST_KEY = 'manverse_anilist_redirect_last';
 const REDIRECT_CONFIRMED_KEY = 'manverse_anilist_redirect_confirmed';
 
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '0.0.0.0']);
+
 export function normalizeRedirectUri(value?: string | null): string {
   return (value || '').trim().replace(/\/$/, '');
+}
+
+export function normalizeRedirectUriForCompare(value?: string | null): string {
+  const trimmed = normalizeRedirectUri(value);
+  if (!trimmed) return '';
+  try {
+    const parsed = new URL(trimmed);
+    const host = LOCAL_HOSTS.has(parsed.hostname) ? 'localhost' : parsed.hostname;
+    const port = parsed.port ? `:${parsed.port}` : '';
+    const path = parsed.pathname.replace(/\/$/, '');
+    return `${parsed.protocol}//${host}${port}${path}`;
+  } catch {
+    return trimmed;
+  }
 }
 
 export function buildRedirectUri(apiUrl: string): string {
@@ -26,7 +42,7 @@ export function getRedirectConfirmationState(expectedRedirectUri: string): {
   if (typeof window === 'undefined') {
     return { confirmedRedirectUri: null, requiresConfirmation: false };
   }
-  const expected = normalizeRedirectUri(expectedRedirectUri);
+  const expected = normalizeRedirectUriForCompare(expectedRedirectUri);
   if (!expected) {
     return { confirmedRedirectUri: null, requiresConfirmation: false };
   }
@@ -39,8 +55,8 @@ export function getRedirectConfirmationState(expectedRedirectUri: string): {
   } catch {
     return { confirmedRedirectUri: null, requiresConfirmation: false };
   }
-  const last = normalizeRedirectUri(lastRaw);
-  const confirmed = normalizeRedirectUri(confirmedRaw);
+  const last = normalizeRedirectUriForCompare(lastRaw);
+  const confirmed = normalizeRedirectUriForCompare(confirmedRaw);
 
   if (!last) {
     try {
@@ -73,7 +89,7 @@ export function getRedirectConfirmationState(expectedRedirectUri: string): {
 
 export function confirmRedirectUri(expectedRedirectUri: string): void {
   if (typeof window === 'undefined') return;
-  const expected = normalizeRedirectUri(expectedRedirectUri);
+  const expected = normalizeRedirectUriForCompare(expectedRedirectUri);
   if (!expected) return;
   try {
     localStorage.setItem(REDIRECT_CONFIRMED_KEY, expected);
