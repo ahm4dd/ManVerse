@@ -3,7 +3,7 @@ import { verify } from 'hono/jwt';
 import type { AuthUser } from '../../../shared/types.ts';
 import type { HonoEnv } from '../types/api.ts';
 import { jsonError } from '../utils/response.ts';
-import { getJwtSecret } from '../utils/jwt.ts';
+import { getJwtAlgorithm, getJwtSecret } from '../utils/jwt.ts';
 
 export const requireAuth: MiddlewareHandler<HonoEnv> = async (c, next) => {
   const header = c.req.header('Authorization');
@@ -21,7 +21,9 @@ export const requireAuth: MiddlewareHandler<HonoEnv> = async (c, next) => {
 
   const token = header.slice('Bearer '.length).trim();
   try {
-    const payload = (await verify(token, getJwtSecret())) as AuthUser;
+    const payload = (await verify(token, getJwtSecret(), {
+      alg: getJwtAlgorithm(),
+    })) as AuthUser;
     c.set('auth', payload);
     await next();
   } catch (error) {
@@ -63,7 +65,9 @@ export const requireAuthOrQuery: MiddlewareHandler<HonoEnv> = async (c, next) =>
   }
 
   try {
-    const payload = (await verify(token, getJwtSecret())) as AuthUser;
+    const payload = (await verify(token, getJwtSecret(), {
+      alg: getJwtAlgorithm(),
+    })) as AuthUser;
     c.set('auth', payload);
     await next();
   } catch (error) {

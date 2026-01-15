@@ -15,7 +15,7 @@ import {
   SearchResultSchema,
 } from '@manverse/anilist';
 import { verify } from 'hono/jwt';
-import { getJwtSecret } from '../utils/jwt.ts';
+import { getJwtAlgorithm, getJwtSecret } from '../utils/jwt.ts';
 import type { AuthUser } from '../../../shared/types.ts';
 import { ApiErrorSchema, createApiSuccessSchema } from '../openapi/schemas.ts';
 import { openApiHook } from '../openapi/hook.ts';
@@ -109,7 +109,9 @@ async function getOptionalAuth(c: Parameters<typeof anilist.get>[1]): Promise<Au
   const token = header.slice('Bearer '.length).trim();
   if (!token) return null;
   try {
-    return (await verify(token, getJwtSecret())) as AuthUser;
+    return (await verify(token, getJwtSecret(), {
+      alg: getJwtAlgorithm(),
+    })) as AuthUser;
   } catch {
     return null;
   }

@@ -200,6 +200,7 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup }) => {
   const lanApiUrl = lanInfo?.apiUrl || '';
   const localRedirectUri = `${apiUrl}/api/auth/anilist/callback`;
   const lanRedirectUri = lanApiUrl ? `${lanApiUrl}/api/auth/anilist/callback` : '';
+  const showLanRedirectWarning = lanEnabled && Boolean(lanRedirectUri);
 
   const refreshLanInfo = async () => {
     if (!desktopApi.isAvailable) return;
@@ -726,6 +727,12 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onOpenSetup }) => {
               <div className="text-xs font-semibold uppercase tracking-wide text-gray-400">
                 AniList redirect URLs
               </div>
+              {showLanRedirectWarning && (
+                <div className="mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+                  LAN hosting is enabled. Add the LAN redirect URL to your AniList app or logins
+                  from other devices will fail with “invalid_client”.
+                </div>
+              )}
               <div className="mt-2 space-y-2">
                 <div>
                   <div className="text-xs text-gray-500">Desktop app (local)</div>

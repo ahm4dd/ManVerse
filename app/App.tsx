@@ -411,7 +411,14 @@ const AppContent: React.FC = () => {
 
     if (authError) {
       anilistApi.logout();
-      notify('AniList login failed. Check your redirect URL and try again.', 'error');
+      const upper = authError.toUpperCase();
+      const authMessage =
+        upper === 'INVALID_CLIENT'
+          ? 'AniList rejected this redirect URL. Add the LAN redirect URL in Settings → Self-hosting, then try again.'
+          : upper === 'REDIRECT_MISMATCH'
+            ? 'AniList redirect URL mismatch. Double-check the redirect URL in Settings and on the AniList app.'
+            : 'AniList login failed. Check your redirect URL and try again.';
+      notify(authMessage, 'error');
       logDesktop('auth.error', { error: authError });
     }
 

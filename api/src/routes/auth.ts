@@ -423,13 +423,22 @@ auth.openapi(callbackRoute, async (c) => {
 
     return c.redirect(redirectUrl.toString());
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const normalized = message.toLowerCase();
+    let errorCode = 'AUTH_ERROR';
+    if (normalized.includes('invalid_client') || normalized.includes('client authentication failed')) {
+      errorCode = 'INVALID_CLIENT';
+    } else if (normalized.includes('redirect') || normalized.includes('redirect_uri')) {
+      errorCode = 'REDIRECT_MISMATCH';
+    }
     console.error('AniList OAuth callback failed.', {
-      message: error instanceof Error ? error.message : String(error),
+      message,
+      errorCode,
       requestOrigin: getRequestOrigin(c),
     });
     const redirectUrl = new URL(getFrontendBaseUrl(c));
     redirectUrl.pathname = getFrontendAuthPath();
-    redirectUrl.searchParams.set('error', 'AUTH_ERROR');
+    redirectUrl.searchParams.set('error', errorCode);
     return c.redirect(redirectUrl.toString());
   }
 });
