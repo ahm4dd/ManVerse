@@ -7,6 +7,7 @@ interface SeriesCardProps {
   series: Series;
   onClick: (series: Series) => void;
   index?: number; // Added for staggered delay calculation
+  layoutId?: string;
 }
 
 function timeAgo(timestamp?: number): string {
@@ -49,9 +50,10 @@ const getStatusLabel = (status: string) => {
    return status; // Finished, Hiatus, etc.
 }
 
-const SeriesCard: React.FC<SeriesCardProps> = ({ series, onClick, index = 0 }) => {
+const SeriesCard: React.FC<SeriesCardProps> = ({ series, onClick, index = 0, layoutId }) => {
   const relativeTime = timeAgo(series.updatedAt);
   let latestLabel = series.latestChapter;
+  const resolvedLayoutId = layoutId ?? `series-${series.id}`;
   if (series.source === 'AniList' && latestLabel) {
     const lowered = latestLabel.toLowerCase();
     if (lowered.includes('chapter') || lowered.includes('progress')) {
@@ -61,7 +63,7 @@ const SeriesCard: React.FC<SeriesCardProps> = ({ series, onClick, index = 0 }) =
 
   return (
     <motion.div 
-      layoutId={`series-${series.id}`}
+      layoutId={resolvedLayoutId}
       className="group relative cursor-pointer flex flex-col gap-2.5"
       onClick={() => onClick(series)}
       initial={{ opacity: 0, y: 20 }}

@@ -7,6 +7,153 @@ interface RecommendationsProps {
   onNavigate: (view: string, data?: any) => void;
 }
 
+type RecommendationSectionKey = 'trending' | 'popular' | 'topRated';
+
+interface RecommendationSectionProps {
+  title: string;
+  data: Series[];
+  section: RecommendationSectionKey;
+  page: number;
+  hasMore: boolean;
+  loadingMore: boolean;
+  pageInput: string;
+  onPageInputChange: (section: RecommendationSectionKey, value: string) => void;
+  onPageChange: (section: RecommendationSectionKey, page: number) => void;
+  onJumpToPage: (section: RecommendationSectionKey, value: string) => void;
+  onNavigate: (view: string, data?: any) => void;
+}
+
+const RecommendationSection: React.FC<RecommendationSectionProps> = ({
+  title,
+  data,
+  section,
+  page,
+  hasMore,
+  loadingMore,
+  pageInput,
+  onPageInputChange,
+  onPageChange,
+  onJumpToPage,
+  onNavigate,
+}) => {
+  const canPrev = page > 1;
+  const canNext = hasMore;
+  const safeData = data.filter((series) => Boolean(series?.id && series.title));
+  const measureRef = useRef<HTMLDivElement | null>(null);
+  const [cardHeight, setCardHeight] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (safeData.length === 0) {
+      setCardHeight(null);
+      return;
+    }
+    if (typeof window === 'undefined') return;
+    const updateHeight = () => {
+      if (!measureRef.current) return;
+      const rect = measureRef.current.getBoundingClientRect();
+      if (!rect.height) return;
+      const next = Math.round(rect.height);
+      setCardHeight((prev) => (prev === next ? prev : next));
+    };
+    updateHeight();
+    window.addEventListener('resize', updateHeight);
+    return () => window.removeEventListener('resize', updateHeight);
+  }, [safeData.length]);
+
+  const gridMaxHeight = cardHeight ? cardHeight * 2 + 32 : undefined;
+
+  return (
+    <div className="mb-14 animate-fade-in">
+      <div className="rounded-3xl border border-white/10 bg-gradient-to-br from-surface/80 via-surfaceHighlight/60 to-surface/80 px-4 py-6 md:px-6 md:py-7">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
+          <h2 className="text-2xl md:text-3xl font-bold text-white flex items-center gap-3">
+             <span className="w-1.5 h-6 md:h-7 bg-primary rounded-full"></span>
+             {title}
+          </h2>
+          <div className="flex flex-wrap items-center gap-2 justify-start sm:justify-end">
+            <button
+              type="button"
+              onClick={() => onPageChange(section, 1)}
+              disabled={!canPrev || loadingMore}
+              className="text-sm font-semibold text-gray-200 px-4 py-2 rounded-full border border-white/10 hover:bg-white/5 disabled:opacity-50"
+            >
+              First
+            </button>
+            <button
+              type="button"
+              onClick={() => onPageChange(section, page - 1)}
+              disabled={!canPrev || loadingMore}
+              className="text-sm font-semibold text-gray-200 px-4 py-2 rounded-full border border-white/10 hover:bg-white/5 disabled:opacity-50"
+            >
+              Prev
+            </button>
+            <span className="text-sm font-semibold text-gray-400 px-2">Page {page}</span>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={pageInput}
+                onChange={(event) =>
+                  onPageInputChange(section, event.target.value.replace(/[^\d]/g, ''))
+                }
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    void onJumpToPage(section, pageInput);
+                  }
+                }}
+                className="w-20 px-3 py-2 rounded-full bg-white/5 border border-white/10 text-sm font-semibold text-white text-center focus:outline-none focus:border-primary/60"
+                placeholder="1"
+              />
+              <button
+                type="button"
+                onClick={() => onJumpToPage(section, pageInput)}
+                disabled={loadingMore}
+                className="text-sm font-semibold text-gray-200 px-4 py-2 rounded-full border border-white/10 hover:bg-white/5 disabled:opacity-50"
+              >
+                Go
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => onPageChange(section, page + 1)}
+              disabled={!canNext || loadingMore}
+              className="text-sm font-semibold text-gray-200 px-4 py-2 rounded-full border border-white/10 hover:bg-white/5 disabled:opacity-50"
+            >
+              {loadingMore ? 'Loading...' : 'Next'}
+            </button>
+          </div>
+        </div>
+        <div
+          className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-x-4 gap-y-8 overflow-y-auto pr-2"
+          style={gridMaxHeight ? { maxHeight: gridMaxHeight } : undefined}
+        >
+          {safeData.length > 0 ? (
+            safeData.map((series, index) => (
+              <div
+                key={`${section}-${series.id}`}
+                ref={index === 0 ? measureRef : undefined}
+              >
+                <SeriesCard
+                  series={series}
+                  index={index}
+                  layoutId={`recommendations-${section}-${series.id}`}
+                  onClick={() => onNavigate('details', series.id)}
+                />
+              </div>
+            ))
+          ) : (
+            <div className="col-span-full py-10 text-center text-gray-500">
+              No titles found for this section.
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const Recommendations: React.FC<RecommendationsProps> = ({ onNavigate }) => {
   const [trending, setTrending] = useState<Series[]>([]);
   const [popular, setPopular] = useState<Series[]>([]);
@@ -54,6 +201,7 @@ const Recommendations: React.FC<RecommendationsProps> = ({ onNavigate }) => {
           topRated: { 1: tr },
         };
         setPages({ trending: 1, popular: 1, topRated: 1 });
+        setPageInputs({ trending: '1', popular: '1', topRated: '1' });
         setHasMore({
           trending: t.length > 0,
           popular: p.length > 0,
@@ -80,7 +228,14 @@ const Recommendations: React.FC<RecommendationsProps> = ({ onNavigate }) => {
             if (Array.isArray(saved.trending)) setTrending(saved.trending);
             if (Array.isArray(saved.popular)) setPopular(saved.popular);
             if (Array.isArray(saved.topRated)) setTopRated(saved.topRated);
-            if (saved.pages) setPages(saved.pages);
+            if (saved.pages) {
+              setPages(saved.pages);
+              setPageInputs({
+                trending: String(saved.pages.trending ?? 1),
+                popular: String(saved.pages.popular ?? 1),
+                topRated: String(saved.pages.topRated ?? 1),
+              });
+            }
             if (saved.hasMore) setHasMore(saved.hasMore);
             if (saved.sectionCache) {
               sectionCacheRef.current = saved.sectionCache;
@@ -130,19 +285,12 @@ const Recommendations: React.FC<RecommendationsProps> = ({ onNavigate }) => {
     };
   }, [trending, popular, topRated, pages, hasMore, recommendationsHydrated]);
 
-  useEffect(() => {
-    setPageInputs({
-      trending: String(pages.trending),
-      popular: String(pages.popular),
-      topRated: String(pages.topRated),
-    });
-  }, [pages]);
-
-  const handlePageChange = async (section: 'trending' | 'popular' | 'topRated', page: number) => {
+  const handlePageChange = async (section: RecommendationSectionKey, page: number) => {
     if (page < 1) return;
     if (loadingMore[section]) return;
     const cached = sectionCacheRef.current[section]?.[page];
     setPages((prev) => ({ ...prev, [section]: page }));
+    setPageInputs((prev) => ({ ...prev, [section]: String(page) }));
     if (cached) {
       if (section === 'trending') setTrending(cached);
       if (section === 'popular') setPopular(cached);
@@ -173,7 +321,7 @@ const Recommendations: React.FC<RecommendationsProps> = ({ onNavigate }) => {
     }
   };
 
-  const handleJumpToPage = async (section: 'trending' | 'popular' | 'topRated', value: string) => {
+  const handleJumpToPage = async (section: RecommendationSectionKey, value: string) => {
     const trimmed = value.trim();
     if (!trimmed) return;
     const target = Number(trimmed);
@@ -182,89 +330,9 @@ const Recommendations: React.FC<RecommendationsProps> = ({ onNavigate }) => {
     await handlePageChange(section, target);
   };
 
-  const Section = ({
-    title,
-    data,
-    section,
-  }: {
-    title: string;
-    data: Series[];
-    section: 'trending' | 'popular' | 'topRated';
-  }) => {
-    const page = pages[section];
-    const canPrev = page > 1;
-    const canNext = hasMore[section];
-    return (
-    <div className="mb-12 animate-fade-in">
-      <div className="flex items-center justify-between mb-6 px-4 md:px-0">
-        <h2 className="text-2xl font-bold text-white flex items-center gap-3">
-           <span className="w-1.5 h-6 bg-primary rounded-full"></span>
-           {title}
-        </h2>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => handlePageChange(section, 1)}
-            disabled={!canPrev || loadingMore[section]}
-            className="text-xs font-semibold text-gray-300 px-3 py-1.5 rounded-full border border-white/10 hover:bg-white/5 disabled:opacity-50"
-          >
-            First
-          </button>
-          <button
-            onClick={() => handlePageChange(section, page - 1)}
-            disabled={!canPrev || loadingMore[section]}
-            className="text-xs font-semibold text-gray-300 px-3 py-1.5 rounded-full border border-white/10 hover:bg-white/5 disabled:opacity-50"
-          >
-            Prev
-          </button>
-          <span className="text-xs font-semibold text-gray-500">Page {page}</span>
-          <div className="flex items-center gap-1">
-            <input
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              value={pageInputs[section]}
-              onChange={(event) =>
-                setPageInputs((prev) => ({
-                  ...prev,
-                  [section]: event.target.value.replace(/[^\d]/g, ''),
-                }))
-              }
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  void handleJumpToPage(section, pageInputs[section]);
-                }
-              }}
-              className="w-14 px-2 py-1 rounded-full bg-white/5 border border-white/10 text-xs font-semibold text-white text-center focus:outline-none focus:border-primary/60"
-              placeholder="1"
-            />
-            <button
-              onClick={() => handleJumpToPage(section, pageInputs[section])}
-              disabled={loadingMore[section]}
-              className="text-xs font-semibold text-gray-300 px-2 py-1 rounded-full border border-white/10 hover:bg-white/5 disabled:opacity-50"
-            >
-              Go
-            </button>
-          </div>
-          <button
-            onClick={() => handlePageChange(section, page + 1)}
-            disabled={!canNext || loadingMore[section]}
-            className="text-xs font-semibold text-gray-300 px-3 py-1.5 rounded-full border border-white/10 hover:bg-white/5 disabled:opacity-50"
-          >
-            {loadingMore[section] ? 'Loading...' : 'Next'}
-          </button>
-        </div>
-      </div>
-      <div className="overflow-x-auto pb-8 -mx-4 px-4 md:mx-0 md:px-0 scrollbar-hide">
-         <div className="flex gap-4 md:gap-6 w-max">
-            {data.map(series => (
-               <div key={series.id} className="w-[160px] md:w-[200px]">
-                  <SeriesCard series={series} onClick={() => onNavigate('details', series.id)} />
-               </div>
-            ))}
-         </div>
-      </div>
-    </div>
-  )};
+  const handlePageInputChange = (section: RecommendationSectionKey, value: string) => {
+    setPageInputs((prev) => ({ ...prev, [section]: value }));
+  };
 
   return (
     <div className="min-h-[100dvh] min-h-app pt-5 sm:pt-8 pb-20 max-w-[1600px] mx-auto md:px-8">
@@ -280,9 +348,45 @@ const Recommendations: React.FC<RecommendationsProps> = ({ onNavigate }) => {
           </div>
        ) : (
           <>
-            <Section title="Trending Now" data={trending} section="trending" />
-            <Section title="All Time Popular" data={popular} section="popular" />
-            <Section title="Top Rated" data={topRated} section="topRated" />
+            <RecommendationSection
+              title="Trending Now"
+              data={trending}
+              section="trending"
+              page={pages.trending}
+              hasMore={hasMore.trending}
+              loadingMore={loadingMore.trending}
+              pageInput={pageInputs.trending}
+              onPageInputChange={handlePageInputChange}
+              onPageChange={handlePageChange}
+              onJumpToPage={handleJumpToPage}
+              onNavigate={onNavigate}
+            />
+            <RecommendationSection
+              title="All Time Popular"
+              data={popular}
+              section="popular"
+              page={pages.popular}
+              hasMore={hasMore.popular}
+              loadingMore={loadingMore.popular}
+              pageInput={pageInputs.popular}
+              onPageInputChange={handlePageInputChange}
+              onPageChange={handlePageChange}
+              onJumpToPage={handleJumpToPage}
+              onNavigate={onNavigate}
+            />
+            <RecommendationSection
+              title="Top Rated"
+              data={topRated}
+              section="topRated"
+              page={pages.topRated}
+              hasMore={hasMore.topRated}
+              loadingMore={loadingMore.topRated}
+              pageInput={pageInputs.topRated}
+              onPageInputChange={handlePageInputChange}
+              onPageChange={handlePageChange}
+              onJumpToPage={handleJumpToPage}
+              onNavigate={onNavigate}
+            />
           </>
        )}
     </div>

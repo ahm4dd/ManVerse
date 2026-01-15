@@ -27,8 +27,29 @@ const errorResponse = {
   },
 };
 
-function getFrontendBaseUrl(): string {
-  return Bun.env.FRONTEND_URL || 'http://localhost:3000';
+function getFrontendBaseUrl(c?: { req: { url: string; header: (name: string) => string | undefined } }): string {
+  const configured = Bun.env.FRONTEND_URL || Bun.env.CORS_ORIGIN;
+  if (configured) {
+    const first = configured
+      .split(',')
+      .map((origin) => origin.trim())
+      .find((origin) => origin && origin !== '*');
+    if (first) return first;
+  }
+
+  if (!c) return 'http://localhost:3000';
+
+  try {
+    const requestOrigin = getRequestOrigin(c);
+    const url = new URL(requestOrigin);
+    const apiPort = String(Bun.env.PORT || 3001);
+    if (url.port && url.port === apiPort) {
+      url.port = '3000';
+    }
+    return url.toString().replace(/\/$/, '');
+  } catch {
+    return 'http://localhost:3000';
+  }
 }
 
 function getFrontendAuthPath(): string {
@@ -228,13 +249,13 @@ auth.openapi(callbackRoute, async (c) => {
       anilistToken: token.accessToken,
     });
 
-    const redirectUrl = new URL(getFrontendBaseUrl());
+    const redirectUrl = new URL(getFrontendBaseUrl(c));
     redirectUrl.pathname = getFrontendAuthPath();
     redirectUrl.searchParams.set('token', jwt);
 
     return c.redirect(redirectUrl.toString());
   } catch {
-    const redirectUrl = new URL(getFrontendBaseUrl());
+    const redirectUrl = new URL(getFrontendBaseUrl(c));
     redirectUrl.pathname = getFrontendAuthPath();
     redirectUrl.searchParams.set('error', 'AUTH_ERROR');
     return c.redirect(redirectUrl.toString());
