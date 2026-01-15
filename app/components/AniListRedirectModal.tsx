@@ -108,10 +108,16 @@ const AniListRedirectModal: React.FC<AniListRedirectModalProps> = ({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[75] flex items-center justify-center px-4 py-4">
+    <div
+      className="fixed inset-0 z-[75] flex items-center justify-center px-4 py-4"
+      style={{
+        paddingTop: 'max(1rem, env(safe-area-inset-top))',
+        paddingBottom: 'max(1rem, env(safe-area-inset-bottom))',
+      }}
+    >
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-xl bg-surface border border-white/10 rounded-2xl shadow-2xl overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
+      <div className="relative w-full max-w-lg sm:max-w-xl max-h-[92dvh] bg-surface border border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+        <div className="flex items-center justify-between px-5 sm:px-6 py-4 border-b border-white/10">
           <div>
             <p className="text-[11px] uppercase tracking-[0.2em] text-gray-500">
               AniList login
@@ -126,7 +132,7 @@ const AniListRedirectModal: React.FC<AniListRedirectModalProps> = ({
           </button>
         </div>
 
-        <div className="px-6 py-6 space-y-4">
+        <div className="px-5 sm:px-6 py-5 sm:py-6 space-y-4 overflow-y-auto flex-1 min-h-0">
           <p className="text-sm text-gray-300">{description}</p>
 
           <div className="rounded-xl border border-white/10 bg-surfaceHighlight/40 px-4 py-3">
@@ -241,7 +247,7 @@ const AniListRedirectModal: React.FC<AniListRedirectModalProps> = ({
           </details>
         </div>
 
-        <div className="px-6 py-4 border-t border-white/10 flex items-center justify-end">
+        <div className="px-5 sm:px-6 py-4 border-t border-white/10 flex items-center justify-end">
           <button
             onClick={onConfirm}
             className="px-5 py-2 rounded-lg bg-primary text-black text-xs font-bold shadow-lg shadow-primary/30 hover:brightness-110 transition"

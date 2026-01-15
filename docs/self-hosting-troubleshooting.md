@@ -24,6 +24,8 @@ Use this checklist when the UI loads but features do not work, or when the UI do
 - AniList supports one redirect URL at a time. Use the URL that matches the host you open
   in the browser, and update it when you switch between local and LAN.
 - Make sure the scheme and port match exactly (HTTP vs HTTPS).
+- LAN clients cannot edit AniList credentials. If you see a redirect warning on a phone/tablet,
+  update the redirect URL on the host device.
 
 ## Chapters or images do not load
 

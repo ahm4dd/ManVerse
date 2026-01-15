@@ -18,6 +18,9 @@ If you are using the desktop app, you do not need to set up Bun or env files.
    (Use the LAN host; the desktop app uses the LAN host while LAN access is enabled.)
 5) Sign in on the desktop app and other devices using the LAN UI URL.
 
+Note: Only the host device can update AniList credentials or the redirect URL. If a phone/tablet
+is blocked at login, ask the host to update the AniList redirect URL in Settings.
+
 If you want a headless or server setup instead, follow the steps below.
 
 ## What you need

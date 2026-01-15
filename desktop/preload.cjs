@@ -29,6 +29,7 @@ contextBridge.exposeInMainWorld('manverse', {
   toggleMaximize: () => ipcRenderer.invoke('manverse:window-toggle-maximize'),
   closeWindow: () => ipcRenderer.invoke('manverse:window-close'),
   restartApp: () => ipcRenderer.invoke('manverse:restartApp'),
+  clearAniListSession: () => ipcRenderer.invoke('manverse:clearAniListSession'),
   getWindowState: () => ipcRenderer.invoke('manverse:getWindowState'),
   onWindowState: (callback) => {
     const listener = (_event, payload) => callback(payload);

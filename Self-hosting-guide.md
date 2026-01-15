@@ -201,7 +201,8 @@ This mode uses the Electron app and exposes it to your LAN using the built-in LA
 5) Sign in from the desktop app and any LAN device using the LAN UI URL.
 
 Note: AniList supports one redirect URL at a time. When LAN Access is enabled, the desktop app
-uses the LAN host too, so everyone should use the LAN URL.
+uses the LAN host too, so everyone should use the LAN URL. Only the host device can update
+AniList credentials or redirect URLs; LAN clients must ask the host to change them.
 
 ---
 

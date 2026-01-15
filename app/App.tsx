@@ -352,13 +352,20 @@ const AppContent: React.FC = () => {
     desktopApi.isAvailable &&
     updateStatus?.state === 'downloaded' &&
     !updateBannerDismissed;
+  const isLocalHost = (host: string) =>
+    host === 'localhost' || host === '127.0.0.1' || host === '::1';
+  const canManageRedirect =
+    desktopApi.isAvailable ||
+    (typeof window !== 'undefined' && isLocalHost(window.location.hostname));
   const loginBlocked = Boolean(redirectGuard?.blocked);
   const loginBlockMessage = loginBlocked
-    ? redirectGuard?.requiresConfirmation
-      ? 'LAN hosting changed. Confirm the redirect URL before logging in.'
-      : redirectGuard?.reason === 'missing'
-        ? 'Add the redirect URL in Settings to enable AniList login.'
-        : 'Redirect URL mismatch. Fix it in Settings before logging in.'
+    ? canManageRedirect
+      ? redirectGuard?.requiresConfirmation
+        ? 'LAN hosting changed. Confirm the redirect URL before logging in.'
+        : redirectGuard?.reason === 'missing'
+          ? 'Add the redirect URL in Settings to enable AniList login.'
+          : 'Redirect URL mismatch. Fix it in Settings before logging in.'
+      : 'Login is locked. Ask the host to update the AniList redirect URL.'
     : null;
 
   // Load User Function (Extracted for re-use)
@@ -476,8 +483,8 @@ const AppContent: React.FC = () => {
     loadUser();
     void refreshRedirectGuard(
       forceRedirect === 'confirm'
-        ? { forceModal: true, reason: 'confirm' }
-        : undefined,
+        ? { forceModal: true, reason: 'confirm', suppressModal: !canManageRedirect }
+        : { autoConfirm: true, suppressModal: !canManageRedirect },
     );
   }, []);
 
@@ -508,7 +515,7 @@ const AppContent: React.FC = () => {
         if (info?.apiUrl) {
           setRuntimeApiUrl(info.apiUrl);
         }
-        void refreshRedirectGuard({ lanInfo: info });
+        void refreshRedirectGuard({ lanInfo: info, suppressModal: true });
       })
       .catch(() => {});
   }, []);
@@ -599,6 +606,30 @@ const AppContent: React.FC = () => {
     navigate('home', undefined, { replace: true });
   };
 
+  const handleSwitchAccount = async () => {
+    anilistApi.logout();
+    setUser(null);
+    setShowProfileMenu(false);
+    setShowLoginMenu(false);
+    if (desktopApi.isAvailable) {
+      try {
+        await desktopApi.clearAniListSession();
+      } catch {
+        // ignore
+      }
+      notify('AniList session cleared. Continue with AniList to sign in with a new account.', 'success');
+      navigate('login', undefined, { replace: true });
+      return;
+    }
+    try {
+      window.open('https://anilist.co', '_blank', 'noopener');
+    } catch {
+      // ignore
+    }
+    notify('AniList does not offer a direct logout link. Log out in the opened AniList tab, then return here and sign in again.', 'warning');
+    navigate('login', undefined, { replace: true });
+  };
+
   const handleLoginSuccess = async () => {
     await loadUser();
     setShowLoginMenu(false);
@@ -685,10 +716,11 @@ const AppContent: React.FC = () => {
     }
     setRedirectGuard(guard);
     const forcedReason = options?.forceModal && options?.reason ? options.reason : null;
-    if (!options?.suppressModal && forcedReason) {
+    const allowModal = canManageRedirect && !options?.suppressModal;
+    if (allowModal && forcedReason) {
       setRedirectModalReason(forcedReason);
       setShowRedirectModal(true);
-    } else if (!options?.suppressModal && blocked && (options?.forceModal || reason || requiresConfirmation)) {
+    } else if (allowModal && blocked && (options?.forceModal || reason || requiresConfirmation)) {
       setRedirectModalReason(options?.reason ?? reason ?? (requiresConfirmation ? 'confirm' : null));
       setShowRedirectModal(true);
     }
@@ -751,7 +783,7 @@ const AppContent: React.FC = () => {
       return { ok: false, message: 'Unable to save the redirect URL.' };
     }
     const status = await waitForCredentialStatus();
-    const guard = await refreshRedirectGuard({ forceModal: false });
+    const guard = await refreshRedirectGuard({ forceModal: false, autoConfirm: true });
     if (desktopApi.isAvailable) {
       setRestartPrompt({
         title: 'Restart to apply AniList changes',
@@ -803,6 +835,10 @@ const AppContent: React.FC = () => {
   };
 
   const openRedirectFix = () => {
+    if (!canManageRedirect) {
+      notify('Only the host can update the AniList redirect URL.', 'warning');
+      return;
+    }
     const reason = redirectGuard?.requiresConfirmation
       ? 'confirm'
       : redirectGuard?.reason ?? 'error';
@@ -1092,6 +1128,12 @@ const AppContent: React.FC = () => {
                               AniList setup guide
                             </button>
                             <button
+                              onClick={handleSwitchAccount}
+                              className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
+                            >
+                              Switch AniList account
+                            </button>
+                            <button
                               onClick={handleLogout}
                               className="w-full text-left px-4 py-2.5 text-sm text-red-300 hover:text-red-200 hover:bg-red-500/10 transition-colors"
                             >
@@ -1139,15 +1181,17 @@ const AppContent: React.FC = () => {
                             {loginBlocked && (
                               <div className="mx-2 mb-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-200">
                                 <div>{loginBlockMessage}</div>
-                                <button
-                                  onClick={() => {
-                                    setShowLoginMenu(false);
-                                    openRedirectFix();
-                                  }}
-                                  className="mt-1 text-xs font-semibold text-primary hover:text-white"
-                                >
-                                  Fix redirect URL
-                                </button>
+                                {canManageRedirect && (
+                                  <button
+                                    onClick={() => {
+                                      setShowLoginMenu(false);
+                                      openRedirectFix();
+                                    }}
+                                    className="mt-1 text-xs font-semibold text-primary hover:text-white"
+                                  >
+                                    Fix redirect URL
+                                  </button>
+                                )}
                               </div>
                             )}
                             <button
@@ -1167,6 +1211,12 @@ const AppContent: React.FC = () => {
                               className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
                             >
                               AniList setup guide
+                            </button>
+                            <button
+                              onClick={handleSwitchAccount}
+                              className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
+                            >
+                              Switch AniList account
                             </button>
                             <button
                               onClick={() => {
@@ -1440,6 +1490,12 @@ const AppContent: React.FC = () => {
                             AniList setup guide
                           </button>
                           <button
+                            onClick={handleSwitchAccount}
+                            className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
+                          >
+                            Switch AniList account
+                          </button>
+                          <button
                             onClick={handleLogout}
                             className="w-full text-left px-4 py-2.5 text-sm text-red-300 hover:text-red-200 hover:bg-red-500/10 transition-colors"
                           >
@@ -1485,20 +1541,22 @@ const AppContent: React.FC = () => {
                           >
                             Continue with AniList
                           </button>
-                          {loginBlocked && (
-                            <div className="mx-2 mb-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-200">
-                              <div>{loginBlockMessage}</div>
-                              <button
-                                onClick={() => {
-                                  setShowLoginMenu(false);
-                                  openRedirectFix();
-                                }}
-                                className="mt-1 text-xs font-semibold text-primary hover:text-white"
-                              >
-                                Fix redirect URL
-                              </button>
-                            </div>
-                          )}
+                            {loginBlocked && (
+                              <div className="mx-2 mb-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-200">
+                                <div>{loginBlockMessage}</div>
+                                {canManageRedirect && (
+                                  <button
+                                    onClick={() => {
+                                      setShowLoginMenu(false);
+                                      openRedirectFix();
+                                    }}
+                                    className="mt-1 text-xs font-semibold text-primary hover:text-white"
+                                  >
+                                    Fix redirect URL
+                                  </button>
+                                )}
+                              </div>
+                            )}
                           <button
                             onClick={() => {
                               setShowLoginMenu(false);
@@ -1516,6 +1574,12 @@ const AppContent: React.FC = () => {
                             className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
                           >
                             AniList setup guide
+                          </button>
+                          <button
+                            onClick={handleSwitchAccount}
+                            className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
+                          >
+                            Switch AniList account
                           </button>
                           <button
                             onClick={() => {
@@ -1754,7 +1818,12 @@ const AppContent: React.FC = () => {
                   if (shouldReload) {
                     void refreshRedirectGuard({ lanInfo: info, suppressModal: true });
                   } else {
-                    void refreshRedirectGuard({ lanInfo: info, forceModal: true, reason: 'confirm' });
+                    void refreshRedirectGuard({
+                      lanInfo: info,
+                      forceModal: true,
+                      reason: 'confirm',
+                      suppressModal: !canManageRedirect,
+                    });
                   }
                 }}
               />
@@ -1790,8 +1859,9 @@ const AppContent: React.FC = () => {
                 onOpenSetup={() => setShowSetupGuide(true)}
                 loginBlocked={loginBlocked}
                 loginBlockMessage={loginBlockMessage}
-                onFixRedirect={openRedirectFix}
+                onFixRedirect={canManageRedirect ? openRedirectFix : undefined}
                 onEnsureRedirect={ensureRedirectReady}
+                onSwitchAccount={handleSwitchAccount}
               />
             </PageTransition>
           )}

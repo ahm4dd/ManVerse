@@ -252,10 +252,12 @@ const Settings: React.FC<SettingsProps> = ({
     setLanBusy(true);
     setLanError(null);
     try {
-      const info = await desktopApi.setLanAccess({
-        enabled: !lanEnabled,
-        host: lanHostInput.trim(),
-      });
+      const nextEnabled = !lanEnabled;
+      const payload: { enabled: boolean; host?: string | null } = { enabled: nextEnabled };
+      if (nextEnabled) {
+        payload.host = lanHostInput.trim();
+      }
+      const info = await desktopApi.setLanAccess(payload);
       setLanInfo(info);
       setLanHostInput(info.host || lanHostInput);
       onLanChange?.(info);

@@ -10,6 +10,7 @@ interface LoginProps {
   loginBlockMessage?: string | null;
   onFixRedirect?: () => void;
   onEnsureRedirect?: () => Promise<boolean>;
+  onSwitchAccount?: () => void;
 }
 
 const Login: React.FC<LoginProps> = ({
@@ -19,6 +20,7 @@ const Login: React.FC<LoginProps> = ({
   loginBlockMessage,
   onFixRedirect,
   onEnsureRedirect,
+  onSwitchAccount,
 }) => {
   const [loginError, setLoginError] = useState<string | null>(null);
 
@@ -109,6 +111,14 @@ const Login: React.FC<LoginProps> = ({
                 <span>Try Demo Account</span>
               </button>
             </div>
+            {onSwitchAccount && (
+              <button
+                onClick={onSwitchAccount}
+                className="text-xs font-semibold text-gray-400 hover:text-white transition"
+              >
+                Switch AniList account
+              </button>
+            )}
 
             {loginError && (
               <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-200">
@@ -118,12 +128,14 @@ const Login: React.FC<LoginProps> = ({
             {loginBlocked && loginBlockMessage && (
               <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-200">
                 <div>{loginBlockMessage}</div>
-                <button
-                  onClick={() => onFixRedirect?.()}
-                  className="mt-2 text-xs font-semibold text-primary hover:text-white"
-                >
-                  Fix redirect URL
-                </button>
+                {onFixRedirect && (
+                  <button
+                    onClick={() => onFixRedirect?.()}
+                    className="mt-2 text-xs font-semibold text-primary hover:text-white"
+                  >
+                    Fix redirect URL
+                  </button>
+                )}
               </div>
             )}
 

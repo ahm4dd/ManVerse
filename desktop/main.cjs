@@ -17,7 +17,7 @@ if (process.platform === 'linux') {
   }
 }
 
-const { app, BrowserWindow, dialog, Notification, ipcMain } = require('electron');
+const { app, BrowserWindow, dialog, Notification, ipcMain, session } = require('electron');
 const { autoUpdater } = require('electron-updater');
 
 const isDev = process.env.MANVERSE_DEV === 'true' || !app.isPackaged;
@@ -92,6 +92,25 @@ function logDesktop(message, data = null) {
     fs.appendFileSync(logPath, `${JSON.stringify(payload)}\n`);
   } catch {
     // ignore logging failures
+  }
+}
+
+async function clearAniListSession() {
+  try {
+    const origins = ['https://anilist.co'];
+    await Promise.all(
+      origins.map((origin) =>
+        session.defaultSession.clearStorageData({
+          origin,
+          storages: ['cookies', 'localstorage', 'cachestorage'],
+        }),
+      ),
+    );
+    logDesktop('auth.session.cleared', { origins });
+    return { ok: true };
+  } catch (error) {
+    logDesktop('auth.session.clear_failed', { message: error?.message || String(error) });
+    return { ok: false };
   }
 }
 
@@ -1174,6 +1193,7 @@ app.whenReady().then(() => {
     autoUpdater.quitAndInstall();
     return { ok: true };
   });
+  ipcMain.handle('manverse:clearAniListSession', async () => clearAniListSession());
   ipcMain.handle('manverse:restartApp', async () => restartApp());
   ipcMain.handle('manverse:consumeAuthToken', () => {
     const token = pendingAuthToken;
