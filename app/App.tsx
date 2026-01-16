@@ -22,7 +22,13 @@ import { NotificationProvider, useNotification } from './lib/notifications';
 import { AnimatePresence, motion } from 'framer-motion';
 import PageTransition from './components/PageTransition';
 import SearchFilters, { FilterState } from './components/SearchFilters';
-import { providerOptions, type Source, isProviderSource } from './lib/providers';
+import {
+  providerOptions,
+  experimentalProviderOptions,
+  allProviderOptions,
+  type Source,
+  isProviderSource,
+} from './lib/providers';
 import { desktopApi, type LanAccessInfo, type UpdateStatus } from './lib/desktop';
 import { useMediaQuery } from './lib/useMediaQuery';
 
@@ -228,8 +234,14 @@ const AppContent: React.FC = () => {
     if (view !== 'home') {
       params.set('view', view);
     }
-    if (view === 'details' && typeof data === 'string') {
-      params.set('id', data);
+    if (view === 'details') {
+      const id = typeof data === 'string' ? data : data?.id;
+      if (id) {
+        params.set('id', id);
+      }
+      if (data && typeof data === 'object' && 'source' in data && data.source) {
+        params.set('source', data.source);
+      }
     }
     if (view === 'reader' && data) {
       if (data.chapterId) params.set('chapterId', data.chapterId);
@@ -264,7 +276,14 @@ const AppContent: React.FC = () => {
     if (view === 'details') {
       const id = params.get('id');
       if (!id) return { view: 'home' as View };
-      return { view, data: id };
+      const sourceParam = params.get('source');
+      const source =
+        sourceParam === 'AniList'
+          ? ('AniList' as Source)
+          : allProviderOptions.some((provider) => provider.id === sourceParam)
+            ? (sourceParam as Source)
+            : undefined;
+      return { view, data: source ? { id, source } : id };
     }
 
     if (view === 'reader') {
@@ -277,7 +296,7 @@ const AppContent: React.FC = () => {
       const source =
         sourceParam === 'AniList'
           ? ('AniList' as Source)
-          : providerOptions.some((provider) => provider.id === sourceParam)
+          : allProviderOptions.some((provider) => provider.id === sourceParam)
             ? (sourceParam as Source)
             : undefined;
       return {
@@ -341,7 +360,8 @@ const AppContent: React.FC = () => {
   };
 
   // Check if filters are active (dirty)
-  const defaultSort = isProviderSource(searchSource) ? 'Relevance' : 'Popularity';
+  const isProviderSearch = searchSource === 'AllProviders' || isProviderSource(searchSource);
+  const defaultSort = isProviderSearch ? 'Relevance' : 'Popularity';
   const isFiltersDirty = 
     filters.format !== 'All' || 
     filters.status !== 'All' || 
@@ -856,12 +876,12 @@ const AppContent: React.FC = () => {
   };
 
   useEffect(() => {
-    const options = isProviderSource(searchSource) ? SORT_OPTIONS_PROVIDER : SORT_OPTIONS_ANILIST;
+    const options = isProviderSearch ? SORT_OPTIONS_PROVIDER : SORT_OPTIONS_ANILIST;
     setFilters((prev) => {
       if (options.includes(prev.sort)) return prev;
       return { ...prev, sort: options[0] };
     });
-  }, [searchSource]);
+  }, [searchSource, isProviderSearch]);
 
   const clearFilters = () => {
     setFilters({ ...DEFAULT_FILTERS, sort: defaultSort });
@@ -1253,8 +1273,14 @@ const AppContent: React.FC = () => {
                         </div>
                         <input
                           type="text"
-                          placeholder={searchSource === 'AniList' ? "Search ManVerse..." : "Search Provider..."}
-                          className="w-full h-12 bg-[#1a1a1a] border border-[#333] hover:border-[#444] rounded-xl pl-12 pr-28 md:pr-32 text-base text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary transition-all font-medium"
+                          placeholder={
+                            searchSource === 'AniList'
+                              ? 'Search ManVerse...'
+                              : searchSource === 'AllProviders'
+                                ? 'Search all providers...'
+                                : 'Search Provider...'
+                          }
+                          className="w-full h-12 bg-[#1a1a1a] border border-[#333] hover:border-[#444] rounded-xl pl-12 pr-[140px] sm:pr-[160px] md:pr-[180px] text-base text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary transition-all font-medium"
                           value={searchQuery}
                           onChange={(e) => {
                             setSearchQuery(e.target.value);
@@ -1270,11 +1296,21 @@ const AppContent: React.FC = () => {
                                className="bg-transparent text-gray-300 text-xs font-bold px-3 py-1 outline-none cursor-pointer appearance-none hover:text-white"
                              >
                                <option value="AniList">AniList</option>
+                               <option value="AllProviders">All Providers</option>
                                {providerOptions.map((provider) => (
                                  <option key={provider.id} value={provider.id}>
                                    {provider.shortLabel}
                                  </option>
                                ))}
+                               {experimentalProviderOptions.length > 0 && (
+                                 <optgroup label="Experimental">
+                                   {experimentalProviderOptions.map((provider) => (
+                                     <option key={provider.id} value={provider.id}>
+                                       {provider.shortLabel}
+                                     </option>
+                                   ))}
+                                 </optgroup>
+                               )}
                              </select>
                              <ChevronDown className="w-3 h-3 text-gray-500 mr-2 pointer-events-none" />
                            </div>
@@ -1282,6 +1318,19 @@ const AppContent: React.FC = () => {
                     </form>
                     
                     {/* Filter Toggle (Navbar) */}
+                    <button
+                      onClick={() =>
+                        setSearchSource(searchSource === 'AllProviders' ? 'AniList' : 'AllProviders')
+                      }
+                      className={`hidden sm:flex h-12 px-4 items-center justify-center rounded-xl border transition-all flex-shrink-0 text-xs font-bold uppercase tracking-wide ${
+                        searchSource === 'AllProviders'
+                          ? 'bg-primary text-black border-primary shadow-primary/20'
+                          : 'bg-[#1a1a1a] text-gray-300 border-[#333] hover:bg-[#222] hover:text-white hover:border-[#555]'
+                      }`}
+                      title="Search across all providers"
+                    >
+                      All Providers
+                    </button>
                     <button 
                       onClick={() => setShowFilters(!showFilters)}
                       className={`h-12 w-12 flex items-center justify-center rounded-xl border transition-all flex-shrink-0 shadow-lg ${
@@ -1727,11 +1776,7 @@ const AppContent: React.FC = () => {
                        filters={filters}
                        onChange={setFilters}
                        availableGenres={AVAILABLE_GENRES}
-                       sortOptions={
-                         isProviderSource(searchSource)
-                           ? SORT_OPTIONS_PROVIDER
-                           : SORT_OPTIONS_ANILIST
-                       }
+                       sortOptions={isProviderSearch ? SORT_OPTIONS_PROVIDER : SORT_OPTIONS_ANILIST}
                        defaultSort={defaultSort}
                      />
                    </div>
@@ -1832,13 +1877,25 @@ const AppContent: React.FC = () => {
 
           {currentView === 'details' && (
             <PageTransition key={`details-${viewData ?? 'empty'}`}>
-              <Details
-                key={viewData ?? 'details'}
-                seriesId={viewData}
-                onNavigate={navigate}
-                onBack={handleBack}
-                user={user}
-              />
+              {(() => {
+                const detailsData =
+                  typeof viewData === 'string'
+                    ? { id: viewData }
+                    : viewData && typeof viewData === 'object' && 'id' in viewData
+                      ? (viewData as { id: string; source?: Source })
+                      : null;
+                if (!detailsData?.id) return null;
+                return (
+                  <Details
+                    key={detailsData.id}
+                    seriesId={detailsData.id}
+                    source={detailsData.source}
+                    onNavigate={navigate}
+                    onBack={handleBack}
+                    user={user}
+                  />
+                );
+              })()}
             </PageTransition>
           )}
 

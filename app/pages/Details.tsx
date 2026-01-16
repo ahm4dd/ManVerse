@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Series, SeriesDetails } from '../types';
 import { api } from '../lib/api';
 import { anilistApi } from '../lib/anilist';
@@ -15,11 +15,14 @@ import {
   providerBaseUrl,
   providerLabel,
   providerOptions,
+  experimentalProviderOptions,
+  allProviderOptions,
   providerShortLabel,
 } from '../lib/providers';
 
 interface DetailsProps {
   seriesId: string;
+  source?: Source;
   onNavigate: (view: string, data?: any) => void;
   onBack: () => void;
   user?: any;
@@ -30,7 +33,20 @@ const PROVIDERS = providerOptions.map((provider) => ({
   name: providerLabel(provider.id),
   enabled: true,
 }));
+const EXPERIMENTAL_PROVIDERS = experimentalProviderOptions.map((provider) => ({
+  id: provider.id,
+  name: providerLabel(provider.id),
+  enabled: true,
+}));
 const DEFAULT_PROVIDER = providerOptions[0]?.id ?? Providers.AsuraScans;
+
+const detectProviderFromSeriesId = (seriesId: string): ProviderType | null => {
+  const lower = seriesId.toLowerCase();
+  if (lower.includes('toonily.com')) return Providers.Toonily;
+  if (lower.includes('mangagg.com') || lower.includes('mangagg.me')) return Providers.MangaGG;
+  if (lower.includes('asuracomic.net')) return Providers.AsuraScans;
+  return null;
+};
 
 const formatTimeAgo = (timestamp?: number) => {
   if (!timestamp) return '';
@@ -95,6 +111,8 @@ const parseAniListId = (input: string) => {
 
 type ReconcileChoice = 'higher' | 'provider' | 'anilist' | 'none';
 
+type ProviderSearchStatus = 'pending' | 'success' | 'failed';
+
 type ReconcileContext = {
   swapType: 'anilist' | 'provider';
   anilistId: string;
@@ -107,7 +125,7 @@ type ReconcileContext = {
   remoteProgress: number | null;
 };
 
-const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user }) => {
+const Details: React.FC<DetailsProps> = ({ seriesId, source, onNavigate, onBack, user }) => {
   const [data, setData] = useState<SeriesDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const { notify } = useNotification();
@@ -120,6 +138,12 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
   const [providerRefreshing, setProviderRefreshing] = useState(false);
   const [providerCacheHit, setProviderCacheHit] = useState(false);
   const [providerResults, setProviderResults] = useState<Series[] | null>(null);
+  const [providerSearchScope, setProviderSearchScope] = useState<'single' | 'all'>('single');
+  const [providerSearchPending, setProviderSearchPending] = useState(0);
+  const [providerSearchTotal, setProviderSearchTotal] = useState(0);
+  const [providerSearchStatuses, setProviderSearchStatuses] = useState<
+    Record<ProviderType, ProviderSearchStatus>
+  >({});
   const [activeProviderSeries, setActiveProviderSeries] = useState<SeriesDetails | null>(null);
   const [selectedProvider, setSelectedProvider] = useState<ProviderType>(DEFAULT_PROVIDER);
   const [showProviderMenu, setShowProviderMenu] = useState(false);
@@ -149,6 +173,8 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
   const [reconcileContext, setReconcileContext] = useState<ReconcileContext | null>(null);
   const [reconcileChoice, setReconcileChoice] = useState<ReconcileChoice>('higher');
   const [reconcileLoading, setReconcileLoading] = useState(false);
+  const providerSearchTokenRef = useRef(0);
+  const autoProviderSearchRef = useRef<string | null>(null);
 
   // Chapter Search State
   const [chapterSearchQuery, setChapterSearchQuery] = useState('');
@@ -170,6 +196,10 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
       setProviderLoading(false);
       setProviderRefreshing(false);
       setProviderCacheHit(false);
+      setProviderSearchScope('single');
+      setProviderSearchPending(0);
+      setProviderSearchTotal(0);
+      setProviderSearchStatuses({});
       setManualQuery('');
       setManualProviderUrl('');
       setShowProviderMenu(false);
@@ -192,13 +222,19 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
       setReconcileLoading(false);
       try {
         // Determine source based on ID format (Numeric = AniList, String = Provider)
-        const source: Source = /^\d+$/.test(seriesId) ? 'AniList' : DEFAULT_PROVIDER;
-        const details = await api.getSeriesDetails(seriesId, source);
+        const inferredProvider = detectProviderFromSeriesId(seriesId);
+        const isNumericId = /^\d+$/.test(seriesId);
+        const resolvedSource: Source = isNumericId
+          ? 'AniList'
+          : source && isProviderSource(source)
+            ? source
+            : inferredProvider ?? DEFAULT_PROVIDER;
+        const details = await api.getSeriesDetails(seriesId, resolvedSource);
         setData(details);
         setUserStatus(details.userListStatus || null);
 
         // If we loaded directly from provider (e.g. from Home provider search), set it as active for reading
-        if (isProviderSource(source)) {
+        if (isProviderSource(resolvedSource)) {
            setActiveProviderSeries(details);
         }
       } catch (e) {
@@ -209,7 +245,41 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
       }
     };
     load();
-  }, [seriesId]);
+  }, [seriesId, source]);
+
+  useEffect(() => {
+    if (!data) return;
+    if (isProviderSource(dataSource)) {
+      if (selectedProvider !== dataSource) {
+        setSelectedProvider(dataSource);
+      }
+      return;
+    }
+
+    let cancelled = false;
+    api
+      .getProviderMappings(data.id)
+      .then((mappings) => {
+        if (cancelled) return;
+        if (!mappings?.length) return;
+        const activeMapping =
+          mappings.find((mapping) => mapping.mapping?.is_active === 1) ?? mappings[0];
+        const providerId = activeMapping?.mapping?.provider || activeMapping?.provider?.provider;
+        if (!providerId) return;
+        if (allProviderOptions.some((provider) => provider.id === providerId)) {
+          if (selectedProvider !== providerId) {
+            setSelectedProvider(providerId as ProviderType);
+          }
+        }
+      })
+      .catch(() => {
+        // No mapping stored yet.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [data?.id, dataSource]);
 
   useEffect(() => {
     if (!data) return;
@@ -245,10 +315,11 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
 
     const providerId = activeProviderSeries?.id || data.id;
     const activeProviderSource = activeProviderSeries?.source;
+    const inferredProvider = detectProviderFromSeriesId(providerId);
     const provider =
       activeProviderSource && isProviderSource(activeProviderSource)
         ? activeProviderSource
-        : dataSource;
+        : inferredProvider ?? dataSource;
     let cancelled = false;
 
     api
@@ -360,65 +431,94 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     if (!baseUrl) return trimmed;
     const baseHost = baseUrl.replace(/^https?:\/\//i, '');
     const cleaned = trimmed.replace(/^\/+/, '');
-    if (cleaned.startsWith('series/')) {
+    const seriesPath =
+      provider === Providers.Toonily ? 'serie' : provider === Providers.MangaGG ? 'comic' : 'series';
+    if (cleaned.startsWith('series/') || cleaned.startsWith('serie/')) {
+      return `${baseUrl}/${cleaned}`;
+    }
+    if (cleaned.startsWith('comic/')) {
       return `${baseUrl}/${cleaned}`;
     }
     if (baseHost && cleaned.startsWith(`${baseHost}/`)) {
       return `https://${cleaned}`;
     }
-    return `${baseUrl}/series/${cleaned}`;
+    if (baseHost && cleaned.startsWith(`www.${baseHost}/`)) {
+      return `https://${cleaned}`;
+    }
+    if (
+      provider === Providers.MangaGG &&
+      (cleaned.startsWith('mangagg.me/') || cleaned.startsWith('www.mangagg.me/'))
+    ) {
+      return `https://${cleaned}`;
+    }
+    return `${baseUrl}/${seriesPath}/${cleaned}`;
   };
 
   const searchProvider = async (providerId: ProviderType, query: string) => {
     if (!data) return;
     if (!providerBaseUrl(providerId)) return;
 
+    const searchToken = ++providerSearchTokenRef.current;
+    const isStale = () => providerSearchTokenRef.current !== searchToken;
     setProviderLoading(true);
     setProviderRefreshing(false);
     setProviderCacheHit(false);
     setProviderResults(null);
     setShowProviderMenu(false);
     setSelectedProvider(providerId);
+    setProviderSearchScope('single');
+    setProviderSearchPending(0);
+    setProviderSearchTotal(0);
+    setProviderSearchStatuses({});
 
     try {
       const providerName = providerLabel(providerId);
       const cached = api.peekProviderSearchCache(query, providerId);
-      let autoSelected = false;
+      const rankingTerms = buildProviderSearchTerms();
+      const trimmedQuery = query.trim();
+      if (
+        trimmedQuery &&
+        !rankingTerms.some((term) => normalizeSearchKey(term) === normalizeSearchKey(trimmedQuery))
+      ) {
+        rankingTerms.unshift(trimmedQuery);
+      }
       if (cached) {
-        setProviderResults(cached.results);
+        if (isStale()) return;
+        const rankedCached =
+          rankingTerms.length > 0 ? rankProviderResults(cached.results, rankingTerms) : cached.results;
+        setProviderResults(rankedCached);
         setProviderCacheHit(true);
-        prefetchProviderDetails(providerId, cached.results);
-        if (cached.results.length === 1) {
-          autoSelected = true;
-          handleSelectProviderSeries(cached.results[0].id);
-          notify(`Found match on ${providerName} (cached).`, 'success');
-        } else if (cached.results.length === 0) {
+        prefetchProviderDetails(providerId, rankedCached);
+        if (rankedCached.length === 0) {
           notify(`No matches found on ${providerName}.`, 'warning');
         }
-        if (cached.stale && !autoSelected) {
+        if (cached.stale) {
           setProviderRefreshing(true);
         }
         setProviderLoading(false);
-        if (!cached.stale || autoSelected) {
+        if (!cached.stale) {
           return;
         }
       }
 
       const results = await api.refreshProviderSearch(query, providerId);
-      applyProviderResults(results);
+      if (isStale()) return;
+      const ranked = rankingTerms.length > 0 ? rankProviderResults(results, rankingTerms) : results;
+      applyProviderResults(ranked);
 
-      if (results.length === 1) {
-        handleSelectProviderSeries(results[0].id);
-        notify(`Found match on ${providerName}`, 'success');
-      } else if (results.length === 0) {
+      if (ranked.length === 0) {
         notify(`No matches found on ${providerName}.`, 'warning');
       }
     } catch (e) {
-      console.error(e);
-      notify("Failed to search provider.", 'error');
+      if (!isStale()) {
+        console.error(e);
+        notify("Failed to search provider.", 'error');
+      }
     } finally {
-      setProviderLoading(false);
-      setProviderRefreshing(false);
+      if (!isStale()) {
+        setProviderLoading(false);
+        setProviderRefreshing(false);
+      }
     }
   };
 
@@ -446,6 +546,17 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     else if (length > 40) lengthScore = Math.max(0.2, 40 / length);
     const digitBoost = /\d/.test(cleaned) ? 0.05 : 0;
     return asciiRatio * 0.6 + lengthScore * 0.35 + digitBoost;
+  };
+
+  const rankProviderResults = (results: Series[], terms: string[]) => {
+    if (!results.length || terms.length === 0) return results;
+    return [...results]
+      .map((series) => ({ series, score: scoreTitleMatch(series.title, terms) }))
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return a.series.title.localeCompare(b.series.title);
+      })
+      .map((entry) => entry.series);
   };
 
   const expandSynonymTerms = (value: string) => {
@@ -524,11 +635,206 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     });
   };
 
+  const prefetchProviderDetailsForResults = (results: Series[]) => {
+    if (!results.length) return;
+    const grouped = new Map<ProviderType, Series[]>();
+    results.forEach((series) => {
+      const providerId =
+        series.source && isProviderSource(series.source) ? series.source : selectedProvider;
+      if (!providerBaseUrl(providerId)) return;
+      const list = grouped.get(providerId) ?? [];
+      list.push(series);
+      grouped.set(providerId, list);
+    });
+    grouped.forEach((list, providerId) => prefetchProviderDetails(providerId, list));
+  };
+
   const applyProviderResults = (results: Series[]) => {
     setProviderResults(results);
     setProviderCacheHit(false);
-    prefetchProviderDetails(selectedProvider, results);
+    prefetchProviderDetailsForResults(results);
   };
+
+  const fetchProviderResultsForQueries = async (
+    providerId: ProviderType,
+    queries: string[],
+  ): Promise<{ results: Series[]; usedCache: boolean; refreshing: boolean; failed: boolean }> => {
+    const uniqueQueries = Array.from(new Set(queries.map((q) => q.trim()).filter(Boolean)));
+    const searchTerms = uniqueQueries.slice(0, 3);
+    if (searchTerms.length === 0) {
+      return { results: [], usedCache: false, refreshing: false, failed: false };
+    }
+
+    const cachedEntries = searchTerms.map((term) => ({
+      term,
+      cache: api.peekProviderSearchCache(term, providerId),
+    }));
+
+    const merged = new Map<string, { series: Series; score: number }>();
+    const addResults = (results: Series[]) => {
+      results.forEach((series) => {
+        const score = scoreTitleMatch(series.title, searchTerms);
+        const existing = merged.get(series.id);
+        if (!existing || score > existing.score) {
+          merged.set(series.id, { series, score });
+        }
+      });
+    };
+
+    cachedEntries.forEach(({ cache }) => {
+      if (!cache?.results?.length) return;
+      addResults(cache.results);
+    });
+
+    let usedCache = merged.size > 0;
+    let refreshing = cachedEntries.some((entry) => entry.cache?.stale);
+
+    const queriesToFetch = cachedEntries
+      .filter((entry) => !entry.cache || entry.cache.stale)
+      .map((entry) => entry.term);
+
+    let refreshFailures = 0;
+    let refreshSuccesses = 0;
+    if (queriesToFetch.length > 0) {
+      const resultsByQuery = await Promise.all(
+        queriesToFetch.map(async (query) => {
+          try {
+            const results = await api.refreshProviderSearch(query, providerId);
+            return { results, failed: false };
+          } catch {
+            return { results: [] as Series[], failed: true };
+          }
+        }),
+      );
+      resultsByQuery.forEach(({ results, failed }) => {
+        if (failed) {
+          refreshFailures += 1;
+        } else {
+          refreshSuccesses += 1;
+        }
+        addResults(results);
+      });
+    }
+
+    const ranked = Array.from(merged.values())
+      .sort((a, b) => b.score - a.score)
+      .map((entry) => entry.series);
+
+    if (ranked.length === 0 && usedCache) {
+      usedCache = false;
+      refreshing = false;
+    }
+
+    const failed = refreshFailures > 0 && refreshSuccesses === 0 && !usedCache;
+    return { results: ranked, usedCache, refreshing, failed };
+  };
+
+  const searchAllProviders = async (queries: string[]) => {
+    if (!data) return;
+    const providers = allProviderOptions
+      .map((provider) => provider.id)
+      .filter((providerId) => providerBaseUrl(providerId));
+
+    const searchToken = ++providerSearchTokenRef.current;
+    const totalProviders = providers.length;
+    const initialStatuses = providers.reduce(
+      (acc, providerId) => {
+        acc[providerId] = 'pending';
+        return acc;
+      },
+      {} as Record<ProviderType, ProviderSearchStatus>,
+    );
+    const statusByProvider: Record<ProviderType, ProviderSearchStatus> = { ...initialStatuses };
+    setProviderLoading(true);
+    setProviderRefreshing(false);
+    setProviderCacheHit(false);
+    setProviderResults([]);
+    setShowProviderMenu(false);
+    setProviderSearchScope('all');
+    setProviderSearchTotal(totalProviders);
+    setProviderSearchPending(totalProviders);
+    setProviderSearchStatuses(initialStatuses);
+    if (totalProviders === 0) {
+      setProviderLoading(false);
+      setProviderSearchPending(0);
+      setProviderSearchStatuses({});
+      return;
+    }
+
+    const mergedResults = new Map<string, Series>();
+    let hasCache = false;
+
+    const markProviderComplete = () => {
+      setProviderSearchPending((prev) => {
+        const next = Math.max(prev - 1, 0);
+        if (next < totalProviders) {
+          setProviderLoading(false);
+        }
+        if (next === 0) {
+          setProviderRefreshing(false);
+        } else {
+          setProviderRefreshing(true);
+        }
+        return next;
+      });
+    };
+
+    await Promise.allSettled(
+      providers.map(async (providerId) => {
+        const { results, usedCache, failed } = await fetchProviderResultsForQueries(
+          providerId,
+          queries,
+        );
+
+        if (providerSearchTokenRef.current !== searchToken) return;
+        if (usedCache) hasCache = true;
+
+        const nextStatus: ProviderSearchStatus = failed ? 'failed' : 'success';
+        statusByProvider[providerId] = nextStatus;
+        setProviderSearchStatuses((prev) => ({
+          ...prev,
+          [providerId]: nextStatus,
+        }));
+        results.forEach((series) => {
+          mergedResults.set(`${providerId}:${series.id}`, series);
+        });
+
+        const mergedList = rankProviderResults(Array.from(mergedResults.values()), queries);
+        setProviderResults(mergedList);
+        prefetchProviderDetailsForResults(mergedList);
+        setProviderCacheHit(hasCache);
+        markProviderComplete();
+      }),
+    );
+
+    if (providerSearchTokenRef.current === searchToken) {
+      setProviderCacheHit(hasCache);
+      setProviderLoading(false);
+      setProviderSearchPending(0);
+      setProviderRefreshing(false);
+      if (mergedResults.size === 0) {
+        const statuses = Object.values(statusByProvider);
+        const allFailed = statuses.length > 0 && statuses.every((status) => status === 'failed');
+        if (allFailed) {
+          notify('All providers failed to respond. Try again.', 'warning');
+        }
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (!data || dataSource !== 'AniList') return;
+    if (activeProviderSeries?.chapters?.length) return;
+    if (providerResults !== null || providerLoading) return;
+    if (autoProviderSearchRef.current === data.id) return;
+
+    const terms = buildProviderSearchTerms();
+    const searchTerms = terms.length > 0 ? terms : data.title ? [data.title] : [];
+    if (searchTerms.length === 0) return;
+
+    autoProviderSearchRef.current = data.id;
+    searchAllProviders(searchTerms).catch(() => {});
+  }, [data?.id, dataSource, activeProviderSeries?.chapters?.length, providerResults, providerLoading]);
 
   useEffect(() => {
     if (!data || dataSource !== 'AniList') return;
@@ -541,12 +847,18 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
   const searchProviderWithFallback = async (providerId: ProviderType, queries: string[]) => {
     if (!data) return;
 
+    const searchToken = ++providerSearchTokenRef.current;
+    const isStale = () => providerSearchTokenRef.current !== searchToken;
     setProviderLoading(true);
     setProviderRefreshing(false);
     setProviderCacheHit(false);
     setProviderResults(null);
     setShowProviderMenu(false);
     setSelectedProvider(providerId);
+    setProviderSearchScope('single');
+    setProviderSearchPending(0);
+    setProviderSearchTotal(0);
+    setProviderSearchStatuses({});
 
     try {
       const uniqueQueries = Array.from(new Set(queries.map((q) => q.trim()).filter(Boolean)));
@@ -573,6 +885,7 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
         .map((entry) => entry.series);
 
       if (cachedRanked.length > 0) {
+        if (isStale()) return;
         setProviderResults(cachedRanked);
         setProviderCacheHit(true);
         prefetchProviderDetails(providerId, cachedRanked);
@@ -580,14 +893,6 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
         if (cachedEntries.some((entry) => entry.cache?.stale)) {
           setProviderRefreshing(true);
         } else {
-          const bestScore = cachedMerged.get(cachedRanked[0].id)?.score ?? 0;
-          const runnerUpScore = cachedRanked.length > 1 ? cachedMerged.get(cachedRanked[1].id)?.score ?? 0 : 0;
-          const highConfidence = bestScore >= 0.92 && bestScore - runnerUpScore >= 0.12;
-          if (cachedRanked.length === 1 || highConfidence) {
-            handleSelectProviderSeries(cachedRanked[0].id);
-            notify(`Found match using "${searchTerms[0]}".`, 'success');
-            return;
-          }
           if (searchTerms.length > 1) {
             notify(`Found matches using ${searchTerms.slice(0, 2).join(' / ')}.`, 'success');
           }
@@ -610,6 +915,7 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
         }),
       );
 
+      if (isStale()) return;
       const merged = new Map<string, { series: Series; score: number }>();
       for (const { results } of resultsByQuery) {
         results.forEach((series) => {
@@ -636,45 +942,45 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
         .map((entry) => entry.series);
 
       if (ranked.length === 0) {
-        setProviderResults([]);
-        notify(`No matches found on ${providerLabel(providerId)}.`, 'warning');
+        if (!isStale()) {
+          setProviderResults([]);
+          notify(`No matches found on ${providerLabel(providerId)}.`, 'warning');
+        }
         return;
       }
 
       applyProviderResults(ranked);
-      const bestScore = merged.get(ranked[0].id)?.score ?? 0;
-      const runnerUpScore = ranked.length > 1 ? merged.get(ranked[1].id)?.score ?? 0 : 0;
-      const highConfidence = bestScore >= 0.92 && bestScore - runnerUpScore >= 0.12;
-      if (ranked.length === 1 || highConfidence) {
-        handleSelectProviderSeries(ranked[0].id);
-        notify(`Found match using "${searchTerms[0]}".`, 'success');
-        return;
-      }
-
       if (searchTerms.length > 1) {
         notify(`Found matches using ${searchTerms.slice(0, 2).join(' / ')}.`, 'success');
       }
     } catch (e) {
-      console.error(e);
-      notify('Failed to search provider.', 'error');
+      if (!isStale()) {
+        console.error(e);
+        notify('Failed to search provider.', 'error');
+      }
     } finally {
-      setProviderLoading(false);
-      setProviderRefreshing(false);
+      if (!isStale()) {
+        setProviderLoading(false);
+        setProviderRefreshing(false);
+      }
     }
   };
 
   const handleSearchOnProvider = async (providerId: ProviderType) => {
     if (!data) return;
+    setShowProviderMenu(false);
+    setProviderSearchScope('single');
+    setProviderSearchPending(0);
+    setProviderSearchTotal(0);
+    setProviderSearchStatuses({});
     if (!showProviderRemap) {
       if (activeProviderSeries?.chapters?.length) {
-        setShowProviderMenu(false);
         notify('Provider already linked.', 'info');
         return;
       }
       try {
         setProviderLoading(true);
         setProviderResults(null);
-        setShowProviderMenu(false);
         setSelectedProvider(providerId);
         const mapped = await api.getMappedProviderDetails(data.id, providerId);
         if (mapped?.chapters?.length) {
@@ -697,7 +1003,21 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     await searchProviderWithFallback(providerId, terms);
   };
 
+  const handleSearchAllProviders = async () => {
+    if (!data) return;
+    setShowProviderMenu(false);
+    const terms = buildProviderSearchTerms();
+    if (terms.length === 0) {
+      await searchAllProviders([data.title]);
+      return;
+    }
+    await searchAllProviders(terms);
+  };
+
   const handleSelectProviderSeries = async (id: string, providerId: ProviderType = selectedProvider) => {
+    if (providerId !== selectedProvider) {
+      setSelectedProvider(providerId);
+    }
     setProviderLoading(true);
     const normalizedId = normalizeProviderInput(providerId, id);
     try {
@@ -781,16 +1101,32 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
       notify('Enter a title to search the provider.', 'warning');
       return;
     }
+    if (providerSearchScope === 'all') {
+      await searchAllProviders([manualQuery.trim()]);
+      return;
+    }
     await searchProvider(selectedProvider, manualQuery.trim());
   };
 
   const handleManualUrlMap = async () => {
-    const normalized = normalizeProviderInput(selectedProvider, manualProviderUrl);
-    if (!normalized) {
-      notify(`Paste a valid ${providerLabel(selectedProvider)} series URL.`, 'warning');
+    const raw = manualProviderUrl.trim();
+    if (!raw) {
+      notify('Paste a provider series URL.', 'warning');
       return;
     }
-    await handleSelectProviderSeries(normalized, selectedProvider);
+    const inferredProvider = detectProviderFromSeriesId(raw);
+    const providerId =
+      providerSearchScope === 'all' ? inferredProvider : inferredProvider ?? selectedProvider;
+    if (!providerId) {
+      notify('Select a provider for this URL.', 'warning');
+      return;
+    }
+    const normalized = normalizeProviderInput(providerId, raw);
+    if (!normalized) {
+      notify(`Paste a valid ${providerLabel(providerId)} series URL.`, 'warning');
+      return;
+    }
+    await handleSelectProviderSeries(normalized, providerId);
   };
 
   const handleAniListSearch = async () => {
@@ -1351,8 +1687,12 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
   const handleDownloadChapter = async (chapter: any) => {
     if (!activeProviderSeries) return;
     setQueuedChapterIds((prev) => new Set(prev).add(chapter.id));
+    const downloadProvider = isProviderSource(activeProviderSeries.source)
+      ? activeProviderSeries.source
+      : selectedProvider;
     try {
       const job = await api.queueDownload({
+        provider: downloadProvider,
         providerSeriesId: activeProviderSeries.id,
         chapterId: chapter.id,
         chapterUrl: chapter.url,
@@ -1428,9 +1768,13 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
         continue;
       }
 
+      const downloadProvider = isProviderSource(activeProviderSeries.source)
+        ? activeProviderSeries.source
+        : selectedProvider;
       setQueuedChapterIds((prev) => new Set(prev).add(chapter.id));
       try {
         await api.queueDownload({
+          provider: downloadProvider,
           providerSeriesId: activeProviderSeries.id,
           chapterId: chapter.id,
           chapterUrl: chapter.url,
@@ -1546,6 +1890,22 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
     setVisibleChapters(prev => prev + 100);
   };
 
+  const providerStatusList = useMemo(() => {
+    return allProviderOptions
+      .map((provider) => provider.id)
+      .filter((providerId) => providerBaseUrl(providerId))
+      .map((providerId) => ({
+        id: providerId,
+        label: providerShortLabel(providerId),
+        status: providerSearchStatuses[providerId] ?? 'pending',
+      }));
+  }, [providerSearchStatuses]);
+  const providerStatusValues = Object.values(providerSearchStatuses);
+  const providerSearchAllDone =
+    providerStatusValues.length > 0 && providerStatusValues.every((status) => status !== 'pending');
+  const providerSearchAllFailed =
+    providerStatusValues.length > 0 && providerStatusValues.every((status) => status === 'failed');
+
   if (loading || !data) {
     return (
       <div className="min-h-[100dvh] min-h-app flex items-center justify-center">
@@ -1555,9 +1915,23 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
   }
 
   const isAniListSource = dataSource === 'AniList';
-  const providerDisplay = providerLabel(selectedProvider);
-  const providerShort = providerShortLabel(selectedProvider);
+  const providerDisplay =
+    providerSearchScope === 'all' ? 'All Providers' : providerLabel(selectedProvider);
+  const providerShort =
+    providerSearchScope === 'all' ? 'Providers' : providerShortLabel(selectedProvider);
   const providerBase = providerBaseUrl(selectedProvider).replace(/\/+$/, '');
+  const providerPathHint =
+    selectedProvider === Providers.Toonily
+      ? 'serie'
+      : selectedProvider === Providers.MangaGG
+        ? 'comic'
+        : 'series';
+  const providerUrlHint =
+    providerSearchScope === 'all'
+      ? 'Paste provider URL...'
+      : providerBase
+        ? `${providerBase}/${providerPathHint}/...`
+        : 'Provider URL';
   const providerBadge = isProviderSource(dataSource)
     ? providerShortLabel(dataSource)
     : providerShort;
@@ -1728,41 +2102,77 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
                       </button>
                     </>
                   ) : (
-                    <div className="relative w-full md:w-auto flex-1 md:flex-none">
+                    <div className="flex flex-wrap gap-3 w-full md:w-auto">
+                      <button 
+                        onClick={handleSearchAllProviders}
+                        className="flex-1 md:flex-none min-w-[200px] h-[54px] px-7 bg-primary hover:bg-primaryHover text-onPrimary font-bold text-base rounded-xl shadow-lg shadow-primary/25 transition-all flex items-center justify-center gap-3"
+                      >
+                        {providerLoading && providerSearchScope === 'all' ? (
+                          <span className="animate-spin w-5 h-5 border-2 border-black/40 border-t-black rounded-full" />
+                        ) : (
+                          <SearchIcon className="w-5 h-5" />
+                        )}
+                        <span>Find on Providers</span>
+                      </button>
+                      <div className="relative flex-1 md:flex-none min-w-[200px]">
                         <button 
-                           onClick={() => setShowProviderMenu(!showProviderMenu)}
-                           className="w-full md:min-w-[240px] px-8 py-4 bg-surfaceHighlight hover:bg-white/10 border border-white/10 text-white font-bold text-lg rounded-xl transition-all flex items-center justify-center gap-3 shadow-lg hover:border-primary/50"
+                          onClick={() => setShowProviderMenu(!showProviderMenu)}
+                          className="w-full h-[54px] px-6 bg-surfaceHighlight hover:bg-white/10 border border-white/10 text-white font-semibold text-sm rounded-xl transition-all flex items-center justify-center gap-2"
                         >
-                           {providerLoading ? (
-                              <span className="animate-spin w-5 h-5 border-2 border-white/50 border-t-white rounded-full"></span>
-                           ) : (
-                              <SearchIcon className="w-5 h-5" />
-                           )}
-                           <span>Find on Provider</span>
-                           <ChevronDown className={`w-4 h-4 transition-transform ${showProviderMenu ? 'rotate-180' : ''}`} />
+                          <span>Choose Provider</span>
+                          <ChevronDown className={`w-4 h-4 transition-transform ${showProviderMenu ? 'rotate-180' : ''}`} />
                         </button>
 
                         {showProviderMenu && (
-                            <div className="absolute top-full left-0 mt-2 w-full md:w-64 bg-surface border border-white/10 rounded-xl shadow-2xl z-30 overflow-hidden animate-fade-in ring-1 ring-black/50">
-                                <div className="px-4 py-2 text-[10px] font-bold text-gray-500 uppercase tracking-wider bg-surfaceHighlight/50">
-                                    Select Source
-                                </div>
-                                {PROVIDERS.map(p => (
-                                    <button
-                                       key={p.id}
-                                       onClick={() => p.enabled && handleSearchOnProvider(p.id)}
-                                       className={`w-full text-left px-4 py-3.5 text-sm font-bold transition-colors flex items-center justify-between border-b border-white/5 last:border-0 ${
-                                           !p.enabled ? 'opacity-50 cursor-not-allowed bg-black/20' : 'hover:bg-white/10 text-white'
-                                       }`}
-                                    >
-                                        {p.name}
-                                        {p.enabled && <ChevronLeft className="w-4 h-4 rotate-180 text-gray-500" />}
-                                    </button>
-                                ))}
+                          <div className="absolute top-full left-0 mt-2 w-full md:w-64 bg-surface border border-white/10 rounded-xl shadow-2xl z-30 overflow-hidden animate-fade-in ring-1 ring-black/50">
+                            <button
+                              onClick={handleSearchAllProviders}
+                              className="w-full text-left px-4 py-3.5 text-sm font-bold transition-colors flex items-center justify-between border-b border-white/10 hover:bg-white/10 text-white"
+                            >
+                              Search all providers
+                              <ChevronLeft className="w-4 h-4 rotate-180 text-gray-500" />
+                            </button>
+                            <div className="px-4 py-2 text-[10px] font-bold text-gray-500 uppercase tracking-wider bg-surfaceHighlight/50">
+                              Select Source
                             </div>
+                            {PROVIDERS.map(p => (
+                              <button
+                                key={p.id}
+                                onClick={() => p.enabled && handleSearchOnProvider(p.id)}
+                                className={`w-full text-left px-4 py-3.5 text-sm font-bold transition-colors flex items-center justify-between border-b border-white/5 last:border-0 ${
+                                  !p.enabled ? 'opacity-50 cursor-not-allowed bg-black/20' : 'hover:bg-white/10 text-white'
+                                }`}
+                              >
+                                {p.name}
+                                {p.enabled && <ChevronLeft className="w-4 h-4 rotate-180 text-gray-500" />}
+                              </button>
+                            ))}
+                            {EXPERIMENTAL_PROVIDERS.length > 0 && (
+                              <>
+                                <div className="px-4 py-2 text-[10px] font-bold text-amber-400/80 uppercase tracking-wider bg-surfaceHighlight/50">
+                                  Experimental
+                                </div>
+                                {EXPERIMENTAL_PROVIDERS.map((p) => (
+                                  <button
+                                    key={p.id}
+                                    onClick={() => p.enabled && handleSearchOnProvider(p.id)}
+                                    className={`w-full text-left px-4 py-3.5 text-sm font-bold transition-colors flex items-center justify-between border-b border-white/5 last:border-0 ${
+                                      !p.enabled
+                                        ? 'opacity-50 cursor-not-allowed bg-black/20'
+                                        : 'hover:bg-white/10 text-white'
+                                    }`}
+                                  >
+                                    {p.name}
+                                    {p.enabled && <ChevronLeft className="w-4 h-4 rotate-180 text-gray-500" />}
+                                  </button>
+                                ))}
+                              </>
+                            )}
+                          </div>
                         )}
                         
                         {showProviderMenu && <div className="fixed inset-0 z-20" onClick={() => setShowProviderMenu(false)} />}
+                      </div>
                     </div>
                   )}
 
@@ -2044,79 +2454,179 @@ const Details: React.FC<DetailsProps> = ({ seriesId, onNavigate, onBack, user })
                       ? 'Search for the correct provider series to replace the current mapping.'
                       : 'We found multiple matches. Please select the correct one to load chapters.'}
                   </p>
+                  {providerSearchScope === 'all' && providerStatusValues.length > 0 && (
+                    <div className="mb-6 flex flex-wrap gap-2">
+                      {providerStatusList.map((provider) => {
+                        const status = provider.status;
+                        const isPending = status === 'pending';
+                        const isFailed = status === 'failed';
+                        return (
+                          <span
+                            key={provider.id}
+                            className={`flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-semibold border ${
+                              isFailed
+                                ? 'bg-red-500/10 text-red-300 border-red-500/30'
+                                : isPending
+                                  ? 'bg-white/5 text-gray-300 border-white/10'
+                                  : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+                            }`}
+                          >
+                            {isPending ? (
+                              <span className="inline-flex h-3.5 w-3.5 animate-spin rounded-full border border-white/30 border-t-transparent" />
+                            ) : (
+                              <span className="text-[12px] leading-none">{isFailed ? '×' : '✓'}</span>
+                            )}
+                            <span>{provider.label}</span>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {providerLoading && (
+                    <div className="mb-6 text-sm text-gray-400 font-medium">
+                      Searching {providerDisplay}
+                      {providerSearchTotal > 0
+                        ? ` (${providerSearchTotal - providerSearchPending}/${providerSearchTotal})`
+                        : ''}
+                      ... results will appear as each provider finishes.
+                    </div>
+                  )}
                   
                   {providerList.length === 0 ? (
-                     <div className="p-10 rounded-2xl bg-surfaceHighlight/30 text-center text-gray-400 border border-dashed border-white/10 font-medium">
-                        {showProviderRemap
-                          ? 'Start a new search or paste the provider URL below.'
+                    <div className="p-10 rounded-2xl bg-surfaceHighlight/30 text-center text-gray-400 border border-dashed border-white/10 font-medium">
+                      {showProviderRemap
+                        ? 'Start a new search or paste the provider URL below.'
+                        : providerSearchScope === 'all'
+                          ? providerSearchPending > 0
+                            ? 'Searching providers... results will appear as they finish.'
+                            : providerSearchAllFailed
+                              ? 'All providers failed to respond. Try again or use a direct URL.'
+                              : providerSearchAllDone
+                                ? 'All providers finished. Try another title or refine the search.'
+                                : 'Waiting for providers...'
                           : `No matching series found on ${providerDisplay} for "${data.title}".`}
-                     </div>
+                    </div>
                   ) : (
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
-                      {providerList.map((res) => (
-                        <div 
-                          key={res.id} 
-                          onClick={() => handleSelectProviderSeries(res.id, selectedProvider)}
-                          className="cursor-pointer group bg-surfaceHighlight rounded-2xl overflow-hidden hover:ring-2 ring-primary transition-all shadow-lg"
+                      {providerList.map((res) => {
+                        const resultProvider =
+                          res.source && isProviderSource(res.source)
+                            ? res.source
+                            : selectedProvider;
+                        const resultLabel = providerLabel(resultProvider);
+                        return (
+                          <div 
+                            key={`${resultProvider}:${res.id}`} 
+                            onClick={() => handleSelectProviderSeries(res.id, resultProvider)}
+                            className="cursor-pointer group bg-surfaceHighlight rounded-2xl overflow-hidden hover:ring-2 ring-primary transition-all shadow-lg"
+                          >
+                            <div className="aspect-[2/3] relative">
+                              <img src={res.image} className="w-full h-full object-cover" loading="lazy" />
+                              <div className="absolute inset-0 bg-black/50 group-hover:bg-black/20 transition-colors" />
+                              <span className="absolute top-2 left-2 rounded-full bg-black/70 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-white border border-white/10">
+                                {resultLabel}
+                              </span>
+                            </div>
+                            <div className="p-4">
+                              <h4 className="text-[15px] font-bold text-white line-clamp-2 leading-snug">{res.title}</h4>
+                              <span className="text-xs font-medium text-gray-400 mt-1 block">{res.latestChapter}</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div className="p-5 rounded-2xl bg-surfaceHighlight/30 border border-white/10">
+                      <div className="flex flex-wrap items-center gap-2 mb-4">
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-gray-500">
+                          Search scope
+                        </span>
+                        <button
+                          onClick={() => setProviderSearchScope('all')}
+                          className={`px-3 py-1.5 rounded-full text-[11px] font-semibold border transition-colors ${
+                            providerSearchScope === 'all'
+                              ? 'bg-primary text-black border-primary'
+                              : 'bg-white/5 text-gray-300 border-white/10 hover:bg-white/10'
+                          }`}
                         >
-                          <div className="aspect-[2/3] relative">
-                            <img src={res.image} className="w-full h-full object-cover" loading="lazy" />
-                            <div className="absolute inset-0 bg-black/50 group-hover:bg-black/20 transition-colors" />
-                          </div>
-                          <div className="p-4">
-                            <h4 className="text-[15px] font-bold text-white line-clamp-2 leading-snug">{res.title}</h4>
-                            <span className="text-xs font-medium text-gray-400 mt-1 block">{res.latestChapter}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {providerList.length === 0 && (
-                    <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
-                      <div className="p-5 rounded-2xl bg-surfaceHighlight/30 border border-white/10">
-                        <h4 className="text-sm font-bold text-white mb-2">Search with a different name</h4>
-                        <p className="text-xs text-gray-400 mb-4">
-                          Try the provider’s official title or an alternate name.
-                        </p>
-                        <div className="flex gap-2">
-                          <input
-                            value={manualQuery}
-                            onChange={(e) => setManualQuery(e.target.value)}
-                            placeholder={`Search ${providerShort} by title...`}
-                            className="flex-1 bg-surfaceHighlight border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary"
-                          />
-                          <button
-                            onClick={handleManualSearch}
-                            className="px-4 py-2 rounded-lg bg-primary text-white text-sm font-semibold"
+                          All providers
+                        </button>
+                        <button
+                          onClick={() => setProviderSearchScope('single')}
+                          className={`px-3 py-1.5 rounded-full text-[11px] font-semibold border transition-colors ${
+                            providerSearchScope === 'single'
+                              ? 'bg-primary text-black border-primary'
+                              : 'bg-white/5 text-gray-300 border-white/10 hover:bg-white/10'
+                          }`}
+                        >
+                          Only {providerLabel(selectedProvider)}
+                        </button>
+                        {providerSearchScope === 'single' && (
+                          <select
+                            value={selectedProvider}
+                            onChange={(event) => setSelectedProvider(event.target.value as ProviderType)}
+                            className="ml-auto bg-surfaceHighlight border border-white/10 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-white focus:outline-none focus:border-primary"
                           >
-                            Search
-                          </button>
-                        </div>
+                            {PROVIDERS.map((provider) => (
+                              <option key={provider.id} value={provider.id}>
+                                {provider.name}
+                              </option>
+                            ))}
+                            {EXPERIMENTAL_PROVIDERS.map((provider) => (
+                              <option key={provider.id} value={provider.id}>
+                                {provider.name} (Experimental)
+                              </option>
+                            ))}
+                          </select>
+                        )}
                       </div>
-
-                      <div className="p-5 rounded-2xl bg-surfaceHighlight/30 border border-white/10">
-                        <h4 className="text-sm font-bold text-white mb-2">Paste the exact series URL</h4>
-                        <p className="text-xs text-gray-400 mb-4">
-                          We’ll load it directly and map it to AniList.
-                        </p>
-                        <div className="flex gap-2">
-                          <input
-                            value={manualProviderUrl}
-                            onChange={(e) => setManualProviderUrl(e.target.value)}
-                            placeholder={providerBase ? `${providerBase}/series/...` : 'Provider URL'}
-                            className="flex-1 bg-surfaceHighlight border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary"
-                          />
-                          <button
-                            onClick={handleManualUrlMap}
-                            className="px-4 py-2 rounded-lg bg-white/10 text-white text-sm font-semibold border border-white/10 hover:bg-white/20"
-                          >
-                            Load
-                          </button>
-                        </div>
+                      <h4 className="text-sm font-bold text-white mb-2">Search with a different name</h4>
+                      <p className="text-xs text-gray-400 mb-4">
+                        Try the provider's official title or an alternate name.
+                      </p>
+                      <div className="flex gap-2">
+                        <input
+                          value={manualQuery}
+                          onChange={(e) => setManualQuery(e.target.value)}
+                          placeholder={
+                            providerSearchScope === 'all'
+                              ? 'Search across providers...'
+                              : `Search ${providerShort} by title...`
+                          }
+                          className="flex-1 bg-surfaceHighlight border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary"
+                        />
+                        <button
+                          onClick={handleManualSearch}
+                          className="px-4 py-2 rounded-lg bg-primary text-white text-sm font-semibold"
+                        >
+                          Search
+                        </button>
                       </div>
                     </div>
-                  )}
+
+                    <div className="p-5 rounded-2xl bg-surfaceHighlight/30 border border-white/10">
+                      <h4 className="text-sm font-bold text-white mb-2">Paste the exact series URL</h4>
+                      <p className="text-xs text-gray-400 mb-4">
+                        We’ll detect the provider and load it directly.
+                      </p>
+                      <div className="flex gap-2">
+                        <input
+                          value={manualProviderUrl}
+                          onChange={(e) => setManualProviderUrl(e.target.value)}
+                          placeholder={providerUrlHint}
+                          className="flex-1 bg-surfaceHighlight border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary"
+                        />
+                        <button
+                          onClick={handleManualUrlMap}
+                          className="px-4 py-2 rounded-lg bg-white/10 text-white text-sm font-semibold border border-white/10 hover:bg-white/20"
+                        >
+                          Load
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
 

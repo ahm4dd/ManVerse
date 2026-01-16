@@ -200,7 +200,7 @@ const Login: React.FC<LoginProps> = ({
                 <div>
                   <h3 className="font-bold text-white text-lg">Smart Discovery</h3>
                   <p className="text-sm text-gray-400 mt-1">
-                    Find new series on {providerShortLabel(Providers.AsuraScans)} or AniList instantly with one search bar.
+                    Find new series on {providerShortLabel(Providers.AsuraScans)}, {providerShortLabel(Providers.MangaGG)}, or AniList instantly with one search bar.
                   </p>
                 </div>
              </div>

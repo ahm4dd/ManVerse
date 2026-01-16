@@ -2,6 +2,7 @@ import React from 'react';
 import { Series } from '../types';
 import { StarIcon } from './Icons';
 import { motion } from 'framer-motion';
+import { isProviderSource, providerShortLabel } from '../lib/providers';
 
 interface SeriesCardProps {
   series: Series;
@@ -54,6 +55,8 @@ const SeriesCard: React.FC<SeriesCardProps> = ({ series, onClick, index = 0, lay
   const relativeTime = timeAgo(series.updatedAt);
   let latestLabel = series.latestChapter;
   const resolvedLayoutId = layoutId ?? `series-${series.id}`;
+  const providerBadge =
+    series.source && isProviderSource(series.source) ? providerShortLabel(series.source) : null;
   if (series.source === 'AniList' && latestLabel) {
     const lowered = latestLabel.toLowerCase();
     if (lowered.includes('chapter') || lowered.includes('progress')) {
@@ -107,9 +110,16 @@ const SeriesCard: React.FC<SeriesCardProps> = ({ series, onClick, index = 0, lay
 
         {/* Bottom: Rating (Minimalist) */}
         <div className="absolute bottom-0 p-3 w-full">
-          <div className="flex items-center gap-1.5 text-yellow-400">
-            <StarIcon className="h-3.5 w-3.5" fill />
-            <span className="text-[13px] font-extrabold text-white">{series.rating}</span>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-yellow-400">
+              <StarIcon className="h-3.5 w-3.5" fill />
+              <span className="text-[13px] font-extrabold text-white">{series.rating}</span>
+            </div>
+            {providerBadge && (
+              <span className="rounded-full bg-black/70 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white border border-white/10">
+                {providerBadge}
+              </span>
+            )}
           </div>
         </div>
       </motion.div>

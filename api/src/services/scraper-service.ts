@@ -1,5 +1,12 @@
 import { Providers, type Manhwa, type ManhwaChapter, type SearchResult } from '@manverse/core';
-import { ScraperFactory, ScraperCache, asuraScansConfig, type ScraperConfig } from '@manverse/scrapers';
+import {
+  ScraperFactory,
+  ScraperCache,
+  asuraScansConfig,
+  mangaggConfig,
+  toonilyConfig,
+  type ScraperConfig,
+} from '@manverse/scrapers';
 import puppeteer, { type Browser, type Page } from 'puppeteer';
 import { MemoryCache } from '../utils/cache.ts';
 
@@ -31,7 +38,13 @@ interface Scraper {
 }
 
 function getLaunchArgs(): string[] {
-  const args = ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'];
+  const args = [
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+    '--disable-dev-shm-usage',
+    '--disable-blink-features=AutomationControlled',
+    '--lang=en-US,en',
+  ];
   if (Bun.env.PUPPETEER_DISABLE_GPU === 'true') {
     args.push('--disable-gpu');
   }
@@ -65,7 +78,13 @@ export class ScraperService {
       return existing;
     }
 
-    const scraper = ScraperFactory.createScraper(provider, asuraScansConfig);
+    const config =
+      provider === Providers.Toonily
+        ? toonilyConfig
+        : provider === Providers.MangaGG
+          ? mangaggConfig
+          : asuraScansConfig;
+    const scraper = ScraperFactory.createScraper(provider, config);
     ScraperService.scrapers.set(provider, scraper);
     return scraper;
   }
@@ -82,6 +101,16 @@ export class ScraperService {
     try {
       await page.setViewport(DEFAULT_VIEWPORT);
       await page.setCacheEnabled(true);
+      await page.evaluateOnNewDocument(() => {
+        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+        Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+        Object.defineProperty(navigator, 'platform', { get: () => 'Win32' });
+        Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+        const chrome = (window as typeof window & { chrome?: Record<string, unknown> }).chrome;
+        if (!chrome) {
+          (window as typeof window & { chrome: Record<string, unknown> }).chrome = { runtime: {} };
+        }
+      });
       if (options?.blockResources) {
         await page.setRequestInterception(true);
         page.on('request', (request) => {
@@ -104,9 +133,13 @@ export class ScraperService {
       if (scraper.config.headers?.userAgent) {
         await page.setUserAgent(scraper.config.headers.userAgent);
       }
+      const extraHeaders: Record<string, string> = {
+        'Accept-Language': 'en-US,en;q=0.9',
+      };
       if (scraper.config.headers?.referer) {
-        await page.setExtraHTTPHeaders({ Referer: scraper.config.headers.referer });
+        extraHeaders.Referer = scraper.config.headers.referer;
       }
+      await page.setExtraHTTPHeaders(extraHeaders);
       return await handler(page, scraper);
     } finally {
       await page.close();
@@ -122,8 +155,18 @@ export class ScraperService {
     const normalizedQuery = query.trim().toLowerCase();
     const cacheKey = `provider:${provider}:search:${normalizedQuery}:${page}`;
     if (!options?.refresh) {
+      const memoryCached = ScraperService.cache.get<SearchResult>(cacheKey);
+      if (memoryCached) {
+        if (memoryCached.results.length > 0) {
+          return memoryCached;
+        }
+        ScraperService.cache.delete(cacheKey);
+      }
+    }
+    if (!options?.refresh) {
       const diskCached = ScraperService.diskCache.get<SearchResult>(cacheKey);
-      if (diskCached) {
+      const hasResults = diskCached?.results?.length;
+      if (diskCached && hasResults) {
         await ScraperService.cache.getOrLoad(cacheKey, DEFAULT_CACHE_TTL_MS.search, async () => diskCached);
         return diskCached;
       }
@@ -134,7 +177,9 @@ export class ScraperService {
         (pageInstance, scraper) => scraper.search(false, pageInstance, query, page),
         { blockResources: true },
       );
-      ScraperService.diskCache.set(cacheKey, result, DISK_CACHE_TTL_MS.search);
+      if (result.results.length > 0) {
+        ScraperService.diskCache.set(cacheKey, result, DISK_CACHE_TTL_MS.search);
+      }
       return result;
     });
   }
@@ -146,8 +191,15 @@ export class ScraperService {
   ): Promise<Manhwa> {
     const cacheKey = `provider:${provider}:details:${id.trim()}`;
     if (!options?.refresh) {
+      const memoryCached = ScraperService.cache.get<Manhwa>(cacheKey);
+      if (memoryCached?.chapters?.length) {
+        return memoryCached;
+      }
+      if (memoryCached) {
+        ScraperService.cache.delete(cacheKey);
+      }
       const diskCached = ScraperService.diskCache.get<Manhwa>(cacheKey);
-      if (diskCached) {
+      if (diskCached?.chapters?.length) {
         await ScraperService.cache.getOrLoad(cacheKey, DEFAULT_CACHE_TTL_MS.details, async () => diskCached);
         return diskCached;
       }
@@ -158,7 +210,9 @@ export class ScraperService {
         (pageInstance, scraper) => scraper.checkManhwa(pageInstance, id),
         { blockResources: true },
       );
-      ScraperService.diskCache.set(cacheKey, result, DISK_CACHE_TTL_MS.details);
+      if (result.chapters?.length) {
+        ScraperService.diskCache.set(cacheKey, result, DISK_CACHE_TTL_MS.details);
+      }
       return result;
     });
   }
@@ -182,9 +236,81 @@ export class ScraperService {
         (pageInstance, scraper) => scraper.checkManhwaChapter(pageInstance, id),
         { blockResources: true },
       );
+      if (!result.length) {
+        throw new Error('No chapter images found');
+      }
       ScraperService.diskCache.set(cacheKey, result, DISK_CACHE_TTL_MS.chapter);
       return result;
     });
+  }
+
+  async fetchImage(
+    url: string,
+    provider: Provider = Providers.AsuraScans,
+    referer?: string,
+  ): Promise<{ buffer: Uint8Array; contentType: string | null }> {
+    const browser = await this.getBrowser();
+    const scraper = this.getScraper(provider);
+    const page = await browser.newPage();
+
+    try {
+      await page.setViewport(DEFAULT_VIEWPORT);
+      await page.setCacheEnabled(true);
+      await page.evaluateOnNewDocument(() => {
+        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+        Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+        Object.defineProperty(navigator, 'platform', { get: () => 'Win32' });
+        Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+        const chrome = (window as typeof window & { chrome?: Record<string, unknown> }).chrome;
+        if (!chrome) {
+          (window as typeof window & { chrome: Record<string, unknown> }).chrome = { runtime: {} };
+        }
+      });
+      if (scraper.config.timeout) {
+        page.setDefaultNavigationTimeout(scraper.config.timeout);
+        page.setDefaultTimeout(scraper.config.timeout);
+      }
+      if (scraper.config.headers?.userAgent) {
+        await page.setUserAgent(scraper.config.headers.userAgent);
+      }
+      const extraHeaders: Record<string, string> = {
+        'Accept-Language': 'en-US,en;q=0.9',
+      };
+      const appliedReferer =
+        referer ||
+        scraper.config.headers?.referer ||
+        scraper.config.baseUrl;
+      if (appliedReferer) {
+        extraHeaders.Referer = appliedReferer;
+      }
+      await page.setExtraHTTPHeaders(extraHeaders);
+
+      if (appliedReferer && appliedReferer !== url) {
+        try {
+          await page.goto(appliedReferer, {
+            waitUntil: 'domcontentloaded',
+            timeout: Math.min(15000, scraper.config.timeout ?? 15000),
+          });
+        } catch {
+          // Ignore referer warmup failures.
+        }
+      }
+
+      const response = await page.goto(url, {
+        waitUntil: 'networkidle2',
+        timeout: scraper.config.timeout ?? 60000,
+      });
+
+      if (!response) {
+        throw new Error('Image response missing');
+      }
+
+      const buffer = await response.buffer();
+      const contentType = response.headers()['content-type'] ?? null;
+      return { buffer: buffer ?? new Uint8Array(), contentType };
+    } finally {
+      await page.close();
+    }
   }
 
   async close(): Promise<void> {

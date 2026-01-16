@@ -1,9 +1,18 @@
-import { Providers, ProviderList, ProviderMetadata, type ProviderType } from '@manverse/core';
-import { asuraScansConfig } from '@manverse/scrapers/config';
+import {
+  Providers,
+  ProviderList,
+  ProviderMetadata,
+  StableProviderList,
+  ExperimentalProviderList,
+  type ProviderType,
+} from '@manverse/core';
+import { asuraScansConfig, mangaggConfig, toonilyConfig } from '@manverse/scrapers/config';
 
-export type Source = 'AniList' | ProviderType;
+export type Source = 'AniList' | 'AllProviders' | ProviderType;
 
-export const providerOptions = ProviderList;
+export const providerOptions = StableProviderList;
+export const experimentalProviderOptions = ExperimentalProviderList;
+export const allProviderOptions = ProviderList;
 
 export const providerApiSource = (provider: ProviderType): string =>
   ProviderMetadata[provider]?.apiSource ?? provider.toLowerCase();
@@ -18,6 +27,12 @@ export const providerBaseUrl = (provider: ProviderType): string => {
   if (provider === Providers.AsuraScans) {
     return asuraScansConfig.baseUrl;
   }
+  if (provider === Providers.Toonily) {
+    return toonilyConfig.baseUrl;
+  }
+  if (provider === Providers.MangaGG) {
+    return mangaggConfig.baseUrl;
+  }
   return '';
 };
 
@@ -25,11 +40,17 @@ export const providerReferer = (provider: ProviderType): string => {
   if (provider === Providers.AsuraScans) {
     return asuraScansConfig.headers?.referer ?? asuraScansConfig.baseUrl;
   }
+  if (provider === Providers.Toonily) {
+    return toonilyConfig.headers?.referer ?? toonilyConfig.baseUrl;
+  }
+  if (provider === Providers.MangaGG) {
+    return mangaggConfig.headers?.referer ?? mangaggConfig.baseUrl;
+  }
   return '';
 };
 
 export const isProviderSource = (source: Source): source is ProviderType =>
-  source !== 'AniList';
+  source !== 'AniList' && source !== 'AllProviders';
 
 export type { ProviderType };
 export { Providers };

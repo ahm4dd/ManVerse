@@ -11,7 +11,15 @@ import SidebarList from '../components/SidebarList';
 import { FilterState } from '../components/SearchFilters';
 import { motion } from 'framer-motion';
 import { SortIcon } from '../components/Icons';
-import { Providers, type Source, isProviderSource } from '../lib/providers';
+import {
+  Providers,
+  type ProviderType,
+  type Source,
+  isProviderSource,
+  allProviderOptions,
+  providerBaseUrl,
+  providerShortLabel,
+} from '../lib/providers';
 import { useMediaQuery } from '../lib/useMediaQuery';
 
 interface HomeProps {
@@ -36,6 +44,8 @@ interface ContinueItem {
   source: Source;
   progressSource: 'AniList' | 'Local';
 }
+
+type ProviderSearchStatus = 'pending' | 'success' | 'failed';
 
 const Home: React.FC<HomeProps> = ({ 
   onNavigate, 
@@ -63,6 +73,10 @@ const Home: React.FC<HomeProps> = ({
   const [searchPage, setSearchPage] = useState(1);
   const [searchHasMore, setSearchHasMore] = useState(true);
   const [searchLoadingMore, setSearchLoadingMore] = useState(false);
+  const [searchPendingProviders, setSearchPendingProviders] = useState(0);
+  const [searchProviderStatuses, setSearchProviderStatuses] = useState<
+    Record<ProviderType, ProviderSearchStatus>
+  >({});
   const [homeHydrated, setHomeHydrated] = useState(false);
   const [pageInput, setPageInput] = useState('1');
   const searchPageCacheRef = useRef<Record<string, Record<number, Series[]>>>({});
@@ -82,6 +96,7 @@ const Home: React.FC<HomeProps> = ({
   const continueClickTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const recentClickTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prefetchCacheRef = useRef<Record<string, number>>({});
+  const searchAllProvidersTokenRef = useRef(0);
 
   const PREFETCH_CACHE_KEY = 'manverse_smart_prefetch_v1';
   const PREFETCH_TTL_MS = 12 * 60 * 60 * 1000;
@@ -117,6 +132,21 @@ const Home: React.FC<HomeProps> = ({
       s: globalSearchSource,
     });
   }, [globalSearchQuery, globalFilters, globalSearchSource]);
+  const providerStatusList = useMemo(() => {
+    return allProviderOptions
+      .map((provider) => provider.id)
+      .filter((providerId) => providerBaseUrl(providerId))
+      .map((providerId) => ({
+        id: providerId,
+        label: providerShortLabel(providerId),
+        status: searchProviderStatuses[providerId] ?? 'pending',
+      }));
+  }, [searchProviderStatuses]);
+  const providerStatusValues = Object.values(searchProviderStatuses);
+  const providerSearchAllDone =
+    providerStatusValues.length > 0 && providerStatusValues.every((status) => status !== 'pending');
+  const providerSearchAllFailed =
+    providerStatusValues.length > 0 && providerStatusValues.every((status) => status === 'failed');
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -496,8 +526,94 @@ const Home: React.FC<HomeProps> = ({
     setRecentReads(localOnly);
   };
 
+  const searchAllProviders = async (query: string, page = 1) => {
+    if (page !== 1) {
+      setSearchHasMore(false);
+      setSearchLoadingMore(false);
+      return;
+    }
+    const trimmed = query.trim();
+    if (!trimmed) {
+      setSearchResults([]);
+      setSearchHasMore(false);
+      setSearchLoadingMore(false);
+      setSearchProviderStatuses({});
+      return;
+    }
+
+    const providers = allProviderOptions
+      .map((provider) => provider.id)
+      .filter((providerId) => providerBaseUrl(providerId));
+    const totalProviders = providers.length;
+    const token = ++searchAllProvidersTokenRef.current;
+    const initialStatuses = providers.reduce(
+      (acc, providerId) => {
+        acc[providerId] = 'pending';
+        return acc;
+      },
+      {} as Record<ProviderType, ProviderSearchStatus>,
+    );
+
+    setSearchPendingProviders(totalProviders);
+    setSearchResults([]);
+    setSearchHasMore(false);
+    setSearchLoadingMore(false);
+    setSearchProviderStatuses(initialStatuses);
+    if (totalProviders === 0) {
+      setLoading(false);
+      setSearchProviderStatuses({});
+      return;
+    }
+
+    const merged = new Map<string, Series>();
+
+    await Promise.allSettled(
+      providers.map(async (providerId) => {
+        try {
+          const meta = await api.searchProviderSeriesMeta(trimmed, providerId, 1);
+          if (searchAllProvidersTokenRef.current !== token) return;
+          meta.results.forEach((series) => {
+            merged.set(`${providerId}:${series.id}`, series);
+          });
+          setSearchResults(Array.from(merged.values()));
+          setSearchProviderStatuses((prev) => ({
+            ...prev,
+            [providerId]: 'success',
+          }));
+        } catch {
+          // Ignore provider failures for aggregated search.
+          if (searchAllProvidersTokenRef.current !== token) return;
+          setSearchProviderStatuses((prev) => ({
+            ...prev,
+            [providerId]: 'failed',
+          }));
+        } finally {
+          if (searchAllProvidersTokenRef.current !== token) return;
+          setSearchPendingProviders((prev) => {
+            const next = Math.max(prev - 1, 0);
+            if (next < totalProviders) {
+              setLoading(false);
+            }
+            if (next === 0) {
+              setLoading(false);
+            }
+            return next;
+          });
+        }
+      }),
+    );
+
+    if (searchAllProvidersTokenRef.current === token) {
+      setSearchPendingProviders(0);
+      if (merged.size === 0) {
+        setSearchResults([]);
+      }
+    }
+  };
+
   const handleGlobalSearch = async (page = 1, append = false) => {
-    if (isProviderSource(globalSearchSource) && !globalSearchQuery.trim()) {
+    const isProviderSearch = globalSearchSource === 'AllProviders' || isProviderSource(globalSearchSource);
+    if (isProviderSearch && !globalSearchQuery.trim()) {
       setSearchResults([]);
       setSearchHasMore(false);
       return;
@@ -535,6 +651,10 @@ const Home: React.FC<HomeProps> = ({
       };
 
       let results: Series[] = [];
+      if (globalSearchSource === 'AllProviders') {
+        await searchAllProviders(globalSearchQuery.trim(), page);
+        return;
+      }
       if (isProviderSource(globalSearchSource)) {
         const meta = await api.searchProviderSeriesMeta(globalSearchQuery, globalSearchSource, page);
         results = sortProviderResults(meta.results);
@@ -555,6 +675,33 @@ const Home: React.FC<HomeProps> = ({
     }
   };
 
+  useEffect(() => {
+    if (globalSearchSource !== 'AniList') return;
+    const query = globalSearchQuery.trim();
+    if (!query || searchResults.length === 0) return;
+    const key = `search:${query.toLowerCase()}`;
+    const now = Date.now();
+    const last = prefetchCacheRef.current[key] ?? 0;
+    if (now - last <= PREFETCH_TTL_MS) return;
+
+    prefetchCacheRef.current[key] = now;
+    try {
+      sessionStorage.setItem(PREFETCH_CACHE_KEY, JSON.stringify(prefetchCacheRef.current));
+    } catch {
+      // Ignore storage issues
+    }
+
+    const topTitles = searchResults.slice(0, 3).map((item) => item.title).filter(Boolean);
+    const terms = Array.from(new Set([query, ...topTitles])).slice(0, 4);
+    const providers = allProviderOptions
+      .map((provider) => provider.id)
+      .filter((providerId) => providerBaseUrl(providerId));
+
+    providers.forEach((providerId) => {
+      api.prefetchProviderSearch(terms, providerId);
+    });
+  }, [globalSearchSource, globalSearchQuery, searchResults]);
+
   const handleContinueClick = async (item: ContinueItem) => {
     const anilistId = item.anilistId || (item.source === 'AniList' ? item.id : undefined);
 
@@ -570,7 +717,7 @@ const Home: React.FC<HomeProps> = ({
       }
 
       if (!providerDetails) {
-        onNavigate('details', anilistId || item.id);
+        onNavigate('details', anilistId || { id: item.id, source: item.source });
         return;
       }
 
@@ -591,7 +738,7 @@ const Home: React.FC<HomeProps> = ({
       }
 
       if (!chapterId) {
-        onNavigate('details', anilistId || item.id);
+        onNavigate('details', anilistId || { id: item.id, source: item.source });
         return;
       }
 
@@ -611,14 +758,17 @@ const Home: React.FC<HomeProps> = ({
       });
     } catch (e) {
       console.warn('Failed to resume reading, falling back to details', e);
-      onNavigate('details', anilistId || item.id);
+      onNavigate('details', anilistId || { id: item.id, source: item.source });
     }
   };
 
   const handleInfoClick = (item?: ContinueItem) => {
     if (!item) return;
     const anilistId = item.anilistId || (item.source === 'AniList' ? item.id : undefined);
-    onNavigate('details', anilistId || item.id);
+    const detailsPayload = isProviderSource(item.source)
+      ? { id: item.id, source: item.source }
+      : anilistId || item.id;
+    onNavigate('details', detailsPayload);
   };
 
   const loadTabPage = async (tab: 'Newest' | 'Popular' | 'Top Rated', page: number) => {
@@ -660,6 +810,10 @@ const Home: React.FC<HomeProps> = ({
   const handleSearchPageChange = async (page: number) => {
     if (page < 1) return;
     if (searchLoadingMore) return;
+    if (globalSearchSource === 'AllProviders') {
+      setSearchHasMore(false);
+      return;
+    }
     const cache = searchPageCacheRef.current[searchContextKey]?.[page];
     setSearchPage(page);
     if (cache) {
@@ -955,26 +1109,61 @@ const Home: React.FC<HomeProps> = ({
 
                {/* Results Title (Discovery Mode) */}
                {isDiscoveryMode && (
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                     <div>
-                         <h2 className="text-2xl font-bold text-white">
-                            {globalSearchQuery ? `Results for "${globalSearchQuery}"` : 'Filtered Results'}
-                         </h2>
-                         {searchResults.length > 0 && <span className="text-sm text-gray-500">{searchResults.length} matches found</span>}
-                     </div>
-                     <div className="flex items-center gap-2 flex-wrap">
-                        <button
-                          onClick={toggleFilters}
-                          className="flex items-center gap-2 text-xs font-bold px-3 py-1 rounded-full bg-primary/10 text-primary border border-primary/30 hover:border-primary/60 transition-colors"
-                        >
-                          <SortIcon className="w-3.5 h-3.5" />
-                          Sort: {globalFilters.sort}
-                        </button>
-                        <div className="text-xs text-gray-500 font-bold px-3 py-1 bg-surfaceHighlight rounded-full border border-white/5">
-                          Source: {globalSearchSource}
-                        </div>
-                     </div>
-                  </div>
+                  <>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                       <div>
+                           <h2 className="text-2xl font-bold text-white">
+                              {globalSearchQuery ? `Results for "${globalSearchQuery}"` : 'Filtered Results'}
+                           </h2>
+                           {searchResults.length > 0 && <span className="text-sm text-gray-500">{searchResults.length} matches found</span>}
+                       </div>
+                       <div className="flex items-center gap-2 flex-wrap">
+                          <button
+                            onClick={toggleFilters}
+                            className="flex items-center gap-2 text-xs font-bold px-3 py-1 rounded-full bg-primary/10 text-primary border border-primary/30 hover:border-primary/60 transition-colors"
+                          >
+                            <SortIcon className="w-3.5 h-3.5" />
+                            Sort: {globalFilters.sort}
+                          </button>
+                          <div className="text-xs text-gray-500 font-bold px-3 py-1 bg-surfaceHighlight rounded-full border border-white/5">
+                            Source: {globalSearchSource === 'AllProviders' ? 'All Providers' : globalSearchSource}
+                          </div>
+                          {globalSearchSource === 'AllProviders' && searchPendingProviders > 0 && (
+                            <div className="text-xs text-amber-300 font-semibold px-3 py-1 bg-amber-500/10 rounded-full border border-amber-500/20">
+                              Searching {searchPendingProviders} provider{searchPendingProviders === 1 ? '' : 's'}...
+                            </div>
+                          )}
+                       </div>
+                    </div>
+                    {globalSearchSource === 'AllProviders' && providerStatusValues.length > 0 && (
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        {providerStatusList.map((provider) => {
+                          const status = provider.status;
+                          const isPending = status === 'pending';
+                          const isFailed = status === 'failed';
+                          return (
+                            <span
+                              key={provider.id}
+                              className={`flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-semibold border ${
+                                isFailed
+                                  ? 'bg-red-500/10 text-red-300 border-red-500/30'
+                                  : isPending
+                                    ? 'bg-white/5 text-gray-300 border-white/10'
+                                    : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+                              }`}
+                            >
+                              {isPending ? (
+                                <span className="inline-flex h-3.5 w-3.5 animate-spin rounded-full border border-white/30 border-t-transparent" />
+                              ) : (
+                                <span className="text-[12px] leading-none">{isFailed ? '×' : '✓'}</span>
+                              )}
+                              <span>{provider.label}</span>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </>
                )}
 
                {/* Grid */}
@@ -999,13 +1188,32 @@ const Home: React.FC<HomeProps> = ({
                                 key={item.id} 
                                 series={item} 
                                 index={index}
-                                onClick={() => onNavigate('details', item.id)} 
+                                onClick={() =>
+                                  onNavigate(
+                                    'details',
+                                    isProviderSource(item.source)
+                                      ? { id: item.id, source: item.source }
+                                      : item.id,
+                                  )
+                                }
                              />
                           ))
                        ) : (
                           <div className="col-span-full py-20 text-center text-gray-500 flex flex-col items-center">
                              <span className="text-4xl mb-4 opacity-50">🔍</span>
-                             <p className="text-lg font-medium">No results found.</p>
+                             {globalSearchSource === 'AllProviders' && providerStatusValues.length > 0 ? (
+                               <p className="text-lg font-medium">
+                                 {searchPendingProviders > 0
+                                   ? 'Searching providers... results will appear as they finish.'
+                                   : providerSearchAllFailed
+                                     ? 'All providers failed to respond. Try again or use a direct URL.'
+                                     : providerSearchAllDone
+                                       ? 'All providers finished. Try another title or refine the search.'
+                                       : 'Waiting for providers...'}
+                               </p>
+                             ) : (
+                               <p className="text-lg font-medium">No results found.</p>
+                             )}
                              {isDiscoveryMode && (
                                 <button onClick={toggleFilters} className="mt-4 text-primary hover:underline">Adjust filters</button>
                              )}

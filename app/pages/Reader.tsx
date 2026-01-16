@@ -328,7 +328,11 @@ const Reader: React.FC<ReaderProps> = ({
       shouldScrollRef.current = null;
 
       try {
-        const data = await api.getChapterImages(readerData.chapterId);
+        const providerSource = readerData.source ?? resolvedSource ?? 'AniList';
+        const provider = isProviderSource(providerSource)
+          ? providerSource
+          : Providers.AsuraScans;
+        const data = await api.getChapterImages(readerData.chapterId, provider);
         setPages(data);
         setTotalPages(data.length);
 
@@ -351,7 +355,7 @@ const Reader: React.FC<ReaderProps> = ({
       }
     };
     load();
-  }, [readerData.chapterId, historyKey]);
+  }, [readerData.chapterId, historyKey, readerData.source, resolvedSource]);
 
   // Handle Scroll Restoration
   useEffect(() => {
@@ -461,11 +465,16 @@ const Reader: React.FC<ReaderProps> = ({
     }
 
     if (candidates.length === 0) return;
+    const providerSource = readerData.source ?? resolvedSource ?? 'AniList';
+    const downloadProvider = isProviderSource(providerSource)
+      ? providerSource
+      : Providers.AsuraScans;
 
     const prefetch = async () => {
       for (const chapter of candidates) {
         try {
           await api.queueDownload({
+            provider: downloadProvider,
             providerSeriesId,
             chapterId: chapter.id,
             chapterUrl: chapter.url,
@@ -496,6 +505,8 @@ const Reader: React.FC<ReaderProps> = ({
     resolvedStatus,
     resolvedTitle,
     resolvedImage,
+    readerData.source,
+    resolvedSource,
   ]);
 
   // Keyboard Shortcuts

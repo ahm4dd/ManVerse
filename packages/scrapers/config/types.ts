@@ -163,7 +163,239 @@ export const AsuraScansConfigSchema = ScraperConfigSchema.extend({
     }),
 });
 
+export const ToonilyConfigSchema = ScraperConfigSchema.extend({
+  name: z.literal(Providers.Toonily),
+  selectors: z
+    .object({
+      search: z
+        .object({
+          resultContainer: z
+            .string()
+            .default(
+              '.page-item-detail, .page-item-detail.manga, .manga-item, .post-content, .row.c-tabs-item, .c-tabs-item__content',
+            ),
+          link: z.string().default('.item-thumb a, .post-title a, a[href*="/serie/"]'),
+          image: z.string().default('.item-thumb img, img'),
+          title: z.string().default('.post-title a, .post-title h3 a, h3 a, h4 a, a'),
+          rating: z
+            .string()
+            .default('[property="ratingValue"], #averagerate, .post-total-rating, .score, .rating'),
+          chapters: z
+            .string()
+            .default('.chapter, .post-total-chapter, .chapter-item, .latest-chapter, .chapters'),
+          nextButton: z
+            .string()
+            .default('a.next, a.page-numbers.next, a[rel="next"], a.pagination-next'),
+        })
+        .default({
+          resultContainer:
+            '.page-item-detail, .page-item-detail.manga, .manga-item, .post-content, .row.c-tabs-item, .c-tabs-item__content',
+          link: '.item-thumb a, .post-title a, a[href*="/serie/"]',
+          image: '.item-thumb img, img',
+          title: '.post-title a, .post-title h3 a, h3 a, h4 a, a',
+          rating: '[property="ratingValue"], #averagerate, .post-total-rating, .score, .rating',
+          chapters: '.chapter, .post-total-chapter, .chapter-item, .latest-chapter, .chapters',
+          nextButton: 'a.next, a.page-numbers.next, a[rel="next"], a.pagination-next',
+        }),
+      detail: z
+        .object({
+          title: z.string().default('h1, .post-title h1, .manga-title h1'),
+          image: z.string().default('.summary_image img, .summary_image a img, .summary_image img'),
+          description: z
+            .string()
+            .default('.description-summary, .summary__content, .summary__content p'),
+          genres: z
+            .string()
+            .default('.genres-content a, .genres a, .tags-content a, .summary-content a[rel="tag"]'),
+          infoItem: z.string().default('.post-content_item, .summary-list li, .manga-info-row'),
+          infoLabel: z.string().default('.summary-heading, .summary-label, .info-label'),
+          infoValue: z.string().default('.summary-content, .summary-value, .info-value'),
+          chapters: z
+            .string()
+            .default('li.wp-manga-chapter, .listing-chapters_wrap li, .chapter-list li'),
+          chapterLink: z.string().default('a'),
+          chapterDate: z
+            .string()
+            .default('.chapter-release-date, .chapter-release, .chapter-time, .post-on'),
+        })
+        .default({
+          title: 'h1, .post-title h1, .manga-title h1',
+          image: '.summary_image img, .summary_image a img, .summary_image img',
+          description: '.description-summary, .summary__content, .summary__content p',
+          genres: '.genres-content a, .genres a, .tags-content a, .summary-content a[rel="tag"]',
+          infoItem: '.post-content_item, .summary-list li, .manga-info-row',
+          infoLabel: '.summary-heading, .summary-label, .info-label',
+          infoValue: '.summary-content, .summary-value, .info-value',
+          chapters: 'li.wp-manga-chapter, .listing-chapters_wrap li, .chapter-list li',
+          chapterLink: 'a',
+          chapterDate: '.chapter-release-date, .chapter-release, .chapter-time, .post-on',
+        }),
+      chapter: z
+        .object({
+          images: z.string().default('.reading-content img, .wp-manga-chapter-img img, img'),
+        })
+        .default({
+          images: '.reading-content img, .wp-manga-chapter-img img, img',
+        }),
+    })
+    .default({
+      search: {
+        resultContainer:
+          '.page-item-detail, .c-tabs-item__content, .manga-item, .post-content, .row.c-tabs-item',
+        link: 'a[href*="/serie/"]',
+        image: 'img',
+        title: 'h3, h4, a',
+        rating: '.post-total-rating, .score, .rating',
+        chapters: '.chapter, .post-total-chapter, .chapter-item',
+        nextButton: 'a.next, a.page-numbers.next, a[rel="next"], a.pagination-next',
+      },
+      detail: {
+        title: 'h1, .post-title h1, .manga-title h1',
+        image: '.summary_image img, .summary_image a img, .summary_image img',
+        description: '.description-summary, .summary__content, .summary__content p',
+        genres: '.genres-content a, .genres a, .tags-content a, .summary-content a[rel="tag"]',
+        infoItem: '.post-content_item, .summary-list li, .manga-info-row',
+        infoLabel: '.summary-heading, .summary-label, .info-label',
+        infoValue: '.summary-content, .summary-value, .info-value',
+        chapters: 'li.wp-manga-chapter, .listing-chapters_wrap li, .chapter-list li',
+        chapterLink: 'a',
+        chapterDate: '.chapter-release-date, .chapter-release, .chapter-time, .post-on',
+      },
+      chapter: {
+        images: '.reading-content img, .wp-manga-chapter-img img, img',
+      },
+    }),
+  output: z
+    .object({
+      directory: z.string().default('toonily'),
+      fileExtension: z.string().default('.jpg'),
+      filenamePadding: z.number().default(3),
+    })
+    .default({
+      directory: 'toonily',
+      fileExtension: '.jpg',
+      filenamePadding: 3,
+    }),
+});
+
+export const MangaGGConfigSchema = ScraperConfigSchema.extend({
+  name: z.literal(Providers.MangaGG),
+  selectors: z
+    .object({
+      search: z
+        .object({
+          resultContainer: z
+            .string()
+            .default(
+              '.c-tabs-item__content, .page-item-detail, .page-item-detail.manga, .c-tabs-item__content .row',
+            ),
+          link: z.string().default('a[href*="/comic/"]'),
+          image: z.string().default('.item-thumb img, img'),
+          title: z.string().default('.post-title a, .post-title h3 a, h3 a, h4 a'),
+          rating: z
+            .string()
+            .default('[property="ratingValue"], #averagerate, .post-total-rating, .score, .rating'),
+          chapters: z
+            .string()
+            .default('.latest-chap a, .latest-chapter a, .chapter a, .chapter-item a, .latest-chapter'),
+          nextButton: z
+            .string()
+            .default('a.next, a.page-numbers.next, a[rel="next"], a.pagination-next'),
+        })
+        .default({
+          resultContainer:
+            '.c-tabs-item__content, .page-item-detail, .page-item-detail.manga, .c-tabs-item__content .row',
+          link: 'a[href*="/comic/"]',
+          image: '.item-thumb img, img',
+          title: '.post-title a, .post-title h3 a, h3 a, h4 a',
+          rating: '[property="ratingValue"], #averagerate, .post-total-rating, .score, .rating',
+          chapters: '.latest-chap a, .latest-chapter a, .chapter a, .chapter-item a, .latest-chapter',
+          nextButton: 'a.next, a.page-numbers.next, a[rel="next"], a.pagination-next',
+        }),
+      detail: z
+        .object({
+          title: z.string().default('h1, .post-title h1, .manga-title h1'),
+          image: z.string().default('.summary_image img, .summary_image a img, .manga-thumbnail img'),
+          description: z
+            .string()
+            .default('.summary__content, .summary__content p, .description-summary'),
+          genres: z
+            .string()
+            .default('.genres-content a, .genres a, .tags-content a, .summary-content a[rel="tag"]'),
+          infoItem: z.string().default('.post-content_item, .summary-list li, .manga-info-row'),
+          infoLabel: z.string().default('.summary-heading, .summary-label, .info-label'),
+          infoValue: z.string().default('.summary-content, .summary-value, .info-value'),
+          chapters: z
+            .string()
+            .default('li.wp-manga-chapter, .listing-chapters_wrap li, .chapter-list li'),
+          chapterLink: z.string().default('a'),
+          chapterDate: z
+            .string()
+            .default('.chapter-release-date, .chapter-release, .chapter-time, .post-on'),
+        })
+        .default({
+          title: 'h1, .post-title h1, .manga-title h1',
+          image: '.summary_image img, .summary_image a img, .manga-thumbnail img',
+          description: '.summary__content, .summary__content p, .description-summary',
+          genres: '.genres-content a, .genres a, .tags-content a, .summary-content a[rel="tag"]',
+          infoItem: '.post-content_item, .summary-list li, .manga-info-row',
+          infoLabel: '.summary-heading, .summary-label, .info-label',
+          infoValue: '.summary-content, .summary-value, .info-value',
+          chapters: 'li.wp-manga-chapter, .listing-chapters_wrap li, .chapter-list li',
+          chapterLink: 'a',
+          chapterDate: '.chapter-release-date, .chapter-release, .chapter-time, .post-on',
+        }),
+      chapter: z
+        .object({
+          images: z.string().default('.reading-content img, .wp-manga-chapter-img img, img'),
+        })
+        .default({
+          images: '.reading-content img, .wp-manga-chapter-img img, img',
+        }),
+    })
+    .default({
+      search: {
+        resultContainer:
+          '.c-tabs-item__content, .page-item-detail, .page-item-detail.manga, .c-tabs-item__content .row',
+        link: 'a[href*="/comic/"]',
+        image: '.item-thumb img, img',
+        title: '.post-title a, .post-title h3 a, h3 a, h4 a',
+        rating: '[property="ratingValue"], #averagerate, .post-total-rating, .score, .rating',
+        chapters: '.latest-chap a, .latest-chapter a, .chapter a, .chapter-item a, .latest-chapter',
+        nextButton: 'a.next, a.page-numbers.next, a[rel="next"], a.pagination-next',
+      },
+      detail: {
+        title: 'h1, .post-title h1, .manga-title h1',
+        image: '.summary_image img, .summary_image a img, .manga-thumbnail img',
+        description: '.summary__content, .summary__content p, .description-summary',
+        genres: '.genres-content a, .genres a, .tags-content a, .summary-content a[rel="tag"]',
+        infoItem: '.post-content_item, .summary-list li, .manga-info-row',
+        infoLabel: '.summary-heading, .summary-label, .info-label',
+        infoValue: '.summary-content, .summary-value, .info-value',
+        chapters: 'li.wp-manga-chapter, .listing-chapters_wrap li, .chapter-list li',
+        chapterLink: 'a',
+        chapterDate: '.chapter-release-date, .chapter-release, .chapter-time, .post-on',
+      },
+      chapter: {
+        images: '.reading-content img, .wp-manga-chapter-img img, img',
+      },
+    }),
+  output: z
+    .object({
+      directory: z.string().default('mangagg'),
+      fileExtension: z.string().default('.jpg'),
+      filenamePadding: z.number().default(3),
+    })
+    .default({
+      directory: 'mangagg',
+      fileExtension: '.jpg',
+      filenamePadding: 3,
+    }),
+});
+
 // Type exports
 export type ScraperConfig = z.infer<typeof ScraperConfigSchema>;
 export type AsuraScansConfig = z.infer<typeof AsuraScansConfigSchema>;
-export type AnyScraperConfig = AsuraScansConfig;
+export type ToonilyConfig = z.infer<typeof ToonilyConfigSchema>;
+export type MangaGGConfig = z.infer<typeof MangaGGConfigSchema>;
+export type AnyScraperConfig = AsuraScansConfig | ToonilyConfig | MangaGGConfig;

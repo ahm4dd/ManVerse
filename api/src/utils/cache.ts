@@ -19,6 +19,10 @@ export class MemoryCache {
     return null;
   }
 
+  delete(key: string) {
+    this.store.delete(key);
+  }
+
   async getOrLoad<T>(
     key: string,
     ttlMs: number,

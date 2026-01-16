@@ -61,7 +61,7 @@ export interface DownloadedChapter {
   downloadedAt: number;
 }
 
-const PROVIDER_CACHE_KEY = 'manverse_provider_cache_v1';
+const PROVIDER_CACHE_KEY = 'manverse_provider_cache_v2';
 const MAPPED_CACHE_KEY = 'manverse_provider_mapped_cache_v1';
 const PROVIDER_SEARCH_CACHE_KEY = 'manverse_provider_search_cache_v1';
 const MAX_PROVIDER_CACHE = 20;
@@ -85,6 +85,10 @@ type ProviderSearchMeta = {
 const providerSearchCache = new Map<string, ProviderSearchCacheEntry>();
 const providerSearchInFlight = new Map<string, Promise<Series[]>>();
 const providerSearchMetaInFlight = new Map<string, Promise<ProviderSearchMeta>>();
+
+function providerDetailsCacheKey(provider: ProviderType, id: string) {
+  return `${provider}:${id}`;
+}
 
 function loadCacheFromSession(key: string) {
   if (typeof window === 'undefined') return {};
@@ -131,7 +135,9 @@ function persistSearchCacheToSession() {
 function initCache() {
   const provider = loadCacheFromSession(PROVIDER_CACHE_KEY);
   Object.entries(provider).forEach(([id, details]) => {
-    providerDetailsCache.set(id, details);
+    const providerPrefix = Object.values(Providers).find((entry) => id.startsWith(`${entry}:`));
+    const key = providerPrefix ? id : providerDetailsCacheKey(Providers.AsuraScans, id);
+    providerDetailsCache.set(key, details);
   });
   const mapped = loadCacheFromSession(MAPPED_CACHE_KEY);
   Object.entries(mapped).forEach(([id, details]) => {
@@ -212,21 +218,33 @@ function encodeChapterId(url: string): string {
   return base.replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/g, '');
 }
 
-function formatSeriesResult(item: ProviderSearchResult['results'][number]): Series {
+function proxyProviderImage(image: string, provider: ProviderType): string {
+  if (!image) return image;
+  if (image.includes('/api/chapters/image?url=')) return image;
+  if (provider !== Providers.Toonily && provider !== Providers.MangaGG) return image;
+  const referer = providerReferer(provider) || providerBaseUrl(provider);
+  if (!referer) return image;
+  return `${getApiUrl()}/api/chapters/image?url=${encodeURIComponent(image)}&referer=${encodeURIComponent(referer)}`;
+}
+
+function formatSeriesResult(
+  item: ProviderSearchResult['results'][number],
+  provider: ProviderType,
+): Series {
   return {
     id: item.id,
     title: item.title,
-    image: item.image,
+    image: proxyProviderImage(item.image, provider),
     status: item.status || 'Unknown',
     rating: item.rating || 'N/A',
     latestChapter: item.chapters || '',
     type: 'Manhwa',
     genres: item.genres,
-    source: Providers.AsuraScans,
+    source: provider,
   };
 }
 
-function formatSeriesDetails(details: ProviderSeriesDetails): SeriesDetails {
+function formatSeriesDetails(details: ProviderSeriesDetails, provider: ProviderType): SeriesDetails {
   const chapters = details.chapters.map((ch) => ({
     id: encodeChapterId(ch.chapterUrl),
     number: ch.chapterNumber,
@@ -238,7 +256,7 @@ function formatSeriesDetails(details: ProviderSeriesDetails): SeriesDetails {
   return {
     id: details.id,
     title: details.title,
-    image: details.image,
+    image: proxyProviderImage(details.image, provider),
     status: details.status,
     rating: details.rating || 'N/A',
     latestChapter: chapters[0]?.title || '',
@@ -251,7 +269,7 @@ function formatSeriesDetails(details: ProviderSeriesDetails): SeriesDetails {
     updatedOn: details.updatedOn || '',
     chapters,
     providerMangaId: details.providerMangaId,
-    source: Providers.AsuraScans,
+    source: provider,
   };
 }
 
@@ -259,11 +277,36 @@ function normalizeProviderSearchKey(provider: ProviderType, query: string, page 
   return `${provider}:${query.trim().toLowerCase()}:page:${page}`;
 }
 
+function providerFromCacheKey(key: string): ProviderType | null {
+  const candidate = key.split(':')[0] as ProviderType;
+  return Object.values(Providers).includes(candidate) ? candidate : null;
+}
+
+function applyProviderOverrides(results: Series[], provider: ProviderType | null): Series[] {
+  if (!provider) return results;
+  const mapped = results.map((entry) => ({
+    ...entry,
+    source: provider,
+    image: proxyProviderImage(entry.image, provider),
+  }));
+  return mapped;
+}
+
 function getCachedProviderSearch(key: string): Series[] | null {
   const entry = providerSearchCache.get(key);
   if (!entry) return null;
+  if (entry.results.length === 0) {
+    providerSearchCache.delete(key);
+    return null;
+  }
   if (entry.expiresAt > Date.now()) {
-    return entry.results;
+    const provider = providerFromCacheKey(key);
+    const results = applyProviderOverrides(entry.results, provider);
+    if (results !== entry.results) {
+      entry.results = results;
+      providerSearchCache.set(key, entry);
+    }
+    return results;
   }
   return null;
 }
@@ -272,8 +315,18 @@ function peekProviderSearchCache(query: string, provider: ProviderType, page = 1
   const cacheKey = normalizeProviderSearchKey(provider, query, page);
   const entry = providerSearchCache.get(cacheKey);
   if (!entry) return null;
+  if (entry.results.length === 0) {
+    providerSearchCache.delete(cacheKey);
+    return null;
+  }
+  const providerFromKey = providerFromCacheKey(cacheKey);
+  const results = applyProviderOverrides(entry.results, providerFromKey);
+  if (results !== entry.results) {
+    entry.results = results;
+    providerSearchCache.set(cacheKey, entry);
+  }
   return {
-    results: entry.results,
+    results,
     hasNextPage: entry.hasNextPage,
     currentPage: entry.currentPage,
     stale: entry.expiresAt <= Date.now(),
@@ -284,9 +337,19 @@ function peekProviderSearchCache(query: string, provider: ProviderType, page = 1
 function getCachedProviderSearchMeta(key: string): ProviderSearchMeta | null {
   const entry = providerSearchCache.get(key);
   if (!entry) return null;
+  if (entry.results.length === 0) {
+    providerSearchCache.delete(key);
+    return null;
+  }
   if (entry.expiresAt <= Date.now()) return null;
+  const provider = providerFromCacheKey(key);
+  const results = applyProviderOverrides(entry.results, provider);
+  if (results !== entry.results) {
+    entry.results = results;
+    providerSearchCache.set(key, entry);
+  }
   return {
-    results: entry.results,
+    results,
     hasNextPage: entry.hasNextPage ?? entry.results.length > 0,
     currentPage: entry.currentPage ?? 1,
   };
@@ -297,6 +360,11 @@ function setCachedProviderSearch(
   results: Series[],
   meta?: { hasNextPage?: boolean; currentPage?: number },
 ) {
+  if (results.length === 0) {
+    providerSearchCache.delete(key);
+    persistSearchCacheToSession();
+    return;
+  }
   providerSearchCache.set(key, {
     results,
     expiresAt: Date.now() + PROVIDER_SEARCH_TTL_MS,
@@ -318,7 +386,7 @@ export const api = {
         const res = await apiRequest<ProviderSearchResult>(
           `/api/manga/search?source=${encodeURIComponent(providerApiSource(Providers.AsuraScans))}&query=`,
         );
-        return res.results.map(formatSeriesResult);
+        return res.results.map((item) => formatSeriesResult(item, Providers.AsuraScans));
       } catch (e) {
         console.warn('Provider fallback failed', e);
         return [];
@@ -347,7 +415,7 @@ export const api = {
       `/api/manga/search?source=${encodeURIComponent(providerApiSource(provider))}&query=${encodeURIComponent(trimmed)}&page=${page}`,
     )
       .then((res) => {
-        const results = res.results.map(formatSeriesResult);
+        const results = res.results.map((item) => formatSeriesResult(item, provider));
         setCachedProviderSearch(cacheKey, results, {
           hasNextPage: res.hasNextPage,
           currentPage: res.currentPage,
@@ -378,7 +446,7 @@ export const api = {
       `/api/manga/search?source=${encodeURIComponent(providerApiSource(provider))}&query=${encodeURIComponent(trimmed)}&page=${page}`,
     )
       .then((res) => {
-        const results = res.results.map(formatSeriesResult);
+        const results = res.results.map((item) => formatSeriesResult(item, provider));
         setCachedProviderSearch(cacheKey, results, {
           hasNextPage: res.hasNextPage,
           currentPage: res.currentPage,
@@ -415,7 +483,7 @@ export const api = {
       `/api/manga/search?source=${encodeURIComponent(providerApiSource(provider))}&query=${encodeURIComponent(trimmed)}&page=${page}`,
     )
       .then((res) => {
-        const results = res.results.map(formatSeriesResult);
+        const results = res.results.map((item) => formatSeriesResult(item, provider));
         const payload = {
           results,
           hasNextPage: res.hasNextPage,
@@ -490,31 +558,38 @@ export const api = {
       return await anilistApi.getDetails(parseInt(id));
     }
 
-    const cached = providerDetailsCache.get(id);
+    const provider = source === 'AniList' ? Providers.AsuraScans : source;
+    const cacheKey = providerDetailsCacheKey(provider, id);
+    const cached = providerDetailsCache.get(cacheKey);
     if (cached) {
-      return cached;
+      if (cached.chapters?.length || source === 'AniList') {
+        return cached;
+      }
+      providerDetailsCache.delete(cacheKey);
     }
 
-    const provider = source === 'AniList' ? Providers.AsuraScans : source;
     const details = await apiRequest<ProviderSeriesDetails>(
       `/api/manga/provider?provider=${encodeURIComponent(provider)}&id=${encodeURIComponent(id)}`,
     );
-    const formatted = formatSeriesDetails(details);
-    providerDetailsCache.set(id, formatted);
+    const formatted = formatSeriesDetails(details, provider);
+    providerDetailsCache.set(cacheKey, formatted);
     persistCacheToSession(PROVIDER_CACHE_KEY, providerDetailsCache);
     return formatted;
   },
 
-  getChapterImages: async (chapterId: string): Promise<ChapterPage[]> => {
+  getChapterImages: async (
+    chapterId: string,
+    provider: ProviderType = Providers.AsuraScans,
+  ): Promise<ChapterPage[]> => {
     // Chapters always come from the scraper
     const pages = await apiRequest<Array<{ page: number; img: string; headerForImage?: string }>>(
-      `/api/chapters/${encodeURIComponent(chapterId)}?provider=${encodeURIComponent(Providers.AsuraScans)}`,
+      `/api/chapters/${encodeURIComponent(chapterId)}?provider=${encodeURIComponent(provider)}`,
     );
     return pages.map((page) => {
       const referer =
         page.headerForImage ||
-        providerReferer(Providers.AsuraScans) ||
-        providerBaseUrl(Providers.AsuraScans);
+        providerReferer(provider) ||
+        providerBaseUrl(provider);
       const proxyUrl = `${getApiUrl()}/api/chapters/image?url=${encodeURIComponent(page.img)}&referer=${encodeURIComponent(referer)}`;
       return { page: page.page, src: proxyUrl };
     });
@@ -545,7 +620,7 @@ export const api = {
     const details = await apiRequest<ProviderSeriesDetails>(
       `/api/manga/${anilistId}/chapters?provider=${encodeURIComponent(provider)}`,
     );
-    const formatted = formatSeriesDetails(details);
+    const formatted = formatSeriesDetails(details, provider);
     mappedProviderCache.set(cacheKey, formatted);
     persistCacheToSession(MAPPED_CACHE_KEY, mappedProviderCache);
     return formatted;
@@ -588,6 +663,7 @@ export const api = {
   },
 
   queueDownload: async (payload: {
+    provider?: ProviderType;
     providerSeriesId: string;
     chapterId?: string;
     chapterUrl?: string;
@@ -604,7 +680,7 @@ export const api = {
     return apiRequest<DownloadJob>('/api/downloads', {
       method: 'POST',
       body: JSON.stringify({
-        provider: Providers.AsuraScans,
+        provider: payload.provider ?? Providers.AsuraScans,
         ...payload,
       }),
     });

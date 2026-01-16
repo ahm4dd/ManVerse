@@ -5,7 +5,7 @@ import type { HonoEnv } from '../types/api.ts';
 import { requireAuth } from '../middleware/auth.ts';
 import { ScraperService } from '../services/scraper-service.ts';
 import { Providers } from '@manverse/core';
-import { asuraScansConfig } from '@manverse/scrapers';
+import { asuraScansConfig, mangaggConfig, toonilyConfig } from '@manverse/scrapers';
 import {
   getActiveMapping,
   getActiveMappingByProviderId,
@@ -40,7 +40,7 @@ const errorResponse = {
 const searchSchema = z.object({
   query: z.string().min(1),
   page: z.coerce.number().int().positive().optional(),
-  source: z.enum(['anilist', 'asura', 'both']).optional(),
+  source: z.enum(['anilist', 'asura', 'toonily', 'mangagg', 'both']).optional(),
   format: z.string().optional(),
   status: z.string().optional(),
   genre: z.string().optional(),
@@ -136,6 +136,48 @@ function normalizeProviderId(provider: string, providerId: string): string {
     return `https://asuracomic.net/series/${cleaned}`.replace(/\/+$/, '');
   }
 
+  if (provider === Providers.Toonily) {
+    if (/^https?:\/\//i.test(trimmed)) {
+      return trimmed.replace(/\/+$/, '');
+    }
+
+    const cleaned = trimmed.replace(/^\/+/, '');
+    if (cleaned.startsWith('toonily.com/')) {
+      return `https://${cleaned}`.replace(/\/+$/, '');
+    }
+    if (cleaned.startsWith('www.toonily.com/')) {
+      return `https://${cleaned}`.replace(/\/+$/, '');
+    }
+    if (cleaned.startsWith('serie/')) {
+      return `https://toonily.com/${cleaned}`.replace(/\/+$/, '');
+    }
+    return `https://toonily.com/serie/${cleaned}`.replace(/\/+$/, '');
+  }
+
+  if (provider === Providers.MangaGG) {
+    if (/^https?:\/\//i.test(trimmed)) {
+      return trimmed.replace(/\/+$/, '');
+    }
+
+    const cleaned = trimmed.replace(/^\/+/, '');
+    if (cleaned.startsWith('mangagg.com/')) {
+      return `https://${cleaned}`.replace(/\/+$/, '');
+    }
+    if (cleaned.startsWith('mangagg.me/')) {
+      return `https://${cleaned}`.replace(/\/+$/, '');
+    }
+    if (cleaned.startsWith('www.mangagg.com/')) {
+      return `https://${cleaned}`.replace(/\/+$/, '');
+    }
+    if (cleaned.startsWith('www.mangagg.me/')) {
+      return `https://${cleaned}`.replace(/\/+$/, '');
+    }
+    if (cleaned.startsWith('comic/')) {
+      return `https://mangagg.com/${cleaned}`.replace(/\/+$/, '');
+    }
+    return `https://mangagg.com/comic/${cleaned}`.replace(/\/+$/, '');
+  }
+
   return trimmed;
 }
 
@@ -171,6 +213,12 @@ function parseJsonArray<T>(value?: string | null): T[] {
 function getProviderImageReferer(provider: string): string {
   if (provider === Providers.AsuraScans) {
     return asuraScansConfig.baseUrl;
+  }
+  if (provider === Providers.Toonily) {
+    return toonilyConfig.baseUrl;
+  }
+  if (provider === Providers.MangaGG) {
+    return mangaggConfig.baseUrl;
   }
   return '';
 }

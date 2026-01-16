@@ -3,7 +3,14 @@ import { history, type HistoryItem } from '../lib/history';
 import { api } from '../lib/api';
 import HistoryCard from '../components/HistoryCard';
 import { ChevronLeft, SearchIcon } from '../components/Icons';
-import { Providers, type Source, isProviderSource, providerOptions, providerShortLabel } from '../lib/providers';
+import {
+  Providers,
+  type Source,
+  isProviderSource,
+  providerOptions,
+  experimentalProviderOptions,
+  providerShortLabel,
+} from '../lib/providers';
 
 interface RecentReadsProps {
   onNavigate: (view: string, data?: any) => void;
@@ -79,7 +86,10 @@ const RecentReads: React.FC<RecentReadsProps> = ({ onNavigate, onBack }) => {
     const anilistId = item.anilistId || (/^\d+$/.test(item.id) ? item.id : undefined);
 
     if (!item.chapterId) {
-      onNavigate('details', anilistId || item.id);
+      onNavigate(
+        'details',
+        anilistId || (isProviderSource(item.source) ? { id: item.id, source: item.source } : item.id),
+      );
       return;
     }
 
@@ -95,7 +105,10 @@ const RecentReads: React.FC<RecentReadsProps> = ({ onNavigate, onBack }) => {
       }
 
       if (!providerDetails) {
-        onNavigate('details', anilistId || item.id);
+        onNavigate(
+          'details',
+          anilistId || (isProviderSource(item.source) ? { id: item.id, source: item.source } : item.id),
+        );
         return;
       }
 
@@ -115,14 +128,20 @@ const RecentReads: React.FC<RecentReadsProps> = ({ onNavigate, onBack }) => {
       });
     } catch (e) {
       console.warn('Failed to open recent read item', e);
-      onNavigate('details', anilistId || item.id);
+      onNavigate(
+        'details',
+        anilistId || (isProviderSource(item.source) ? { id: item.id, source: item.source } : item.id),
+      );
     }
   };
 
   const handleInfo = (item?: CardItem) => {
     if (!item) return;
     const anilistId = item.anilistId || (/^\d+$/.test(item.id) ? item.id : undefined);
-    onNavigate('details', anilistId || item.id);
+    onNavigate(
+      'details',
+      anilistId || (isProviderSource(item.source) ? { id: item.id, source: item.source } : item.id),
+    );
   };
 
   return (
@@ -170,6 +189,15 @@ const RecentReads: React.FC<RecentReadsProps> = ({ onNavigate, onBack }) => {
                   {providerShortLabel(provider.id)}
                 </option>
               ))}
+              {experimentalProviderOptions.length > 0 && (
+                <optgroup label="Experimental">
+                  {experimentalProviderOptions.map((provider) => (
+                    <option key={provider.id} value={provider.id}>
+                      {providerShortLabel(provider.id)}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
             </select>
 
             <select

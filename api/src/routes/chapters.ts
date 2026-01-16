@@ -58,6 +58,19 @@ const imageRoute = createRoute({
   },
 });
 
+const resolveProviderFromHost = (hostname: string) => {
+  if (hostname.endsWith('mangagg.com') || hostname.endsWith('mangagg.me')) {
+    return Providers.MangaGG;
+  }
+  if (hostname.endsWith('toonily.com') || hostname.endsWith('tnlycdn.com')) {
+    return Providers.Toonily;
+  }
+  return Providers.AsuraScans;
+};
+
+const shouldUseBrowserFallback = (hostname: string) =>
+  hostname.endsWith('mangagg.com') || hostname.endsWith('mangagg.me');
+
 chapters.openapi(imageRoute, async (c) => {
   const { url, referer } = c.req.valid('query');
   const parsed = new URL(url);
@@ -65,13 +78,19 @@ chapters.openapi(imageRoute, async (c) => {
     return jsonError(c, { code: 'INVALID_URL', message: 'Invalid image url protocol' }, 400);
   }
 
-  if (!parsed.hostname.endsWith('asuracomic.net')) {
+  const isAllowedHost = (hostname: string, allowed: string[]) =>
+    allowed.some((domain) => hostname === domain || hostname.endsWith(`.${domain}`));
+
+  const allowedImageHosts = ['asuracomic.net', 'toonily.com', 'tnlycdn.com', 'mangagg.com', 'mangagg.me'];
+  const allowedRefererHosts = ['asuracomic.net', 'toonily.com', 'mangagg.com', 'mangagg.me'];
+
+  if (!isAllowedHost(parsed.hostname, allowedImageHosts)) {
     return jsonError(c, { code: 'INVALID_HOST', message: 'Image host is not allowed' }, 400);
   }
 
   if (referer) {
     const refererHost = new URL(referer).hostname;
-    if (!refererHost.endsWith('asuracomic.net')) {
+    if (!isAllowedHost(refererHost, allowedRefererHosts)) {
       return jsonError(c, { code: 'INVALID_REFERER', message: 'Invalid referer host' }, 400);
     }
   }
@@ -85,24 +104,43 @@ chapters.openapi(imageRoute, async (c) => {
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
   );
 
-  let response: Response;
+  let response: Response | null = null;
   try {
     response = await fetch(url, { headers });
-  } catch (error) {
-    return jsonError(
-      c,
-      {
-        code: 'IMAGE_FETCH_FAILED',
-        message: error instanceof Error ? error.message : 'Failed to fetch image',
-      },
-      502,
-    );
+  } catch {
+    response = null;
   }
 
-  if (!response.ok || !response.body) {
+  if (!response?.ok || !response.body) {
+    if (shouldUseBrowserFallback(parsed.hostname)) {
+      try {
+        const provider = resolveProviderFromHost(parsed.hostname);
+        const result = await scraper.fetchImage(url, provider, referer);
+        if (!result.buffer?.length) {
+          throw new Error('Empty image response');
+        }
+        const fallbackHeaders = new Headers();
+        if (result.contentType) {
+          fallbackHeaders.set('Content-Type', result.contentType);
+        }
+        fallbackHeaders.set('Cache-Control', 'public, max-age=3600');
+        return new Response(result.buffer, { status: 200, headers: fallbackHeaders });
+      } catch (error) {
+        return jsonError(
+          c,
+          {
+            code: 'IMAGE_FETCH_FAILED',
+            message: error instanceof Error ? error.message : 'Failed to fetch image',
+          },
+          502,
+        );
+      }
+    }
+
+    const status = response?.status ?? 502;
     return jsonError(
       c,
-      { code: 'IMAGE_FETCH_FAILED', message: `Failed to fetch image (${response.status})` },
+      { code: 'IMAGE_FETCH_FAILED', message: `Failed to fetch image (${status})` },
       502,
     );
   }

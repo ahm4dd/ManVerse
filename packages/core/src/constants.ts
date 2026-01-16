@@ -1,5 +1,7 @@
 export const Providers = {
   AsuraScans: 'AsuraScans',
+  Toonily: 'Toonily',
+  MangaGG: 'MangaGG',
 } as const;
 
 export type ProviderType = (typeof Providers)[keyof typeof Providers];
@@ -9,6 +11,7 @@ export type ProviderInfo = {
   label: string;
   shortLabel: string;
   apiSource: string;
+  experimental?: boolean;
 };
 
 export const ProviderMetadata: Record<ProviderType, ProviderInfo> = {
@@ -18,9 +21,24 @@ export const ProviderMetadata: Record<ProviderType, ProviderInfo> = {
     shortLabel: 'Asura',
     apiSource: 'asura',
   },
+  [Providers.Toonily]: {
+    id: Providers.Toonily,
+    label: 'Toonily',
+    shortLabel: 'Toonily',
+    apiSource: 'toonily',
+    experimental: true,
+  },
+  [Providers.MangaGG]: {
+    id: Providers.MangaGG,
+    label: 'MangaGG',
+    shortLabel: 'MangaGG',
+    apiSource: 'mangagg',
+  },
 };
 
 export const ProviderList = Object.values(ProviderMetadata);
+export const StableProviderList = ProviderList.filter((provider) => !provider.experimental);
+export const ExperimentalProviderList = ProviderList.filter((provider) => provider.experimental);
 
 export const ImageExtensions = {
   JPG: '.jpg',
