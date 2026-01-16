@@ -551,7 +551,11 @@ const Details: React.FC<DetailsProps> = ({ seriesId, source, onNavigate, onBack,
   const rankProviderResults = (results: Series[], terms: string[]) => {
     if (!results.length || terms.length === 0) return results;
     return [...results]
-      .map((series) => ({ series, score: scoreTitleMatch(series.title, terms) }))
+      .map((series) => {
+        const baseScore = scoreTitleMatch(series.title, terms);
+        const trustBoost = series.source === Providers.AsuraScans ? 0.08 : 0;
+        return { series, score: baseScore + trustBoost };
+      })
       .sort((a, b) => {
         if (b.score !== a.score) return b.score - a.score;
         return a.series.title.localeCompare(b.series.title);
@@ -2035,7 +2039,11 @@ const Details: React.FC<DetailsProps> = ({ seriesId, source, onNavigate, onBack,
                   <StarIcon className="w-4 h-4" fill />
                   <span className="font-bold">{data.rating}</span>
                 </span>
-                <span className="px-3 py-1 rounded-lg bg-surfaceHighlight text-white border border-white/5">{data.status}</span>
+                {!(isProviderSource(dataSource) && data.status?.toLowerCase() === 'unknown') && (
+                  <span className="px-3 py-1 rounded-lg bg-surfaceHighlight text-white border border-white/5">
+                    {data.status}
+                  </span>
+                )}
                 <span className="text-gray-300">{data.author}</span>
                 <span className={`px-3 py-1 rounded-lg text-[11px] font-bold uppercase tracking-wide border ${isAniListSource ? 'bg-blue-500/10 border-blue-500/20 text-blue-400' : 'bg-green-500/10 border-green-500/20 text-green-400'}`}>
                   {isAniListSource ? 'AniList' : providerBadge}
@@ -2455,7 +2463,7 @@ const Details: React.FC<DetailsProps> = ({ seriesId, source, onNavigate, onBack,
                       : 'We found multiple matches. Please select the correct one to load chapters.'}
                   </p>
                   {providerSearchScope === 'all' && providerStatusValues.length > 0 && (
-                    <div className="mb-6 flex flex-wrap gap-2">
+                    <div className="mb-6 flex flex-wrap gap-3">
                       {providerStatusList.map((provider) => {
                         const status = provider.status;
                         const isPending = status === 'pending';
@@ -2463,7 +2471,7 @@ const Details: React.FC<DetailsProps> = ({ seriesId, source, onNavigate, onBack,
                         return (
                           <span
                             key={provider.id}
-                            className={`flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-semibold border ${
+                            className={`flex items-center gap-2.5 rounded-full px-4 py-2 text-xs sm:text-sm font-semibold border ${
                               isFailed
                                 ? 'bg-red-500/10 text-red-300 border-red-500/30'
                                 : isPending
@@ -2472,11 +2480,11 @@ const Details: React.FC<DetailsProps> = ({ seriesId, source, onNavigate, onBack,
                             }`}
                           >
                             {isPending ? (
-                              <span className="inline-flex h-3.5 w-3.5 animate-spin rounded-full border border-white/30 border-t-transparent" />
+                              <span className="inline-flex h-4 w-4 animate-spin rounded-full border border-white/30 border-t-transparent" />
                             ) : (
-                              <span className="text-[12px] leading-none">{isFailed ? '×' : '✓'}</span>
+                              <span className="text-xs font-bold leading-none">{isFailed ? 'X' : 'OK'}</span>
                             )}
-                            <span>{provider.label}</span>
+                            <span className="whitespace-nowrap">{provider.label}</span>
                           </span>
                         );
                       })}
@@ -2526,6 +2534,11 @@ const Details: React.FC<DetailsProps> = ({ seriesId, source, onNavigate, onBack,
                               <span className="absolute top-2 left-2 rounded-full bg-black/70 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-white border border-white/10">
                                 {resultLabel}
                               </span>
+                              {resultProvider === Providers.AsuraScans && (
+                                <span className="absolute top-2 right-2 rounded-full bg-emerald-500/90 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-black">
+                                  Recommended
+                                </span>
+                              )}
                             </div>
                             <div className="p-4">
                               <h4 className="text-[15px] font-bold text-white line-clamp-2 leading-snug">{res.title}</h4>

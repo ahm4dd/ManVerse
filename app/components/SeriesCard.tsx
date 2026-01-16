@@ -2,7 +2,7 @@ import React from 'react';
 import { Series } from '../types';
 import { StarIcon } from './Icons';
 import { motion } from 'framer-motion';
-import { isProviderSource, providerShortLabel } from '../lib/providers';
+import { Providers, isProviderSource, providerShortLabel } from '../lib/providers';
 
 interface SeriesCardProps {
   series: Series;
@@ -55,8 +55,15 @@ const SeriesCard: React.FC<SeriesCardProps> = ({ series, onClick, index = 0, lay
   const relativeTime = timeAgo(series.updatedAt);
   let latestLabel = series.latestChapter;
   const resolvedLayoutId = layoutId ?? `series-${series.id}`;
-  const providerBadge =
-    series.source && isProviderSource(series.source) ? providerShortLabel(series.source) : null;
+  const isProviderSeries = series.source && isProviderSource(series.source);
+  const providerBadge = isProviderSeries
+    ? series.source === Providers.AsuraScans
+      ? `${providerShortLabel(series.source)} - Trusted`
+      : providerShortLabel(series.source)
+    : null;
+  const showStatusBadge = !(
+    isProviderSeries && series.status && series.status.toLowerCase() === 'unknown'
+  );
   if (series.source === 'AniList' && latestLabel) {
     const lowered = latestLabel.toLowerCase();
     if (lowered.includes('chapter') || lowered.includes('progress')) {
@@ -95,11 +102,13 @@ const SeriesCard: React.FC<SeriesCardProps> = ({ series, onClick, index = 0, lay
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-60" />
         
         {/* Floating Status Badge (Top Left) */}
-        <div className="absolute top-2.5 left-2.5">
-          <span className={`rounded-lg backdrop-blur-md px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white border border-white/10 shadow-lg ${getStatusStyle(series.status)}`}>
-            {getStatusLabel(series.status)}
-          </span>
-        </div>
+        {showStatusBadge && series.status && (
+          <div className="absolute top-2.5 left-2.5">
+            <span className={`rounded-lg backdrop-blur-md px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white border border-white/10 shadow-lg ${getStatusStyle(series.status)}`}>
+              {getStatusLabel(series.status)}
+            </span>
+          </div>
+        )}
 
         {/* Top Right Badge (Type) */}
         <div className="absolute top-2.5 right-2.5">

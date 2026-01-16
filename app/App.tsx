@@ -156,6 +156,7 @@ const AppContent: React.FC = () => {
   const [showLoginMenu, setShowLoginMenu] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showNavMenu, setShowNavMenu] = useState(false);
+  const [showSearchSourceMenu, setShowSearchSourceMenu] = useState(false);
   const [syncPending, setSyncPending] = useState(0);
   const [syncLoading, setSyncLoading] = useState(false);
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
@@ -1280,7 +1281,7 @@ const AppContent: React.FC = () => {
                                 ? 'Search all providers...'
                                 : 'Search Provider...'
                           }
-                          className="w-full h-12 bg-[#1a1a1a] border border-[#333] hover:border-[#444] rounded-xl pl-12 pr-[140px] sm:pr-[160px] md:pr-[180px] text-base text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary transition-all font-medium"
+                          className="w-full h-12 bg-[#1a1a1a] border border-[#333] hover:border-[#444] rounded-xl pl-12 pr-[180px] sm:pr-[200px] md:pr-[220px] text-base text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary transition-all font-medium"
                           value={searchQuery}
                           onChange={(e) => {
                             setSearchQuery(e.target.value);
@@ -1289,32 +1290,106 @@ const AppContent: React.FC = () => {
                         />
                         {/* Search Source Selector (Embedded) */}
                         <div className="absolute right-1.5 top-1.5 bottom-1.5 z-10">
-                           <div className="h-full bg-surface/50 hover:bg-surface rounded-lg flex items-center px-1 border border-white/5 transition-colors">
-                             <select
-                               value={searchSource}
-                               onChange={(e) => setSearchSource(e.target.value as Source)}
-                               className="bg-transparent text-gray-300 text-xs font-bold px-3 py-1 outline-none cursor-pointer appearance-none hover:text-white"
+                           <div className="relative h-full">
+                             <button
+                               onClick={() => setShowSearchSourceMenu((prev) => !prev)}
+                               className="h-full bg-surface/60 hover:bg-surface rounded-lg flex items-center gap-2 px-3 border border-white/10 transition-colors text-gray-200 text-xs font-bold uppercase tracking-wide"
+                               type="button"
                              >
-                               <option value="AniList">AniList</option>
-                               <option value="AllProviders">All Providers</option>
-                               {providerOptions.map((provider) => (
-                                 <option key={provider.id} value={provider.id}>
-                                   {provider.shortLabel}
-                                 </option>
-                               ))}
-                               {experimentalProviderOptions.length > 0 && (
-                                 <optgroup label="Experimental">
-                                   {experimentalProviderOptions.map((provider) => (
-                                     <option key={provider.id} value={provider.id}>
-                                       {provider.shortLabel}
-                                     </option>
-                                   ))}
-                                 </optgroup>
-                               )}
-                             </select>
-                             <ChevronDown className="w-3 h-3 text-gray-500 mr-2 pointer-events-none" />
+                               <span className="max-w-[90px] sm:max-w-[120px] truncate">
+                                 {searchSource === 'AllProviders'
+                                   ? 'All Providers'
+                                   : searchSource === 'AniList'
+                                     ? 'AniList'
+                                     : providerOptions.find((p) => p.id === searchSource)?.shortLabel ||
+                                       experimentalProviderOptions.find((p) => p.id === searchSource)?.shortLabel ||
+                                       String(searchSource)}
+                               </span>
+                               <ChevronDown
+                                 className={`w-3 h-3 text-gray-400 transition-transform ${
+                                   showSearchSourceMenu ? 'rotate-180' : ''
+                                 }`}
+                               />
+                             </button>
+                             {showSearchSourceMenu && (
+                               <div className="absolute right-0 top-full mt-2 w-56 rounded-xl bg-surface/95 backdrop-blur-xl border border-white/10 shadow-2xl z-30 overflow-hidden animate-fade-in">
+                                 <div className="px-4 py-2 text-[10px] font-bold text-gray-500 uppercase tracking-wider bg-surfaceHighlight/60">
+                                   Search Source
+                                 </div>
+                                 {[
+                                   { id: 'AniList', label: 'AniList' },
+                                   { id: 'AllProviders', label: 'All Providers' },
+                                 ].map((option) => (
+                                   <button
+                                     key={option.id}
+                                     onClick={() => {
+                                       setSearchSource(option.id as Source);
+                                       setShowSearchSourceMenu(false);
+                                     }}
+                                     className={`w-full text-left px-4 py-3 text-sm font-semibold transition-colors flex items-center justify-between ${
+                                       searchSource === option.id
+                                         ? 'bg-primary/15 text-white'
+                                         : 'text-gray-300 hover:text-white hover:bg-white/5'
+                                     }`}
+                                   >
+                                     {option.label}
+                                     {searchSource === option.id && <span className="text-xs">OK</span>}
+                                   </button>
+                                 ))}
+                                 <div className="px-4 py-2 text-[10px] font-bold text-gray-500 uppercase tracking-wider bg-surfaceHighlight/60">
+                                   Providers
+                                 </div>
+                                 {providerOptions.map((provider) => (
+                                   <button
+                                     key={provider.id}
+                                     onClick={() => {
+                                       setSearchSource(provider.id);
+                                       setShowSearchSourceMenu(false);
+                                     }}
+                                     className={`w-full text-left px-4 py-3 text-sm font-semibold transition-colors flex items-center justify-between ${
+                                       searchSource === provider.id
+                                         ? 'bg-primary/15 text-white'
+                                         : 'text-gray-300 hover:text-white hover:bg-white/5'
+                                     }`}
+                                   >
+                                     {provider.shortLabel}
+                                     {searchSource === provider.id && <span className="text-xs">OK</span>}
+                                   </button>
+                                 ))}
+                                 {experimentalProviderOptions.length > 0 && (
+                                   <>
+                                     <div className="px-4 py-2 text-[10px] font-bold text-amber-400/80 uppercase tracking-wider bg-surfaceHighlight/60">
+                                       Experimental
+                                     </div>
+                                     {experimentalProviderOptions.map((provider) => (
+                                       <button
+                                         key={provider.id}
+                                         onClick={() => {
+                                           setSearchSource(provider.id);
+                                           setShowSearchSourceMenu(false);
+                                         }}
+                                         className={`w-full text-left px-4 py-3 text-sm font-semibold transition-colors flex items-center justify-between ${
+                                           searchSource === provider.id
+                                             ? 'bg-primary/15 text-white'
+                                             : 'text-gray-300 hover:text-white hover:bg-white/5'
+                                         }`}
+                                       >
+                                         {provider.shortLabel}
+                                         {searchSource === provider.id && <span className="text-xs">OK</span>}
+                                       </button>
+                                     ))}
+                                   </>
+                                 )}
+                               </div>
+                             )}
                            </div>
                         </div>
+                        {showSearchSourceMenu && (
+                          <div
+                            className="fixed inset-0 z-20"
+                            onClick={() => setShowSearchSourceMenu(false)}
+                          />
+                        )}
                     </form>
                     
                     {/* Filter Toggle (Navbar) */}

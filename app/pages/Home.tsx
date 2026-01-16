@@ -566,6 +566,13 @@ const Home: React.FC<HomeProps> = ({
     }
 
     const merged = new Map<string, Series>();
+    const sortMergedResults = (items: Series[]) =>
+      [...items].sort((a, b) => {
+        const aTrusted = a.source === Providers.AsuraScans ? 1 : 0;
+        const bTrusted = b.source === Providers.AsuraScans ? 1 : 0;
+        if (aTrusted !== bTrusted) return bTrusted - aTrusted;
+        return a.title.localeCompare(b.title);
+      });
 
     await Promise.allSettled(
       providers.map(async (providerId) => {
@@ -575,7 +582,7 @@ const Home: React.FC<HomeProps> = ({
           meta.results.forEach((series) => {
             merged.set(`${providerId}:${series.id}`, series);
           });
-          setSearchResults(Array.from(merged.values()));
+          setSearchResults(sortMergedResults(Array.from(merged.values())));
           setSearchProviderStatuses((prev) => ({
             ...prev,
             [providerId]: 'success',
@@ -1135,8 +1142,8 @@ const Home: React.FC<HomeProps> = ({
                           )}
                        </div>
                     </div>
-                    {globalSearchSource === 'AllProviders' && providerStatusValues.length > 0 && (
-                      <div className="mt-4 flex flex-wrap gap-2">
+                  {globalSearchSource === 'AllProviders' && providerStatusValues.length > 0 && (
+                      <div className="mt-4 flex flex-wrap gap-3">
                         {providerStatusList.map((provider) => {
                           const status = provider.status;
                           const isPending = status === 'pending';
@@ -1144,7 +1151,7 @@ const Home: React.FC<HomeProps> = ({
                           return (
                             <span
                               key={provider.id}
-                              className={`flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-semibold border ${
+                              className={`flex items-center gap-2.5 rounded-full px-4 py-2 text-xs sm:text-sm font-semibold border ${
                                 isFailed
                                   ? 'bg-red-500/10 text-red-300 border-red-500/30'
                                   : isPending
@@ -1153,11 +1160,11 @@ const Home: React.FC<HomeProps> = ({
                               }`}
                             >
                               {isPending ? (
-                                <span className="inline-flex h-3.5 w-3.5 animate-spin rounded-full border border-white/30 border-t-transparent" />
+                                <span className="inline-flex h-4 w-4 animate-spin rounded-full border border-white/30 border-t-transparent" />
                               ) : (
-                                <span className="text-[12px] leading-none">{isFailed ? '×' : '✓'}</span>
+                              <span className="text-xs font-bold leading-none">{isFailed ? 'X' : 'OK'}</span>
                               )}
-                              <span>{provider.label}</span>
+                              <span className="whitespace-nowrap">{provider.label}</span>
                             </span>
                           );
                         })}
