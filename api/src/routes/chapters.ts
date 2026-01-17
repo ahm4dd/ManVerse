@@ -146,7 +146,8 @@ chapters.openapi(imageRoute, async (c) => {
     if (shouldUseBrowserFallback(parsed.hostname)) {
       try {
         const provider = resolveProviderFromHost(parsed.hostname);
-        const result = await scraper.fetchImage(url, provider, referer);
+        const signal = c.req.raw.signal;
+        const result = await scraper.fetchImage(url, provider, referer, { signal });
         if (!result.buffer?.length) {
           throw new Error('Empty image response');
         }
@@ -218,6 +219,7 @@ chapters.openapi(chapterRoute, (c) => {
     provider && Object.values(Providers).includes(provider as (typeof Providers)[keyof typeof Providers])
       ? (provider as (typeof Providers)[keyof typeof Providers])
       : Providers.AsuraScans;
+  const signal = c.req.raw.signal;
 
   const { id } = c.req.valid('param');
   const resolvedUrl = url || decodeBase64Url(id);
@@ -227,7 +229,7 @@ chapters.openapi(chapterRoute, (c) => {
   }
 
   return scraper
-    .getChapterImages(resolvedUrl, providerId)
+    .getChapterImages(resolvedUrl, providerId, { signal })
     .then((pages) => jsonSuccess(c, pages))
     .catch((error) =>
       jsonError(

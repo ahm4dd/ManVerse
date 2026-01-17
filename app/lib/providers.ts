@@ -5,14 +5,20 @@ import {
   StableProviderList,
   ExperimentalProviderList,
   type ProviderType,
+  type ProviderInfo,
 } from '@manverse/core';
 import { asuraScansConfig, mangaggConfig, mangafireConfig, toonilyConfig } from '@manverse/scrapers/config';
 
 export type Source = 'AniList' | 'AllProviders' | ProviderType;
 
-export const providerOptions = StableProviderList;
-export const experimentalProviderOptions = ExperimentalProviderList;
-export const allProviderOptions = ProviderList;
+const deprecatedProviders = new Set<ProviderType>([Providers.Toonily]);
+
+const filterDeprecatedProviders = <T extends ProviderInfo>(providers: T[]) =>
+  providers.filter((provider) => !deprecatedProviders.has(provider.id));
+
+export const providerOptions = filterDeprecatedProviders(StableProviderList);
+export const experimentalProviderOptions = filterDeprecatedProviders(ExperimentalProviderList);
+export const allProviderOptions = filterDeprecatedProviders(ProviderList);
 
 export const providerApiSource = (provider: ProviderType): string =>
   ProviderMetadata[provider]?.apiSource ?? provider.toLowerCase();

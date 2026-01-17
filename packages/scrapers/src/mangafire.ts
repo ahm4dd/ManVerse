@@ -169,6 +169,16 @@ export default class MangaFireScraper implements IScraper {
       }
     };
 
+    const waitForHomeRedirect = async (timeout: number) => {
+      const deadline = Date.now() + timeout;
+      while (Date.now() < deadline) {
+        if (capturedUrl) return false;
+        if (isHomeRedirect(page.url())) return true;
+        await this.sleep(150);
+      }
+      return false;
+    };
+
     const requestListener = (request: HTTPRequest) => {
       const reqUrl = request.url();
       if (matchesAjaxRequest(reqUrl)) {
@@ -204,6 +214,24 @@ export default class MangaFireScraper implements IScraper {
           }
           await this.sleep(120);
           continue;
+        }
+
+        if (!capturedUrl) {
+          const homeRedirected = await waitForHomeRedirect(1200);
+          if (homeRedirected) {
+            try {
+              await page.evaluate(() => window.stop());
+            } catch {
+              // Ignore stop-loading failures.
+            }
+            try {
+              await page.goto('about:blank', { waitUntil: 'domcontentloaded', timeout: 1000 });
+            } catch {
+              // Ignore reset failures.
+            }
+            await this.sleep(120);
+            continue;
+          }
         }
 
         const request = await requestPromise;
@@ -1246,6 +1274,15 @@ export default class MangaFireScraper implements IScraper {
     };
 
     const requestListener = (request: HTTPRequest) => {
+      if (!interceptionEnabled) {
+        return;
+      }
+      if (request.isInterceptResolutionHandled()) {
+        return;
+      }
+      if (request.interceptResolutionState().action === 'disabled') {
+        return;
+      }
       const reqUrl = request.url();
       if (reqUrl.includes('/ajax/read/chapter/') && reqUrl.includes('vrf=')) {
         capturedAjaxUrl = reqUrl;
@@ -1266,13 +1303,11 @@ export default class MangaFireScraper implements IScraper {
       if (blockedResourceTypes.has(resourceType)) {
         shouldAbort = true;
       }
-      if (shouldAbort && interceptionEnabled) {
+      if (shouldAbort) {
         request.abort();
         return;
       }
-      if (interceptionEnabled) {
-        request.continue();
-      }
+      request.continue();
     };
 
     page.on('response', responseHandler);
@@ -1498,9 +1533,10 @@ export default class MangaFireScraper implements IScraper {
       if (interceptionEnabled) {
         try {
           await page.setRequestInterception(false);
-          interceptionEnabled = false;
         } catch {
           // Ignore interception cleanup failures.
+        } finally {
+          interceptionEnabled = false;
         }
       }
       try {
@@ -1733,6 +1769,8 @@ export default class MangaFireScraper implements IScraper {
         await page.setRequestInterception(false);
       } catch {
         // Ignore interception cleanup failures.
+      } finally {
+        interceptionEnabled = false;
       }
     }
     if (capturedAjaxUrl && images.length > 0) {

@@ -15,27 +15,28 @@ export class MangaService {
     source: MangaSource = 'anilist',
     filters?: { sort?: string[]; format?: string; status?: string; genre?: string; country?: string },
     page = 1,
+    options?: { signal?: AbortSignal },
   ) {
     if (source === 'asura') {
-      return this.scraper.search(query, page, Providers.AsuraScans);
+      return this.scraper.search(query, page, Providers.AsuraScans, options);
     }
 
     if (source === 'toonily') {
-      return this.scraper.search(query, page, Providers.Toonily);
+      return this.scraper.search(query, page, Providers.Toonily, options);
     }
 
     if (source === 'mangagg') {
-      return this.scraper.search(query, page, Providers.MangaGG);
+      return this.scraper.search(query, page, Providers.MangaGG, options);
     }
 
     if (source === 'mangafire') {
-      return this.scraper.search(query, page, Providers.MangaFire);
+      return this.scraper.search(query, page, Providers.MangaFire, options);
     }
 
     if (source === 'both') {
       const [anilist, provider] = await Promise.all([
         this.anilist.searchMangaWithFilters(query, page, filters || {}),
-        this.scraper.search(query, page, Providers.AsuraScans).catch(() => null),
+        this.scraper.search(query, page, Providers.AsuraScans, options).catch(() => null),
       ]);
 
       return {

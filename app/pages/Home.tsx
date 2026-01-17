@@ -400,7 +400,7 @@ const Home: React.FC<HomeProps> = ({
         setSearchPage(1);
         setSearchHasMore(true);
         handleGlobalSearch(1, false);
-     }, 600);
+     }, 900);
 
      return () => clearTimeout(timer);
   }, [searchContextKey, isDiscoveryMode, homeHydrated]);

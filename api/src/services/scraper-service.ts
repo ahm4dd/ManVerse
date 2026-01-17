@@ -29,6 +29,8 @@ const DISK_CACHE_TTL_MS = {
 type PageOptions = {
   blockResources?: boolean;
   allowImages?: boolean;
+  signal?: AbortSignal;
+  hardTimeoutMs?: number;
 };
 
 interface Scraper {
@@ -37,6 +39,10 @@ interface Scraper {
   checkManhwa(page: Page, url: string): Promise<Manhwa>;
   checkManhwaChapter(page: Page, url: string): Promise<ManhwaChapter>;
 }
+
+const DEFAULT_PAGE_HARD_TIMEOUT_MS = Number(Bun.env.PUPPETEER_PAGE_HARD_TIMEOUT_MS) || 120000;
+const DEFAULT_PAGE_STALE_TIMEOUT_MS = Number(Bun.env.PUPPETEER_PAGE_STALE_TIMEOUT_MS) || 180000;
+const DEFAULT_PAGE_CLOSE_TIMEOUT_MS = Number(Bun.env.PUPPETEER_PAGE_CLOSE_TIMEOUT_MS) || 2000;
 
 function getLaunchArgs(): string[] {
   const args = [
@@ -58,23 +64,58 @@ function getLaunchArgs(): string[] {
 
 export class ScraperService {
   private static browser: Browser | null = null;
+  private static browserInit: Promise<Browser> | null = null;
   private static scrapers = new Map<Provider, Scraper>();
   private static cache = new MemoryCache();
   private static diskCache = new ScraperCache('api-scraper');
+  private static activePages = new Map<Page, { startedAt: number; provider: Provider }>();
+
+  private static async safeClosePage(page: Page): Promise<void> {
+    if (page.isClosed()) return;
+    try {
+      await Promise.race([
+        page.close(),
+        new Promise<void>((resolve) => {
+          setTimeout(resolve, DEFAULT_PAGE_CLOSE_TIMEOUT_MS);
+        }),
+      ]);
+    } catch {
+      // Ignore close errors.
+    }
+  }
+
+  private static cleanupStalePages(): void {
+    if (ScraperService.activePages.size === 0) return;
+    const now = Date.now();
+    for (const [page, info] of ScraperService.activePages.entries()) {
+      if (now - info.startedAt < DEFAULT_PAGE_STALE_TIMEOUT_MS) continue;
+      ScraperService.activePages.delete(page);
+      void ScraperService.safeClosePage(page);
+    }
+  }
 
   private async getBrowser(): Promise<Browser> {
     if (ScraperService.browser) {
       return ScraperService.browser;
     }
+    if (ScraperService.browserInit) {
+      return ScraperService.browserInit;
+    }
 
     const executablePath = Bun.env.PUPPETEER_EXECUTABLE_PATH;
-    ScraperService.browser = await puppeteer.launch({
+    const launchPromise = puppeteer.launch({
       headless: Bun.env.PUPPETEER_HEADLESS === 'false' ? false : 'new',
       executablePath: executablePath && executablePath.trim().length > 0 ? executablePath : undefined,
       args: getLaunchArgs(),
     });
-
-    return ScraperService.browser;
+    ScraperService.browserInit = launchPromise;
+    try {
+      const browser = await launchPromise;
+      ScraperService.browser = browser;
+      return browser;
+    } finally {
+      ScraperService.browserInit = null;
+    }
   }
 
   private getScraper(provider: Provider): Scraper {
@@ -103,9 +144,34 @@ export class ScraperService {
   ): Promise<T> {
     const browser = await this.getBrowser();
     const scraper = this.getScraper(provider);
+    ScraperService.cleanupStalePages();
     const page = await browser.newPage();
+    ScraperService.activePages.set(page, { startedAt: Date.now(), provider });
+
+    const configuredTimeout = scraper.config.timeout ?? DEFAULT_PAGE_HARD_TIMEOUT_MS;
+    const hardTimeoutMs = Math.min(
+      options?.hardTimeoutMs ?? Math.max(30000, configuredTimeout * 2),
+      DEFAULT_PAGE_HARD_TIMEOUT_MS,
+    );
+    const hardTimeoutId = setTimeout(() => {
+      if (!ScraperService.activePages.has(page)) return;
+      ScraperService.activePages.delete(page);
+      void ScraperService.safeClosePage(page);
+    }, hardTimeoutMs);
+
+    const abortHandler = () => {
+      if (!ScraperService.activePages.has(page)) return;
+      ScraperService.activePages.delete(page);
+      void ScraperService.safeClosePage(page);
+    };
 
     try {
+      if (options?.signal) {
+        if (options.signal.aborted) {
+          throw new Error('Request aborted');
+        }
+        options.signal.addEventListener('abort', abortHandler, { once: true });
+      }
       await page.setViewport(DEFAULT_VIEWPORT);
       await page.setCacheEnabled(true);
       await page.evaluateOnNewDocument(() => {
@@ -166,7 +232,12 @@ export class ScraperService {
       await page.setExtraHTTPHeaders(extraHeaders);
       return await handler(page, scraper);
     } finally {
-      await page.close();
+      if (options?.signal) {
+        options.signal.removeEventListener('abort', abortHandler);
+      }
+      clearTimeout(hardTimeoutId);
+      ScraperService.activePages.delete(page);
+      await ScraperService.safeClosePage(page);
     }
   }
 
@@ -174,7 +245,7 @@ export class ScraperService {
     query: string,
     page = 1,
     provider: Provider = Providers.AsuraScans,
-    options?: { refresh?: boolean },
+    options?: { refresh?: boolean; signal?: AbortSignal },
   ): Promise<SearchResult> {
     const normalizedQuery = query.trim().toLowerCase();
     const cacheKey = `provider:${provider}:search:${normalizedQuery}:${page}`;
@@ -199,7 +270,7 @@ export class ScraperService {
       const result = await this.withPage(
         provider,
         (pageInstance, scraper) => scraper.search(false, pageInstance, query, page),
-        { blockResources: provider !== Providers.MangaFire },
+        { blockResources: provider !== Providers.MangaFire, signal: options?.signal },
       );
       if (result.results.length > 0) {
         ScraperService.diskCache.set(cacheKey, result, DISK_CACHE_TTL_MS.search);
@@ -211,7 +282,7 @@ export class ScraperService {
   async getSeriesDetails(
     id: string,
     provider: Provider = Providers.AsuraScans,
-    options?: { refresh?: boolean },
+    options?: { refresh?: boolean; signal?: AbortSignal },
   ): Promise<Manhwa> {
     const cacheKey = `provider:${provider}:details:${id.trim()}`;
     if (!options?.refresh) {
@@ -232,7 +303,7 @@ export class ScraperService {
       const result = await this.withPage(
         provider,
         (pageInstance, scraper) => scraper.checkManhwa(pageInstance, id),
-        { blockResources: provider !== Providers.MangaFire },
+        { blockResources: provider !== Providers.MangaFire, signal: options?.signal },
       );
       if (result.chapters?.length) {
         ScraperService.diskCache.set(cacheKey, result, DISK_CACHE_TTL_MS.details);
@@ -244,7 +315,7 @@ export class ScraperService {
   async getChapterImages(
     id: string,
     provider: Provider = Providers.AsuraScans,
-    options?: { refresh?: boolean },
+    options?: { refresh?: boolean; signal?: AbortSignal },
   ): Promise<ManhwaChapter> {
     const cacheKey = `provider:${provider}:chapter:${id.trim()}`;
     if (!options?.refresh) {
@@ -258,7 +329,7 @@ export class ScraperService {
       const result = await this.withPage(
         provider,
         (pageInstance, scraper) => scraper.checkManhwaChapter(pageInstance, id),
-        { blockResources: provider !== Providers.MangaFire },
+        { blockResources: provider !== Providers.MangaFire, signal: options?.signal },
       );
       if (!result.length) {
         throw new Error('No chapter images found');
@@ -272,12 +343,34 @@ export class ScraperService {
     url: string,
     provider: Provider = Providers.AsuraScans,
     referer?: string,
+    options?: { signal?: AbortSignal },
   ): Promise<{ buffer: Uint8Array; contentType: string | null }> {
     const browser = await this.getBrowser();
     const scraper = this.getScraper(provider);
+    ScraperService.cleanupStalePages();
     const page = await browser.newPage();
+    ScraperService.activePages.set(page, { startedAt: Date.now(), provider });
+
+    const configuredTimeout = scraper.config.timeout ?? DEFAULT_PAGE_HARD_TIMEOUT_MS;
+    const hardTimeoutMs = Math.min(Math.max(30000, configuredTimeout * 2), DEFAULT_PAGE_HARD_TIMEOUT_MS);
+    const hardTimeoutId = setTimeout(() => {
+      if (!ScraperService.activePages.has(page)) return;
+      ScraperService.activePages.delete(page);
+      void ScraperService.safeClosePage(page);
+    }, hardTimeoutMs);
+    const abortHandler = () => {
+      if (!ScraperService.activePages.has(page)) return;
+      ScraperService.activePages.delete(page);
+      void ScraperService.safeClosePage(page);
+    };
 
     try {
+      if (options?.signal) {
+        if (options.signal.aborted) {
+          throw new Error('Request aborted');
+        }
+        options.signal.addEventListener('abort', abortHandler, { once: true });
+      }
       await page.setViewport(DEFAULT_VIEWPORT);
       await page.setCacheEnabled(true);
       await page.evaluateOnNewDocument(() => {
@@ -333,14 +426,51 @@ export class ScraperService {
       const contentType = response.headers()['content-type'] ?? null;
       return { buffer: buffer ?? new Uint8Array(), contentType };
     } finally {
-      await page.close();
+      if (options?.signal) {
+        options.signal.removeEventListener('abort', abortHandler);
+      }
+      clearTimeout(hardTimeoutId);
+      ScraperService.activePages.delete(page);
+      await ScraperService.safeClosePage(page);
     }
   }
 
   async close(): Promise<void> {
-    if (ScraperService.browser) {
-      await ScraperService.browser.close();
+    await ScraperService.shutdown();
+  }
+
+  static async shutdown(): Promise<void> {
+    if (ScraperService.browserInit) {
+      try {
+        await ScraperService.browserInit;
+      } catch {
+        // Ignore launch failures.
+      }
+    }
+    if (!ScraperService.browser) return;
+    const browser = ScraperService.browser;
+    const pages = Array.from(ScraperService.activePages.keys());
+    ScraperService.activePages.clear();
+    await Promise.all(pages.map((page) => ScraperService.safeClosePage(page)));
+    try {
+      await Promise.race([
+        browser.close(),
+        new Promise<void>((resolve) => {
+          setTimeout(resolve, DEFAULT_PAGE_CLOSE_TIMEOUT_MS);
+        }),
+      ]);
+    } catch {
+      // Ignore close errors and try to kill the process.
+    } finally {
       ScraperService.browser = null;
+      ScraperService.browserInit = null;
+      try {
+        if (browser.isConnected()) {
+          browser.process()?.kill('SIGKILL');
+        }
+      } catch {
+        // Ignore kill failures.
+      }
     }
   }
 }

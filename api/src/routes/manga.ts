@@ -328,6 +328,7 @@ const searchRoute = createRoute({
 
 manga.openapi(searchRoute, (c) => {
   const { query, page, source, format, status, genre, country, sort } = c.req.valid('query');
+  const signal = c.req.raw.signal;
   return service
     .search(query, (source || 'anilist') as MangaSource, {
       sort: normalizeSort(sort),
@@ -335,7 +336,7 @@ manga.openapi(searchRoute, (c) => {
       status: normalizeStatus(status),
       genre: genre && genre !== 'All' ? genre : undefined,
       country: normalizeCountry(country),
-    }, page || 1)
+    }, page || 1, { signal })
     .then((results) => jsonSuccess(c, results))
     .catch((error) =>
       jsonError(
@@ -415,9 +416,10 @@ manga.openapi(providerDetailsRoute, (c) => {
   const { provider, id } = c.req.valid('query');
   const resolvedProvider = normalizeProvider(provider);
   const normalizedId = normalizeProviderId(resolvedProvider, id);
+  const signal = c.req.raw.signal;
 
   return scraper
-    .getSeriesDetails(normalizedId, resolvedProvider)
+    .getSeriesDetails(normalizedId, resolvedProvider, { signal })
     .then((details) => {
       let providerRecord = null;
       try {
@@ -518,6 +520,7 @@ manga.openapi(mangaChaptersRoute, (c) => {
   const { provider, providerId } = c.req.valid('query');
   const { id } = c.req.valid('param');
   const resolvedProvider = normalizeProvider(provider);
+  const signal = c.req.raw.signal;
 
   const anilistId = Number(id);
   if (Number.isNaN(anilistId)) {
@@ -536,7 +539,9 @@ manga.openapi(mangaChaptersRoute, (c) => {
   }
 
   return scraper
-    .getSeriesDetails(normalizeProviderId(resolvedProvider, resolvedProviderId), resolvedProvider)
+    .getSeriesDetails(normalizeProviderId(resolvedProvider, resolvedProviderId), resolvedProvider, {
+      signal,
+    })
     .then((details) => {
       const normalizedProviderId = normalizeProviderId(resolvedProvider, resolvedProviderId);
       upsertProviderManga(toProviderInput(resolvedProvider, normalizedProviderId, details));
@@ -597,6 +602,7 @@ manga.openapi(mangaMapRoute, async (c) => {
   const body = c.req.valid('json');
   const resolvedProvider = normalizeProvider(body.provider);
   const rawProviderId = body.providerId?.trim();
+  const signal = c.req.raw.signal;
   const normalizedProviderId = rawProviderId
     ? normalizeProviderId(resolvedProvider, rawProviderId)
     : undefined;
@@ -637,7 +643,7 @@ manga.openapi(mangaMapRoute, async (c) => {
         };
       } else {
         try {
-          details = await scraper.getSeriesDetails(normalizedProviderId, resolvedProvider);
+          details = await scraper.getSeriesDetails(normalizedProviderId, resolvedProvider, { signal });
         } catch (error) {
           details = {
             title: normalizedProviderId,

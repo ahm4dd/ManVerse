@@ -16,6 +16,7 @@ import downloadsRoutes from './routes/downloads.ts';
 import syncRoutes from './routes/sync.ts';
 import anilistRoutes from './routes/anilist.ts';
 import notificationsRoutes from './routes/notifications.ts';
+import { ScraperService } from './services/scraper-service.ts';
 
 const app = new OpenAPIHono<HonoEnv>({ defaultHook: openApiHook });
 const port = Number(Bun.env.PORT || 3001);
@@ -104,6 +105,28 @@ const server = {
 const displayHost =
   hostname && hostname !== '0.0.0.0' && hostname !== '::' ? hostname : 'localhost';
 console.log(`ManVerse API listening on http://${displayHost}:${port}`);
+
+const shutdown = async (reason: string) => {
+  try {
+    await ScraperService.shutdown();
+  } catch (error) {
+    console.warn(`Failed to shutdown scraper service after ${reason}`, error);
+  }
+};
+
+if (typeof process !== 'undefined') {
+  process.on('SIGINT', async () => {
+    await shutdown('SIGINT');
+    process.exit(0);
+  });
+  process.on('SIGTERM', async () => {
+    await shutdown('SIGTERM');
+    process.exit(0);
+  });
+  process.on('beforeExit', () => {
+    void shutdown('beforeExit');
+  });
+}
 
 export { app };
 export default server;
