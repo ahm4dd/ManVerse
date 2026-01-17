@@ -56,6 +56,14 @@ const SeriesCard: React.FC<SeriesCardProps> = ({ series, onClick, index = 0, lay
   let latestLabel = series.latestChapter;
   const resolvedLayoutId = layoutId ?? `series-${series.id}`;
   const isProviderSeries = series.source && isProviderSource(series.source);
+  const dateLabel =
+    series.updatedAt && isProviderSeries
+      ? new Date(series.updatedAt * 1000).toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+        })
+      : relativeTime;
   const providerBadge = isProviderSeries
     ? series.source === Providers.AsuraScans
       ? `${providerShortLabel(series.source)} - Trusted`
@@ -141,8 +149,8 @@ const SeriesCard: React.FC<SeriesCardProps> = ({ series, onClick, index = 0, lay
         {/* Chapter Info + Date */}
         <div className="flex items-center justify-between mt-1.5 text-xs font-medium text-gray-400">
            <span className="text-gray-300 truncate max-w-[60%]">{latestLabel}</span>
-           {relativeTime && (
-             <span className="text-[10px] text-gray-500 whitespace-nowrap">{relativeTime}</span>
+           {dateLabel && (
+             <span className="text-[10px] text-gray-500 whitespace-nowrap">{dateLabel}</span>
            )}
         </div>
       </div>

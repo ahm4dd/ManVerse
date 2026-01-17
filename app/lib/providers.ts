@@ -6,7 +6,7 @@ import {
   ExperimentalProviderList,
   type ProviderType,
 } from '@manverse/core';
-import { asuraScansConfig, mangaggConfig, toonilyConfig } from '@manverse/scrapers/config';
+import { asuraScansConfig, mangaggConfig, mangafireConfig, toonilyConfig } from '@manverse/scrapers/config';
 
 export type Source = 'AniList' | 'AllProviders' | ProviderType;
 
@@ -33,6 +33,9 @@ export const providerBaseUrl = (provider: ProviderType): string => {
   if (provider === Providers.MangaGG) {
     return mangaggConfig.baseUrl;
   }
+  if (provider === Providers.MangaFire) {
+    return mangafireConfig.baseUrl;
+  }
   return '';
 };
 
@@ -45,6 +48,9 @@ export const providerReferer = (provider: ProviderType): string => {
   }
   if (provider === Providers.MangaGG) {
     return mangaggConfig.headers?.referer ?? mangaggConfig.baseUrl;
+  }
+  if (provider === Providers.MangaFire) {
+    return mangafireConfig.headers?.referer ?? mangafireConfig.baseUrl;
   }
   return '';
 };

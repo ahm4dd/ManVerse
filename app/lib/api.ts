@@ -221,7 +221,13 @@ function encodeChapterId(url: string): string {
 function proxyProviderImage(image: string, provider: ProviderType): string {
   if (!image) return image;
   if (image.includes('/api/chapters/image?url=')) return image;
-  if (provider !== Providers.Toonily && provider !== Providers.MangaGG) return image;
+  if (
+    provider !== Providers.Toonily &&
+    provider !== Providers.MangaGG &&
+    provider !== Providers.MangaFire
+  ) {
+    return image;
+  }
   const referer = providerReferer(provider) || providerBaseUrl(provider);
   if (!referer) return image;
   return `${getApiUrl()}/api/chapters/image?url=${encodeURIComponent(image)}&referer=${encodeURIComponent(referer)}`;
@@ -231,13 +237,30 @@ function formatSeriesResult(
   item: ProviderSearchResult['results'][number],
   provider: ProviderType,
 ): Series {
+  const rawChapters = item.chapters || '';
+  let latestChapter = rawChapters;
+  let updatedAt: number | undefined;
+  if (rawChapters) {
+    const chapterMatch = rawChapters.match(/\bchap\s*(\d+(?:\.\d+)?)\b/i);
+    if (chapterMatch?.[1]) {
+      latestChapter = `Chapter ${chapterMatch[1]}`;
+    }
+    const dateMatch = rawChapters.match(/([A-Za-z]{3}\s+\d{1,2},\s+\d{4})/);
+    if (dateMatch?.[1]) {
+      const parsed = Date.parse(dateMatch[1]);
+      if (!Number.isNaN(parsed)) {
+        updatedAt = Math.floor(parsed / 1000);
+      }
+    }
+  }
   return {
     id: item.id,
     title: item.title,
     image: proxyProviderImage(item.image, provider),
     status: item.status || 'Unknown',
     rating: item.rating || 'N/A',
-    latestChapter: item.chapters || '',
+    latestChapter,
+    updatedAt,
     type: 'Manhwa',
     genres: item.genres,
     source: provider,

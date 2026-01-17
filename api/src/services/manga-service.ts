@@ -2,7 +2,7 @@ import { AniListService } from './anilist-service.ts';
 import { ScraperService } from './scraper-service.ts';
 import { Providers } from '@manverse/core';
 
-export type MangaSource = 'anilist' | 'asura' | 'toonily' | 'mangagg' | 'both';
+export type MangaSource = 'anilist' | 'asura' | 'toonily' | 'mangagg' | 'mangafire' | 'both';
 
 export class MangaService {
   constructor(
@@ -26,6 +26,10 @@ export class MangaService {
 
     if (source === 'mangagg') {
       return this.scraper.search(query, page, Providers.MangaGG);
+    }
+
+    if (source === 'mangafire') {
+      return this.scraper.search(query, page, Providers.MangaFire);
     }
 
     if (source === 'both') {

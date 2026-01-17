@@ -393,9 +393,120 @@ export const MangaGGConfigSchema = ScraperConfigSchema.extend({
     }),
 });
 
+export const MangaFireConfigSchema = ScraperConfigSchema.extend({
+  name: z.literal(Providers.MangaFire),
+  selectors: z
+    .object({
+      search: z
+        .object({
+          form: z.string().default('form[action="filter"]'),
+          keywordInput: z.string().default('input[name="keyword"]'),
+          resultContainer: z.string().default('.unit'),
+          link: z.string().default('a[href^="/manga/"]'),
+          image: z.string().default('a.poster img, img'),
+          title: z.string().default('.info > a, .info a'),
+          rating: z.string().default('.live-score, .rating, .score'),
+          chapters: z.string().default('.content[data-name="chap"]'),
+          nextButton: z.string().default('a[rel="next"], a.next'),
+        })
+        .default({
+          form: 'form[action="filter"]',
+          keywordInput: 'input[name="keyword"]',
+          resultContainer: '.unit',
+          link: 'a[href^="/manga/"]',
+          image: 'a.poster img, img',
+          title: '.info > a, .info a',
+          rating: '.live-score, .rating, .score',
+          chapters: '.content[data-name="chap"]',
+          nextButton: 'a[rel="next"], a.next',
+        }),
+      detail: z
+        .object({
+          title: z.string().default('h1[itemprop="name"], h1'),
+          image: z.string().default('.poster img[itemprop="image"], .poster img'),
+          description: z.string().default('.description'),
+          status: z.string().default('.info p'),
+          rating: z.string().default('.rating-box .live-score'),
+          metaItem: z.string().default('.meta > div'),
+          metaLabel: z.string().default('.meta > div > span:first-child'),
+          metaValue: z.string().default('.meta > div > span:last-child'),
+          genres: z.string().default('.meta a[href^="/genre/"]'),
+          chapters: z.string().default('.list-body ul.scroll-sm li.item'),
+          chapterLink: z.string().default('a'),
+          chapterTitle: z.string().default('span'),
+          chapterDate: z.string().default('span:nth-of-type(2)'),
+        })
+        .default({
+          title: 'h1[itemprop="name"], h1',
+          image: '.poster img[itemprop="image"], .poster img',
+          description: '.description',
+          status: '.info p',
+          rating: '.rating-box .live-score',
+          metaItem: '.meta > div',
+          metaLabel: '.meta > div > span:first-child',
+          metaValue: '.meta > div > span:last-child',
+          genres: '.meta a[href^="/genre/"]',
+          chapters: '.list-body ul.scroll-sm li.item',
+          chapterLink: 'a',
+          chapterTitle: 'span',
+          chapterDate: 'span:nth-of-type(2)',
+        }),
+      chapter: z
+        .object({
+          images: z.string().default('img'),
+        })
+        .default({
+          images: 'img',
+        }),
+    })
+    .default({
+      search: {
+        form: 'form[action="filter"]',
+        keywordInput: 'input[name="keyword"]',
+        resultContainer: '.unit',
+        link: 'a[href^="/manga/"]',
+        image: 'a.poster img, img',
+        title: '.info > a, .info a',
+        rating: '.live-score, .rating, .score',
+        chapters: '.content[data-name="chap"]',
+        nextButton: 'a[rel="next"], a.next',
+      },
+      detail: {
+        title: 'h1[itemprop="name"], h1',
+        image: '.poster img[itemprop="image"], .poster img',
+        description: '.description',
+        status: '.info p',
+        rating: '.rating-box .live-score',
+        metaItem: '.meta > div',
+        metaLabel: '.meta > div > span:first-child',
+        metaValue: '.meta > div > span:last-child',
+        genres: '.meta a[href^="/genre/"]',
+        chapters: '.list-body ul.scroll-sm li.item',
+        chapterLink: 'a',
+        chapterTitle: 'span',
+        chapterDate: 'span:nth-of-type(2)',
+      },
+      chapter: {
+        images: 'img',
+      },
+    }),
+  output: z
+    .object({
+      directory: z.string().default('mangafire'),
+      fileExtension: z.string().default('.jpg'),
+      filenamePadding: z.number().default(3),
+    })
+    .default({
+      directory: 'mangafire',
+      fileExtension: '.jpg',
+      filenamePadding: 3,
+    }),
+});
+
 // Type exports
 export type ScraperConfig = z.infer<typeof ScraperConfigSchema>;
 export type AsuraScansConfig = z.infer<typeof AsuraScansConfigSchema>;
 export type ToonilyConfig = z.infer<typeof ToonilyConfigSchema>;
 export type MangaGGConfig = z.infer<typeof MangaGGConfigSchema>;
-export type AnyScraperConfig = AsuraScansConfig | ToonilyConfig | MangaGGConfig;
+export type MangaFireConfig = z.infer<typeof MangaFireConfigSchema>;
+export type AnyScraperConfig = AsuraScansConfig | ToonilyConfig | MangaGGConfig | MangaFireConfig;

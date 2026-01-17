@@ -58,7 +58,15 @@ const imageRoute = createRoute({
   },
 });
 
+const isMangaFireCdnHost = (hostname: string) =>
+  hostname.endsWith('mfcdn.cc') ||
+  hostname.endsWith('mfcdn3.xyz') ||
+  /(^|\.)mfcdn\d+\.xyz$/i.test(hostname);
+
 const resolveProviderFromHost = (hostname: string) => {
+  if (hostname.endsWith('mangafire.to') || isMangaFireCdnHost(hostname)) {
+    return Providers.MangaFire;
+  }
   if (hostname.endsWith('mangagg.com') || hostname.endsWith('mangagg.me')) {
     return Providers.MangaGG;
   }
@@ -69,7 +77,10 @@ const resolveProviderFromHost = (hostname: string) => {
 };
 
 const shouldUseBrowserFallback = (hostname: string) =>
-  hostname.endsWith('mangagg.com') || hostname.endsWith('mangagg.me');
+  hostname.endsWith('mangagg.com') ||
+  hostname.endsWith('mangagg.me') ||
+  hostname.endsWith('mangafire.to') ||
+  isMangaFireCdnHost(hostname);
 
 chapters.openapi(imageRoute, async (c) => {
   const { url, referer } = c.req.valid('query');
@@ -81,10 +92,30 @@ chapters.openapi(imageRoute, async (c) => {
   const isAllowedHost = (hostname: string, allowed: string[]) =>
     allowed.some((domain) => hostname === domain || hostname.endsWith(`.${domain}`));
 
-  const allowedImageHosts = ['asuracomic.net', 'toonily.com', 'tnlycdn.com', 'mangagg.com', 'mangagg.me'];
-  const allowedRefererHosts = ['asuracomic.net', 'toonily.com', 'mangagg.com', 'mangagg.me'];
+  const allowedImageHosts = [
+    'asuracomic.net',
+    'toonily.com',
+    'tnlycdn.com',
+    'mangagg.com',
+    'mangagg.me',
+    'mangafire.to',
+    'mfcdn.cc',
+    'mfcdn3.xyz',
+    'mfcdn1.xyz',
+    'mfcdn2.xyz',
+    'mfcdn4.xyz',
+    'mfcdn5.xyz',
+  ];
+  const allowedRefererHosts = [
+    'asuracomic.net',
+    'toonily.com',
+    'mangagg.com',
+    'mangagg.me',
+    'mangafire.to',
+  ];
 
-  if (!isAllowedHost(parsed.hostname, allowedImageHosts)) {
+  const isMangaFireCdn = isMangaFireCdnHost(parsed.hostname);
+  if (!isAllowedHost(parsed.hostname, allowedImageHosts) && !isMangaFireCdn) {
     return jsonError(c, { code: 'INVALID_HOST', message: 'Image host is not allowed' }, 400);
   }
 

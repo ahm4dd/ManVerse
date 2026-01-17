@@ -2,12 +2,19 @@ import { defu } from 'defu';
 import AsuraScansScraper from './asura.ts';
 import ToonilyScraper from './toonily.ts';
 import MangaGGScraper from './mangagg.ts';
+import MangaFireScraper from './mangafire.ts';
 import { Providers, ProviderType } from '@manverse/core';
-import { AsuraScansConfigSchema, MangaGGConfigSchema, ToonilyConfigSchema } from '../config/types.ts';
+import {
+  AsuraScansConfigSchema,
+  MangaGGConfigSchema,
+  MangaFireConfigSchema,
+  ToonilyConfigSchema,
+} from '../config/types.ts';
 import type IScraper from './scraper.ts';
 import { asuraScansConfig } from '../config/asura.config.ts';
 import { toonilyConfig } from '../config/toonily.config.ts';
 import { mangaggConfig } from '../config/mangagg.config.ts';
+import { mangafireConfig } from '../config/mangafire.config.ts';
 
 const ScraperRegistry = {
   [Providers.AsuraScans]: {
@@ -24,6 +31,11 @@ const ScraperRegistry = {
     schema: MangaGGConfigSchema,
     class: MangaGGScraper,
     defaultConfig: mangaggConfig,
+  },
+  [Providers.MangaFire]: {
+    schema: MangaFireConfigSchema,
+    class: MangaFireScraper,
+    defaultConfig: mangafireConfig,
   },
 } as const;
 

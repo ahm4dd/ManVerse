@@ -5,7 +5,7 @@ import type { HonoEnv } from '../types/api.ts';
 import { requireAuth } from '../middleware/auth.ts';
 import { ScraperService } from '../services/scraper-service.ts';
 import { Providers } from '@manverse/core';
-import { asuraScansConfig, mangaggConfig, toonilyConfig } from '@manverse/scrapers';
+import { asuraScansConfig, mangaggConfig, mangafireConfig, toonilyConfig } from '@manverse/scrapers';
 import {
   getActiveMapping,
   getActiveMappingByProviderId,
@@ -40,7 +40,7 @@ const errorResponse = {
 const searchSchema = z.object({
   query: z.string().min(1),
   page: z.coerce.number().int().positive().optional(),
-  source: z.enum(['anilist', 'asura', 'toonily', 'mangagg', 'both']).optional(),
+  source: z.enum(['anilist', 'asura', 'toonily', 'mangagg', 'mangafire', 'both']).optional(),
   format: z.string().optional(),
   status: z.string().optional(),
   genre: z.string().optional(),
@@ -178,6 +178,41 @@ function normalizeProviderId(provider: string, providerId: string): string {
     return `https://mangagg.com/comic/${cleaned}`.replace(/\/+$/, '');
   }
 
+  if (provider === Providers.MangaFire) {
+    if (/^https?:\/\//i.test(trimmed)) {
+      try {
+        const url = new URL(trimmed);
+        if (url.hostname.endsWith('mangafire.to') && url.pathname.startsWith('/read/')) {
+          const parts = url.pathname.split('/').filter(Boolean);
+          if (parts[1]) {
+            return `https://mangafire.to/manga/${parts[1]}`.replace(/\/+$/, '');
+          }
+        }
+      } catch {
+        // Fall through to return trimmed string.
+      }
+      return trimmed.replace(/\/+$/, '');
+    }
+
+    const cleaned = trimmed.replace(/^\/+/, '');
+    if (cleaned.startsWith('mangafire.to/')) {
+      return `https://${cleaned}`.replace(/\/+$/, '');
+    }
+    if (cleaned.startsWith('www.mangafire.to/')) {
+      return `https://${cleaned}`.replace(/\/+$/, '');
+    }
+    if (cleaned.startsWith('read/')) {
+      const parts = cleaned.split('/').filter(Boolean);
+      if (parts[1]) {
+        return `https://mangafire.to/manga/${parts[1]}`.replace(/\/+$/, '');
+      }
+    }
+    if (cleaned.startsWith('manga/')) {
+      return `https://mangafire.to/${cleaned}`.replace(/\/+$/, '');
+    }
+    return `https://mangafire.to/manga/${cleaned}`.replace(/\/+$/, '');
+  }
+
   return trimmed;
 }
 
@@ -219,6 +254,9 @@ function getProviderImageReferer(provider: string): string {
   }
   if (provider === Providers.MangaGG) {
     return mangaggConfig.baseUrl;
+  }
+  if (provider === Providers.MangaFire) {
+    return mangafireConfig.baseUrl;
   }
   return '';
 }

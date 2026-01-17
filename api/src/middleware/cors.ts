@@ -35,6 +35,7 @@ export const corsMiddleware = cors({
   origin: (origin) => {
     const allowed = getAllowedOrigins();
     const isDev = Bun.env.NODE_ENV !== 'production';
+    const allowPrivateByDefault = allowed.length === 0;
 
     if (!origin) {
       return allowed[0] || '*';
@@ -44,11 +45,11 @@ export const corsMiddleware = cors({
       return origin;
     }
 
-    if (isDev && isLocalhostOrigin(origin)) {
+    if ((isDev || allowPrivateByDefault) && isLocalhostOrigin(origin)) {
       return origin;
     }
 
-    if (isDev && isPrivateNetworkOrigin(origin)) {
+    if ((isDev || allowPrivateByDefault) && isPrivateNetworkOrigin(origin)) {
       return origin;
     }
 

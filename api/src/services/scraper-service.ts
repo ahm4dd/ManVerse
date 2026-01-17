@@ -4,6 +4,7 @@ import {
   ScraperCache,
   asuraScansConfig,
   mangaggConfig,
+  mangafireConfig,
   toonilyConfig,
   type ScraperConfig,
 } from '@manverse/scrapers';
@@ -45,6 +46,10 @@ function getLaunchArgs(): string[] {
     '--disable-blink-features=AutomationControlled',
     '--lang=en-US,en',
   ];
+  if (Bun.env.PUPPETEER_ALLOW_DEVTOOLS !== 'true') {
+    args.push('--disable-devtools');
+    args.push('--disable-features=DevToolsService');
+  }
   if (Bun.env.PUPPETEER_DISABLE_GPU === 'true') {
     args.push('--disable-gpu');
   }
@@ -78,12 +83,14 @@ export class ScraperService {
       return existing;
     }
 
-    const config =
-      provider === Providers.Toonily
-        ? toonilyConfig
-        : provider === Providers.MangaGG
-          ? mangaggConfig
-          : asuraScansConfig;
+    let config = asuraScansConfig;
+    if (provider === Providers.Toonily) {
+      config = toonilyConfig;
+    } else if (provider === Providers.MangaGG) {
+      config = mangaggConfig;
+    } else if (provider === Providers.MangaFire) {
+      config = mangafireConfig;
+    }
     const scraper = ScraperFactory.createScraper(provider, config);
     ScraperService.scrapers.set(provider, scraper);
     return scraper;
@@ -106,11 +113,28 @@ export class ScraperService {
         Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
         Object.defineProperty(navigator, 'platform', { get: () => 'Win32' });
         Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+        Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
+        Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
+        Object.defineProperty(navigator, 'maxTouchPoints', { get: () => 0 });
+        const originalQuery = window.navigator.permissions.query.bind(window.navigator.permissions);
+        window.navigator.permissions.query = (parameters) => {
+          if (parameters && parameters.name === 'notifications') {
+            return Promise.resolve({ state: Notification.permission });
+          }
+          return originalQuery(parameters);
+        };
+        const getParameter = WebGLRenderingContext.prototype.getParameter;
+        WebGLRenderingContext.prototype.getParameter = function (parameter) {
+          if (parameter === 37445) return 'Intel Inc.';
+          if (parameter === 37446) return 'Intel Iris OpenGL Engine';
+          return getParameter.call(this, parameter);
+        };
         const chrome = (window as typeof window & { chrome?: Record<string, unknown> }).chrome;
         if (!chrome) {
           (window as typeof window & { chrome: Record<string, unknown> }).chrome = { runtime: {} };
         }
       });
+      await page.setBypassCSP(true);
       if (options?.blockResources) {
         await page.setRequestInterception(true);
         page.on('request', (request) => {
@@ -175,7 +199,7 @@ export class ScraperService {
       const result = await this.withPage(
         provider,
         (pageInstance, scraper) => scraper.search(false, pageInstance, query, page),
-        { blockResources: true },
+        { blockResources: provider !== Providers.MangaFire },
       );
       if (result.results.length > 0) {
         ScraperService.diskCache.set(cacheKey, result, DISK_CACHE_TTL_MS.search);
@@ -208,7 +232,7 @@ export class ScraperService {
       const result = await this.withPage(
         provider,
         (pageInstance, scraper) => scraper.checkManhwa(pageInstance, id),
-        { blockResources: true },
+        { blockResources: provider !== Providers.MangaFire },
       );
       if (result.chapters?.length) {
         ScraperService.diskCache.set(cacheKey, result, DISK_CACHE_TTL_MS.details);
@@ -234,7 +258,7 @@ export class ScraperService {
       const result = await this.withPage(
         provider,
         (pageInstance, scraper) => scraper.checkManhwaChapter(pageInstance, id),
-        { blockResources: true },
+        { blockResources: provider !== Providers.MangaFire },
       );
       if (!result.length) {
         throw new Error('No chapter images found');

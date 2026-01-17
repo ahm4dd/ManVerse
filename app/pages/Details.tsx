@@ -44,6 +44,7 @@ const detectProviderFromSeriesId = (seriesId: string): ProviderType | null => {
   const lower = seriesId.toLowerCase();
   if (lower.includes('toonily.com')) return Providers.Toonily;
   if (lower.includes('mangagg.com') || lower.includes('mangagg.me')) return Providers.MangaGG;
+  if (lower.includes('mangafire.to')) return Providers.MangaFire;
   if (lower.includes('asuracomic.net')) return Providers.AsuraScans;
   return null;
 };
@@ -426,17 +427,41 @@ const Details: React.FC<DetailsProps> = ({ seriesId, source, onNavigate, onBack,
   const normalizeProviderInput = (provider: ProviderType, input: string) => {
     const trimmed = input.trim();
     if (!trimmed) return '';
-    if (/^https?:\/\//i.test(trimmed)) return trimmed;
+    if (/^https?:\/\//i.test(trimmed)) {
+      if (provider === Providers.MangaFire) {
+        try {
+          const url = new URL(trimmed);
+          if (url.hostname.endsWith('mangafire.to') && url.pathname.startsWith('/read/')) {
+            const parts = url.pathname.split('/').filter(Boolean);
+            if (parts[1]) {
+              return `${url.origin}/manga/${parts[1]}`;
+            }
+          }
+        } catch {
+          // Ignore parse errors and return trimmed input.
+        }
+      }
+      return trimmed;
+    }
     const baseUrl = providerBaseUrl(provider).replace(/\/+$/, '');
     if (!baseUrl) return trimmed;
     const baseHost = baseUrl.replace(/^https?:\/\//i, '');
     const cleaned = trimmed.replace(/^\/+/, '');
     const seriesPath =
-      provider === Providers.Toonily ? 'serie' : provider === Providers.MangaGG ? 'comic' : 'series';
+      provider === Providers.Toonily
+        ? 'serie'
+        : provider === Providers.MangaGG
+          ? 'comic'
+          : provider === Providers.MangaFire
+            ? 'manga'
+            : 'series';
     if (cleaned.startsWith('series/') || cleaned.startsWith('serie/')) {
       return `${baseUrl}/${cleaned}`;
     }
     if (cleaned.startsWith('comic/')) {
+      return `${baseUrl}/${cleaned}`;
+    }
+    if (cleaned.startsWith('manga/')) {
       return `${baseUrl}/${cleaned}`;
     }
     if (baseHost && cleaned.startsWith(`${baseHost}/`)) {
@@ -450,6 +475,18 @@ const Details: React.FC<DetailsProps> = ({ seriesId, source, onNavigate, onBack,
       (cleaned.startsWith('mangagg.me/') || cleaned.startsWith('www.mangagg.me/'))
     ) {
       return `https://${cleaned}`;
+    }
+    if (
+      provider === Providers.MangaFire &&
+      (cleaned.startsWith('mangafire.to/') || cleaned.startsWith('www.mangafire.to/'))
+    ) {
+      return `https://${cleaned}`;
+    }
+    if (provider === Providers.MangaFire && cleaned.startsWith('read/')) {
+      const parts = cleaned.split('/').filter(Boolean);
+      if (parts[1]) {
+        return `${baseUrl}/manga/${parts[1]}`;
+      }
     }
     return `${baseUrl}/${seriesPath}/${cleaned}`;
   };
@@ -1929,6 +1966,8 @@ const Details: React.FC<DetailsProps> = ({ seriesId, source, onNavigate, onBack,
       ? 'serie'
       : selectedProvider === Providers.MangaGG
         ? 'comic'
+        : selectedProvider === Providers.MangaFire
+          ? 'manga'
         : 'series';
   const providerUrlHint =
     providerSearchScope === 'all'
