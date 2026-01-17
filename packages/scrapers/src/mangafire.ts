@@ -142,6 +142,7 @@ export default class MangaFireScraper implements IScraper {
     _blockedHosts: Set<string>,
     preservePage = false,
   ): Promise<string | null> {
+    const baseRoot = this.normalizedBaseRoot();
     let capturedUrl: string | null = null;
     const maxAttempts = 2;
     const navTimeout = Math.min(6000, timeoutMs);
@@ -152,6 +153,17 @@ export default class MangaFireScraper implements IScraper {
         const parsed = new URL(requestUrl);
         if (!parsed.pathname.includes('/ajax/read/chapter/')) return false;
         return parsed.searchParams.has('vrf');
+      } catch {
+        return false;
+      }
+    };
+
+    const isHomeRedirect = (currentUrl: string) => {
+      try {
+        const parsed = new URL(currentUrl);
+        if (parsed.origin !== new URL(baseRoot).origin) return false;
+        const path = parsed.pathname.replace(/\/+$/, '');
+        return path === '' || path === '/' || path === '/home';
       } catch {
         return false;
       }
@@ -177,6 +189,21 @@ export default class MangaFireScraper implements IScraper {
           await page.goto(chapterUrl, { waitUntil: 'domcontentloaded', timeout: navTimeout });
         } catch {
           // Ignore navigation failures; request capture may still have happened.
+        }
+
+        if (!capturedUrl && isHomeRedirect(page.url())) {
+          try {
+            await page.evaluate(() => window.stop());
+          } catch {
+            // Ignore stop-loading failures.
+          }
+          try {
+            await page.goto('about:blank', { waitUntil: 'domcontentloaded', timeout: 1000 });
+          } catch {
+            // Ignore reset failures.
+          }
+          await this.sleep(120);
+          continue;
         }
 
         const request = await requestPromise;
