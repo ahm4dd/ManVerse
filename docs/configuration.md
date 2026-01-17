@@ -92,6 +92,26 @@ Set these in `api/.env` to tweak Puppeteer.
   - Default: headless (`new`)
 - `PUPPETEER_DISABLE_GPU`
   - Set to `true` to disable GPU usage.
+- `PUPPETEER_ALLOW_DEVTOOLS`
+  - Set to `true` to allow DevTools to stay open in headful mode.
+  - Default: `false`
+- `PUPPETEER_PAGE_HARD_TIMEOUT_MS`
+  - Hard timeout before a scraper page is force-closed.
+  - Default: `120000`
+- `PUPPETEER_PAGE_STALE_TIMEOUT_MS`
+  - Timeout before marking a page as stale and attempting recovery.
+  - Default: `180000`
+- `PUPPETEER_PAGE_CLOSE_TIMEOUT_MS`
+  - Grace period when closing a stuck Puppeteer page.
+  - Default: `2000`
+
+## Logging (API)
+
+Set these in `api/.env` if you want to change logging paths.
+
+- `MANVERSE_LOG_DIR`
+  - Directory for API log files (JSONL).
+  - Default: `./logs` (relative to the API working directory)
 
 ## Desktop App (Electron)
 
@@ -119,6 +139,12 @@ Set these when launching the desktop app.
 - `BUN_PATH`
   - Override the Bun binary used by the desktop app.
   - Useful to force a system Bun install instead of the bundled runtime.
+- `MANVERSE_DISABLE_SANDBOX`
+  - Set to `false` to keep Chromium sandboxing enabled on Linux builds.
+  - Default: sandbox disabled on Linux packaged builds
+- `MANVERSE_RENDERER_API_URL`
+  - Internal override for the renderer API URL (desktop runtime only).
+  - Normally set by the desktop app automatically.
 
 ### Desktop settings (stored in user config)
 
@@ -156,6 +182,11 @@ The desktop shell stores UI toggles in a JSON file under the Electron user data 
 
 - `NODE_ENV`
   - Used to toggle dev behavior (CORS, etc).
+- `XDG_CACHE_HOME`
+  - Overrides default cache location on Linux.
+  - Used by scrapers and bundled Chromium cache.
+- `APPDATA`
+  - Windows AppData path used when resolving cache/config paths.
 
 ## Quick examples
 

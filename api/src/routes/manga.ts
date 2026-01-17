@@ -4,6 +4,7 @@ import { MangaService, type MangaSource } from '../services/manga-service.ts';
 import type { HonoEnv } from '../types/api.ts';
 import { requireAuth } from '../middleware/auth.ts';
 import { ScraperService } from '../services/scraper-service.ts';
+import { scraperLogger, type ScraperOperation } from '../services/scraper-logger.ts';
 import { Providers } from '@manverse/core';
 import { asuraScansConfig, mangaggConfig, mangafireConfig, toonilyConfig } from '@manverse/scrapers';
 import {
@@ -216,6 +217,36 @@ function normalizeProviderId(provider: string, providerId: string): string {
   return trimmed;
 }
 
+function resolveProviderFromSource(source?: string) {
+  if (source === 'asura') return Providers.AsuraScans;
+  if (source === 'toonily') return Providers.Toonily;
+  if (source === 'mangagg') return Providers.MangaGG;
+  if (source === 'mangafire') return Providers.MangaFire;
+  return null;
+}
+
+function recordScraperLog(params: {
+  requestId?: string;
+  provider: typeof Providers[keyof typeof Providers];
+  operation: ScraperOperation;
+  startedAt: number;
+  error?: unknown;
+}) {
+  const durationMs = Math.max(0, Date.now() - params.startedAt);
+  const ok = !params.error;
+  const err = params.error as (Error & { code?: string; status?: number }) | undefined;
+  const errorCode = err?.code || (err?.status ? `HTTP_${err.status}` : undefined);
+  scraperLogger.record({
+    requestId: params.requestId,
+    provider: params.provider,
+    operation: params.operation,
+    ok,
+    durationMs,
+    errorCode,
+    message: err?.message,
+  });
+}
+
 function toProviderInput(provider: string, providerId: string, details: any) {
   return {
     provider,
@@ -329,6 +360,8 @@ const searchRoute = createRoute({
 manga.openapi(searchRoute, (c) => {
   const { query, page, source, format, status, genre, country, sort } = c.req.valid('query');
   const signal = c.req.raw.signal;
+  const providerSource = resolveProviderFromSource(source);
+  const startedAt = Date.now();
   return service
     .search(query, (source || 'anilist') as MangaSource, {
       sort: normalizeSort(sort),
@@ -337,17 +370,36 @@ manga.openapi(searchRoute, (c) => {
       genre: genre && genre !== 'All' ? genre : undefined,
       country: normalizeCountry(country),
     }, page || 1, { signal })
-    .then((results) => jsonSuccess(c, results))
-    .catch((error) =>
-      jsonError(
+    .then((results) => {
+      if (providerSource) {
+        recordScraperLog({
+          requestId: c.get('requestId'),
+          provider: providerSource,
+          operation: 'search',
+          startedAt,
+        });
+      }
+      return jsonSuccess(c, results);
+    })
+    .catch((error) => {
+      if (providerSource) {
+        recordScraperLog({
+          requestId: c.get('requestId'),
+          provider: providerSource,
+          operation: 'search',
+          startedAt,
+          error,
+        });
+      }
+      return jsonError(
         c,
         {
           code: 'MANGA_SEARCH_FAILED',
           message: error instanceof Error ? error.message : 'Search failed',
         },
         500,
-      ),
-    );
+      );
+    });
 });
 
 const providerMappingRoute = createRoute({
@@ -417,10 +469,17 @@ manga.openapi(providerDetailsRoute, (c) => {
   const resolvedProvider = normalizeProvider(provider);
   const normalizedId = normalizeProviderId(resolvedProvider, id);
   const signal = c.req.raw.signal;
+  const startedAt = Date.now();
 
   return scraper
     .getSeriesDetails(normalizedId, resolvedProvider, { signal })
     .then((details) => {
+      recordScraperLog({
+        requestId: c.get('requestId'),
+        provider: resolvedProvider,
+        operation: 'details',
+        startedAt,
+      });
       let providerRecord = null;
       try {
         providerRecord = upsertProviderManga(
@@ -436,6 +495,13 @@ manga.openapi(providerDetailsRoute, (c) => {
       });
     })
     .catch((error) => {
+      recordScraperLog({
+        requestId: c.get('requestId'),
+        provider: resolvedProvider,
+        operation: 'details',
+        startedAt,
+        error,
+      });
       const fallback =
         getProviderMangaByProviderId(resolvedProvider, normalizedId) ||
         (normalizedId !== id ? getProviderMangaByProviderId(resolvedProvider, id) : null);
@@ -521,6 +587,7 @@ manga.openapi(mangaChaptersRoute, (c) => {
   const { id } = c.req.valid('param');
   const resolvedProvider = normalizeProvider(provider);
   const signal = c.req.raw.signal;
+  const startedAt = Date.now();
 
   const anilistId = Number(id);
   if (Number.isNaN(anilistId)) {
@@ -543,20 +610,33 @@ manga.openapi(mangaChaptersRoute, (c) => {
       signal,
     })
     .then((details) => {
+      recordScraperLog({
+        requestId: c.get('requestId'),
+        provider: resolvedProvider,
+        operation: 'chapters',
+        startedAt,
+      });
       const normalizedProviderId = normalizeProviderId(resolvedProvider, resolvedProviderId);
       upsertProviderManga(toProviderInput(resolvedProvider, normalizedProviderId, details));
       return jsonSuccess(c, details);
     })
-    .catch((error) =>
-      jsonError(
+    .catch((error) => {
+      recordScraperLog({
+        requestId: c.get('requestId'),
+        provider: resolvedProvider,
+        operation: 'chapters',
+        startedAt,
+        error,
+      });
+      return jsonError(
         c,
         {
           code: 'CHAPTER_LIST_FAILED',
           message: error instanceof Error ? error.message : 'Failed to fetch chapters',
         },
         502,
-      ),
-    );
+      );
+    });
 });
 
 const mangaMapRoute = createRoute({
@@ -603,6 +683,7 @@ manga.openapi(mangaMapRoute, async (c) => {
   const resolvedProvider = normalizeProvider(body.provider);
   const rawProviderId = body.providerId?.trim();
   const signal = c.req.raw.signal;
+  const startedAt = Date.now();
   const normalizedProviderId = rawProviderId
     ? normalizeProviderId(resolvedProvider, rawProviderId)
     : undefined;
@@ -644,7 +725,20 @@ manga.openapi(mangaMapRoute, async (c) => {
       } else {
         try {
           details = await scraper.getSeriesDetails(normalizedProviderId, resolvedProvider, { signal });
+          recordScraperLog({
+            requestId: c.get('requestId'),
+            provider: resolvedProvider,
+            operation: 'details',
+            startedAt,
+          });
         } catch (error) {
+          recordScraperLog({
+            requestId: c.get('requestId'),
+            provider: resolvedProvider,
+            operation: 'details',
+            startedAt,
+            error,
+          });
           details = {
             title: normalizedProviderId,
             image: null,

@@ -10,6 +10,7 @@
     "build": "bun --cwd ../app build && bun ../scripts/prepare-runtime.ts && bun ../scripts/bundle-bun.ts && electron-builder --config electron-builder.json"
   },
   "dependencies": {
+    "archiver": "^7.0.1",
     "electron-updater": "^6.1.7"
   },
   "devDependencies": {

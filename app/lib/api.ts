@@ -1,4 +1,12 @@
-import { Series, SeriesDetails, ChapterPage } from '../types';
+import {
+  Series,
+  SeriesDetails,
+  ChapterPage,
+  ScraperLogHealth,
+  ScraperLogEvent,
+  ScraperLoggingStatus,
+  ScraperLogBundle,
+} from '../types';
 import { anilistApi, SearchFilters } from './anilist';
 import { apiRequest, getApiUrl, getStoredToken } from './api-client';
 import {
@@ -616,6 +624,40 @@ export const api = {
       const proxyUrl = `${getApiUrl()}/api/chapters/image?url=${encodeURIComponent(page.img)}&referer=${encodeURIComponent(referer)}`;
       return { page: page.page, src: proxyUrl };
     });
+  },
+
+  getScraperHealth: async (): Promise<ScraperLogHealth> => {
+    return apiRequest<ScraperLogHealth>('/api/scraper/health', { skipAuth: true });
+  },
+
+  getScraperEvents: async (limit = 50): Promise<ScraperLogEvent[]> => {
+    return apiRequest<ScraperLogEvent[]>(
+      `/api/scraper/events?limit=${limit}`,
+      { skipAuth: true },
+    );
+  },
+
+  getScraperLoggingStatus: async (): Promise<ScraperLoggingStatus> => {
+    return apiRequest<ScraperLoggingStatus>('/api/scraper/logging/status', { skipAuth: true });
+  },
+
+  setScraperLoggingEnabled: async (enabled: boolean): Promise<ScraperLoggingStatus> => {
+    return apiRequest<ScraperLoggingStatus>('/api/scraper/logging', {
+      method: 'POST',
+      skipAuth: true,
+      body: JSON.stringify({ enabled }),
+    });
+  },
+
+  clearScraperLoggingBuffer: async (): Promise<{ cleared: boolean }> => {
+    return apiRequest<{ cleared: boolean }>('/api/scraper/logging/clear', {
+      method: 'POST',
+      skipAuth: true,
+    });
+  },
+
+  getScraperLogBundle: async (): Promise<ScraperLogBundle> => {
+    return apiRequest<ScraperLogBundle>('/api/scraper/logging/export', { skipAuth: true });
   },
 
   getProviderMappings: async (anilistId: string): Promise<ProviderMapping[]> => {

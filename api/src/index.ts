@@ -16,6 +16,7 @@ import downloadsRoutes from './routes/downloads.ts';
 import syncRoutes from './routes/sync.ts';
 import anilistRoutes from './routes/anilist.ts';
 import notificationsRoutes from './routes/notifications.ts';
+import scraperRoutes from './routes/scraper.ts';
 import { ScraperService } from './services/scraper-service.ts';
 
 const app = new OpenAPIHono<HonoEnv>({ defaultHook: openApiHook });
@@ -93,6 +94,7 @@ app.route('/api/downloads', downloadsRoutes);
 app.route('/api/sync', syncRoutes);
 app.route('/api/anilist', anilistRoutes);
 app.route('/api/notifications', notificationsRoutes);
+app.route('/api/scraper', scraperRoutes);
 
 app.onError(handleError);
 

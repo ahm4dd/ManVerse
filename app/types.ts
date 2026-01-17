@@ -1,4 +1,4 @@
-import type { Source } from './lib/providers';
+import type { Source, ProviderType } from './lib/providers';
 
 export interface Series {
   id: string;
@@ -74,6 +74,74 @@ export interface Chapter {
 export interface ChapterPage {
   page: number;
   src: string;
+}
+
+export type ScraperOperation = 'search' | 'details' | 'chapters' | 'chapter' | 'image';
+
+export interface ScraperLogEvent {
+  id: string;
+  timestamp: number;
+  requestId?: string;
+  provider: ProviderType;
+  operation: ScraperOperation;
+  ok: boolean;
+  durationMs: number;
+  errorCode?: string;
+  message?: string;
+}
+
+export interface ScraperLogAction {
+  operation: ScraperOperation;
+  total: number;
+  success: number;
+  failed: number;
+  avgDurationMs: number;
+  lastError?: {
+    message?: string;
+    code?: string;
+    at?: string;
+  };
+}
+
+export interface ScraperLogProvider {
+  provider: ProviderType;
+  total: number;
+  success: number;
+  failed: number;
+  avgDurationMs: number;
+  lastError?: {
+    message?: string;
+    code?: string;
+    at?: string;
+    operation?: ScraperOperation;
+  };
+  actions: ScraperLogAction[];
+}
+
+export interface ScraperLogHealth {
+  updatedAt: string;
+  total: number;
+  success: number;
+  failed: number;
+  avgDurationMs: number;
+  providers: ScraperLogProvider[];
+  recentErrors: ScraperLogEvent[];
+}
+
+export interface ScraperLoggingStatus {
+  enabled: boolean;
+  logFile: string | null;
+  sizeBytes: number;
+  maxBytes: number;
+  maxFiles: number;
+}
+
+export interface ScraperLogBundle {
+  generatedAt: string;
+  status: ScraperLoggingStatus;
+  health: ScraperLogHealth;
+  recentEvents: ScraperLogEvent[];
+  fileTail: string[];
 }
 
 export interface SearchResult {

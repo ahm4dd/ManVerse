@@ -4,6 +4,7 @@ const http = require('node:http');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const archiver = require('archiver');
 
 const preflightTempDir = path.join(os.homedir(), '.config', 'ManVerse', 'tmp');
 if (process.platform === 'linux') {
@@ -17,7 +18,16 @@ if (process.platform === 'linux') {
   }
 }
 
-const { app, BrowserWindow, dialog, Notification, ipcMain, session } = require('electron');
+const {
+  app,
+  BrowserWindow,
+  dialog,
+  Notification,
+  ipcMain,
+  session,
+  crashReporter,
+  shell,
+} = require('electron');
 const { autoUpdater } = require('electron-updater');
 
 const isDev = process.env.MANVERSE_DEV === 'true' || !app.isPackaged;
@@ -80,20 +90,323 @@ let apiRestarting = false;
 let isMaximized = false;
 let pendingAuthToken = null;
 
-function logDesktop(message, data = null) {
+const DESKTOP_LOG_MAX_EVENTS = 200;
+const DESKTOP_LOG_DEFAULT_MAX_BYTES = 5 * 1024 * 1024;
+const DESKTOP_LOG_DEFAULT_MAX_FILES = 5;
+const DESKTOP_LOG_NAME = 'desktop.log';
+const DESKTOP_LOG_CONFIG = 'desktop-logging.json';
+
+const getUserDataPath = () => {
   try {
-    const logPath = path.join(app.getPath('userData'), 'desktop.log');
-    fs.mkdirSync(path.dirname(logPath), { recursive: true });
-    const payload = {
-      ts: new Date().toISOString(),
-      message,
-      data,
-    };
-    fs.appendFileSync(logPath, `${JSON.stringify(payload)}\n`);
+    return app.getPath('userData');
   } catch {
-    // ignore logging failures
+    return path.join(os.homedir(), '.config', 'ManVerse');
+  }
+};
+
+const redactMessage = (value) => {
+  if (!value) return value;
+  return String(value)
+    .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, 'Bearer REDACTED')
+    .replace(/(access_token|token|authorization|client_secret|client_id)=([^\s&]+)/gi, '$1=REDACTED')
+    .replace(/(https?:\/\/[^\s?]+)\?[^\s]+/gi, '$1?[redacted]');
+};
+
+const createDesktopLogger = () => {
+  const logDir = getUserDataPath();
+  const logFile = path.join(logDir, DESKTOP_LOG_NAME);
+  const configFile = path.join(logDir, DESKTOP_LOG_CONFIG);
+  const events = [];
+  let config = {
+    enabled: false,
+    maxBytes: DESKTOP_LOG_DEFAULT_MAX_BYTES,
+    maxFiles: DESKTOP_LOG_DEFAULT_MAX_FILES,
+  };
+
+  const loadConfig = () => {
+    try {
+      if (!fs.existsSync(configFile)) return config;
+      const raw = fs.readFileSync(configFile, 'utf-8');
+      const parsed = JSON.parse(raw);
+      config = {
+        enabled: typeof parsed.enabled === 'boolean' ? parsed.enabled : config.enabled,
+        maxBytes:
+          typeof parsed.maxBytes === 'number' && parsed.maxBytes > 0
+            ? parsed.maxBytes
+            : config.maxBytes,
+        maxFiles:
+          typeof parsed.maxFiles === 'number' && parsed.maxFiles > 0
+            ? parsed.maxFiles
+            : config.maxFiles,
+      };
+      return config;
+    } catch {
+      return config;
+    }
+  };
+
+  const persistConfig = () => {
+    try {
+      fs.writeFileSync(configFile, JSON.stringify(config, null, 2));
+    } catch {
+      // ignore config write failures
+    }
+  };
+
+  const rotateLogs = () => {
+    try {
+      if (!fs.existsSync(logFile)) return;
+      const stats = fs.statSync(logFile);
+      if (stats.size <= config.maxBytes) return;
+      for (let index = config.maxFiles - 1; index >= 1; index -= 1) {
+        const source = `${logFile}.${index}`;
+        const target = `${logFile}.${index + 1}`;
+        if (!fs.existsSync(source)) continue;
+        if (index + 1 > config.maxFiles) {
+          fs.unlinkSync(source);
+        } else {
+          fs.renameSync(source, target);
+        }
+      }
+      fs.renameSync(logFile, `${logFile}.1`);
+    } catch {
+      // ignore rotation failures
+    }
+  };
+
+  const appendLine = (line) => {
+    try {
+      fs.mkdirSync(logDir, { recursive: true });
+      rotateLogs();
+      fs.appendFileSync(logFile, `${line}\n`);
+    } catch {
+      // ignore write failures
+    }
+  };
+
+  loadConfig();
+
+  return {
+    log: (message, data = null, level = 'info') => {
+      const event = {
+        id: crypto.randomUUID(),
+        ts: new Date().toISOString(),
+        level,
+        message: redactMessage(message),
+        data: data ?? null,
+      };
+      events.push(event);
+      if (events.length > DESKTOP_LOG_MAX_EVENTS) {
+        events.splice(0, events.length - DESKTOP_LOG_MAX_EVENTS);
+      }
+      if (config.enabled) {
+        appendLine(JSON.stringify(event));
+      }
+      return event;
+    },
+    list: (limit = 50) => {
+      if (limit <= 0) return [];
+      return events.slice(-limit).reverse();
+    },
+    clearBuffer: () => {
+      events.length = 0;
+    },
+    setEnabled: (enabled) => {
+      config.enabled = Boolean(enabled);
+      persistConfig();
+      return getStatus();
+    },
+    getStatus: () => getStatus(),
+    getLogDir: () => logDir,
+    getLogFile: () => logFile,
+  };
+
+  function getStatus() {
+    let sizeBytes = 0;
+    try {
+      if (fs.existsSync(logFile)) {
+        sizeBytes = fs.statSync(logFile).size;
+      }
+    } catch {
+      sizeBytes = 0;
+    }
+    return {
+      enabled: config.enabled,
+      logFile: config.enabled ? logFile : null,
+      logDir,
+      sizeBytes,
+      maxBytes: config.maxBytes,
+      maxFiles: config.maxFiles,
+      eventCount: events.length,
+    };
+  }
+};
+
+let desktopLogger = null;
+
+const getDesktopLogger = () => {
+  if (!desktopLogger) {
+    desktopLogger = createDesktopLogger();
+  }
+  return desktopLogger;
+};
+
+function logDesktop(message, data = null, level = 'info') {
+  try {
+    return getDesktopLogger().log(message, data ?? null, level);
+  } catch {
+    return null;
   }
 }
+
+const getCrashDumpDir = () => {
+  return path.join(getUserDataPath(), 'crashDumps');
+};
+
+const startCrashReporter = () => {
+  try {
+    const crashDir = getCrashDumpDir();
+    fs.mkdirSync(crashDir, { recursive: true });
+    app.setPath('crashDumps', crashDir);
+    crashReporter.start({
+      companyName: 'ManVerse',
+      productName: 'ManVerse',
+      submitURL: 'https://example.invalid',
+      uploadToServer: false,
+      compress: true,
+    });
+    logDesktop('crashReporter.started', { crashDir });
+  } catch (error) {
+    logDesktop('crashReporter.failed', { message: error?.message || String(error) }, 'warn');
+  }
+};
+
+const getCrashStatus = () => {
+  const crashDumpDir = getCrashDumpDir();
+  let crashReportCount = 0;
+  let lastCrashTime = null;
+  try {
+    const entries = fs.readdirSync(crashDumpDir, { withFileTypes: true });
+    entries.forEach((entry) => {
+      if (!entry.isFile()) return;
+      crashReportCount += 1;
+      try {
+        const stats = fs.statSync(path.join(crashDumpDir, entry.name));
+        const timestamp = stats.mtimeMs;
+        if (!lastCrashTime || timestamp > lastCrashTime) {
+          lastCrashTime = timestamp;
+        }
+      } catch {
+        // ignore
+      }
+    });
+  } catch {
+    // ignore
+  }
+  return {
+    crashDumpDir,
+    crashReportCount,
+    lastCrashTime: lastCrashTime ? new Date(lastCrashTime).toISOString() : null,
+  };
+};
+
+const fetchJson = async (url) => {
+  if (typeof fetch !== 'function') {
+    throw new Error('fetch unavailable in this runtime');
+  }
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+  return response.json();
+};
+
+const createSupportBundle = async (rendererBundle) => {
+  const bundleDir = path.join(getUserDataPath(), 'support-bundles');
+  fs.mkdirSync(bundleDir, { recursive: true });
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const bundlePath = path.join(bundleDir, `manverse-support-${timestamp}.zip`);
+
+  const output = fs.createWriteStream(bundlePath);
+  const archive = archiver('zip', { zlib: { level: 9 } });
+
+  const archiveDone = new Promise((resolve, reject) => {
+    output.on('close', resolve);
+    output.on('error', reject);
+    archive.on('error', reject);
+    archive.on('warning', (error) => {
+      logDesktop('supportBundle.warning', { message: error?.message || String(error) }, 'warn');
+    });
+  });
+
+  archive.pipe(output);
+
+  const metadata = {
+    generatedAt: new Date().toISOString(),
+    appVersion: app.getVersion(),
+    platform: process.platform,
+    arch: process.arch,
+    node: process.versions.node,
+    electron: process.versions.electron,
+  };
+  archive.append(JSON.stringify(metadata, null, 2), { name: 'metadata.json' });
+
+  const logger = getDesktopLogger();
+  const desktopBundle = {
+    generatedAt: new Date().toISOString(),
+    status: logger.getStatus(),
+    recentEvents: logger.list(200).reverse(),
+  };
+  archive.append(JSON.stringify(desktopBundle, null, 2), {
+    name: 'desktop/desktop-logs.json',
+  });
+  const desktopLogFile = logger.getLogFile();
+  if (desktopLogFile && fs.existsSync(desktopLogFile)) {
+    archive.file(desktopLogFile, { name: 'desktop/desktop.log.jsonl' });
+  }
+
+  const crashStatus = getCrashStatus();
+  archive.append(JSON.stringify(crashStatus, null, 2), {
+    name: 'desktop/crash-status.json',
+  });
+  try {
+    const crashFiles = fs.readdirSync(crashStatus.crashDumpDir, { withFileTypes: true });
+    crashFiles.forEach((entry) => {
+      if (!entry.isFile()) return;
+      const filePath = path.join(crashStatus.crashDumpDir, entry.name);
+      archive.file(filePath, { name: `desktop/crash-dumps/${entry.name}` });
+    });
+  } catch {
+    // ignore crash dump read failures
+  }
+
+  if (rendererBundle) {
+    archive.append(JSON.stringify(rendererBundle, null, 2), {
+      name: 'renderer/renderer-logs.json',
+    });
+  }
+
+  const apiBase = process.env.MANVERSE_RENDERER_API_URL || apiUrl;
+  try {
+    const apiBundle = await fetchJson(`${apiBase}/api/scraper/logging/export`);
+    archive.append(JSON.stringify(apiBundle, null, 2), {
+      name: 'api/scraper-logs.json',
+    });
+  } catch (error) {
+    archive.append(
+      JSON.stringify(
+        { message: error?.message || String(error), url: `${apiBase}/api/scraper/logging/export` },
+        null,
+        2,
+      ),
+      { name: 'api/scraper-logs-error.json' },
+    );
+  }
+
+  await archive.finalize();
+  await archiveDone;
+  return bundlePath;
+};
 
 async function clearAniListSession() {
   try {
@@ -1161,6 +1474,7 @@ process.on('SIGINT', handleShutdownSignal);
 
 app.whenReady().then(() => {
   app.setAppUserModelId('com.ahm4dd.manverse');
+  startCrashReporter();
   ipcMain.handle('manverse:getSettings', () => getSettings());
   ipcMain.handle('manverse:updateSetting', async (_event, payload) =>
     updateSetting(payload?.key, payload?.value),
@@ -1209,6 +1523,43 @@ app.whenReady().then(() => {
       logDesktop(payload.message, payload.data ?? null);
     }
     return { ok: true };
+  });
+  ipcMain.handle('manverse:desktop-log-status', () => getDesktopLogger().getStatus());
+  ipcMain.handle('manverse:desktop-log-events', (_event, payload) =>
+    getDesktopLogger().list(Number(payload?.limit) || 50),
+  );
+  ipcMain.handle('manverse:desktop-log-enabled', (_event, payload) =>
+    getDesktopLogger().setEnabled(Boolean(payload?.enabled)),
+  );
+  ipcMain.handle('manverse:desktop-log-clear', () => {
+    getDesktopLogger().clearBuffer();
+    return { ok: true };
+  });
+  ipcMain.handle('manverse:desktop-log-open', () => {
+    const logger = getDesktopLogger();
+    const status = logger.getStatus();
+    const target = status.logFile || logger.getLogFile();
+    if (target) {
+      shell.showItemInFolder(target);
+    } else {
+      shell.openPath(logger.getLogDir());
+    }
+    return { ok: true };
+  });
+  ipcMain.handle('manverse:desktop-crash-status', () => getCrashStatus());
+  ipcMain.handle('manverse:desktop-crash-open', () => {
+    shell.openPath(getCrashDumpDir());
+    return { ok: true };
+  });
+  ipcMain.handle('manverse:export-support-bundle', async (_event, payload) => {
+    try {
+      const bundlePath = await createSupportBundle(payload?.rendererBundle ?? null);
+      shell.showItemInFolder(bundlePath);
+      return { ok: true, path: bundlePath };
+    } catch (error) {
+      logDesktop('supportBundle.failed', { message: error?.message || String(error) }, 'error');
+      return { ok: false, error: error?.message || String(error) };
+    }
   });
   ipcMain.handle('manverse:getNotifierEvents', () => loadNotifierEvents());
   ipcMain.handle('manverse:markAllNotifierRead', () => markAllNotifierRead());

@@ -31,6 +31,36 @@ export type DesktopWindowState = {
   isMaximized: boolean;
 };
 
+export type DesktopLogStatus = {
+  enabled: boolean;
+  logFile: string | null;
+  logDir: string;
+  sizeBytes: number;
+  maxBytes: number;
+  maxFiles: number;
+  eventCount: number;
+};
+
+export type DesktopLogEvent = {
+  id: string;
+  ts: string;
+  level: 'info' | 'warn' | 'error';
+  message: string;
+  data?: Record<string, unknown> | null;
+};
+
+export type DesktopCrashStatus = {
+  crashDumpDir: string;
+  crashReportCount: number;
+  lastCrashTime: string | null;
+};
+
+export type SupportBundleResult = {
+  ok: boolean;
+  path?: string;
+  error?: string;
+};
+
 export type LanAddress = {
   address: string;
   family: 'IPv4' | 'IPv6';
@@ -66,6 +96,14 @@ type DesktopBridge = {
   onNotifierEvents?: (callback: (events: NotifierEvent[]) => void) => () => void;
   consumeAuthToken?: () => Promise<string | null>;
   log?: (payload: { message: string; data?: Record<string, unknown> | null }) => Promise<{ ok: boolean }>;
+  getDesktopLogStatus?: () => Promise<DesktopLogStatus>;
+  getDesktopLogEvents?: (limit: number) => Promise<DesktopLogEvent[]>;
+  setDesktopLogEnabled?: (enabled: boolean) => Promise<DesktopLogStatus>;
+  clearDesktopLogBuffer?: () => Promise<{ ok: boolean }>;
+  openDesktopLogFolder?: () => Promise<{ ok: boolean }>;
+  getDesktopCrashStatus?: () => Promise<DesktopCrashStatus>;
+  openDesktopCrashFolder?: () => Promise<{ ok: boolean }>;
+  exportSupportBundle?: (rendererBundle: unknown) => Promise<SupportBundleResult>;
   minimizeWindow?: () => Promise<{ ok: boolean }>;
   toggleMaximize?: () => Promise<{ ok: boolean; isMaximized: boolean }>;
   closeWindow?: () => Promise<{ ok: boolean }>;
@@ -144,6 +182,48 @@ export const desktopApi = {
       return;
     }
     await bridge.log({ message, data: data ?? null });
+  },
+  getDesktopLogStatus: async (): Promise<DesktopLogStatus | null> => {
+    if (!bridge?.getDesktopLogStatus) {
+      return null;
+    }
+    return bridge.getDesktopLogStatus();
+  },
+  getDesktopLogEvents: async (limit = 50): Promise<DesktopLogEvent[]> => {
+    if (!bridge?.getDesktopLogEvents) {
+      return [];
+    }
+    return bridge.getDesktopLogEvents(limit);
+  },
+  setDesktopLogEnabled: async (enabled: boolean): Promise<DesktopLogStatus | null> => {
+    if (!bridge?.setDesktopLogEnabled) {
+      return null;
+    }
+    return bridge.setDesktopLogEnabled(enabled);
+  },
+  clearDesktopLogBuffer: async (): Promise<void> => {
+    if (!bridge?.clearDesktopLogBuffer) return;
+    await bridge.clearDesktopLogBuffer();
+  },
+  openDesktopLogFolder: async (): Promise<void> => {
+    if (!bridge?.openDesktopLogFolder) return;
+    await bridge.openDesktopLogFolder();
+  },
+  getDesktopCrashStatus: async (): Promise<DesktopCrashStatus | null> => {
+    if (!bridge?.getDesktopCrashStatus) {
+      return null;
+    }
+    return bridge.getDesktopCrashStatus();
+  },
+  openDesktopCrashFolder: async (): Promise<void> => {
+    if (!bridge?.openDesktopCrashFolder) return;
+    await bridge.openDesktopCrashFolder();
+  },
+  exportSupportBundle: async (rendererBundle: unknown): Promise<SupportBundleResult | null> => {
+    if (!bridge?.exportSupportBundle) {
+      return null;
+    }
+    return bridge.exportSupportBundle(rendererBundle);
   },
   minimizeWindow: async (): Promise<void> => {
     if (!bridge?.minimizeWindow) return;

@@ -18,6 +18,16 @@ contextBridge.exposeInMainWorld('manverse', {
   markAllNotifierRead: () => ipcRenderer.invoke('manverse:markAllNotifierRead'),
   consumeAuthToken: () => ipcRenderer.invoke('manverse:consumeAuthToken'),
   log: (payload) => ipcRenderer.invoke('manverse:log', payload),
+  getDesktopLogStatus: () => ipcRenderer.invoke('manverse:desktop-log-status'),
+  getDesktopLogEvents: (limit) => ipcRenderer.invoke('manverse:desktop-log-events', { limit }),
+  setDesktopLogEnabled: (enabled) =>
+    ipcRenderer.invoke('manverse:desktop-log-enabled', { enabled }),
+  clearDesktopLogBuffer: () => ipcRenderer.invoke('manverse:desktop-log-clear'),
+  openDesktopLogFolder: () => ipcRenderer.invoke('manverse:desktop-log-open'),
+  getDesktopCrashStatus: () => ipcRenderer.invoke('manverse:desktop-crash-status'),
+  openDesktopCrashFolder: () => ipcRenderer.invoke('manverse:desktop-crash-open'),
+  exportSupportBundle: (rendererBundle) =>
+    ipcRenderer.invoke('manverse:export-support-bundle', { rendererBundle }),
   onNotifierEvents: (callback) => {
     const listener = (_event, payload) => callback(payload);
     ipcRenderer.on('manverse:notifier-events', listener);

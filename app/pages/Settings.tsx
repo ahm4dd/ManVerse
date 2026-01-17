@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ChevronLeft } from '../components/Icons';
 import {
   desktopApi,
@@ -6,12 +6,18 @@ import {
   type UpdateStatus,
   type LanAccessInfo,
   type LanHealth,
+  type DesktopLogStatus,
+  type DesktopCrashStatus,
 } from '../lib/desktop';
 import { apiRequest, getApiUrl } from '../lib/api-client';
+import { api } from '../lib/api';
 import { buildRedirectUri } from '../lib/anilist-redirect';
 import { useTheme, themes, type Theme, type ThemeOverrides, type CustomTheme } from '../lib/theme';
+import type { ScraperLogHealth, ScraperLoggingStatus, ScraperOperation } from '../types';
+import { providerShortLabel } from '../lib/providers';
+import { rendererLogger, type RendererLogStatus } from '../lib/renderer-logger';
 
-export type SettingsSection = 'account' | 'app' | 'hosting' | 'themes';
+export type SettingsSection = 'account' | 'app' | 'hosting' | 'themes' | 'scrapers';
 
 interface SettingsProps {
   onBack: () => void;
@@ -30,6 +36,7 @@ const SETTINGS_SECTIONS: Array<{
   { id: 'account', label: 'Account', description: 'AniList credentials and login status.' },
   { id: 'app', label: 'App', description: 'Desktop background checks and updates.' },
   { id: 'hosting', label: 'Self-hosting', description: 'Run on your network for phones/tablets.' },
+  { id: 'scrapers', label: 'Scraper logging', description: 'Monitor provider stability and errors.' },
   { id: 'themes', label: 'Themes', description: 'Pick a look that fits your vibe.' },
 ];
 
@@ -80,6 +87,22 @@ const Settings: React.FC<SettingsProps> = ({
   const [draftOverrides, setDraftOverrides] = useState<ThemeOverrides>(themeOverrides);
   const [overridesDirty, setOverridesDirty] = useState(false);
   const [pendingDeleteTheme, setPendingDeleteTheme] = useState<CustomTheme | null>(null);
+  const [scraperHealth, setScraperHealth] = useState<ScraperLogHealth | null>(null);
+  const [scraperLoading, setScraperLoading] = useState(false);
+  const [scraperError, setScraperError] = useState<string | null>(null);
+  const [scraperLoggingStatus, setScraperLoggingStatus] =
+    useState<ScraperLoggingStatus | null>(null);
+  const [scraperLoggingBusy, setScraperLoggingBusy] = useState(false);
+  const [desktopLogStatus, setDesktopLogStatus] = useState<DesktopLogStatus | null>(null);
+  const [desktopCrashStatus, setDesktopCrashStatus] = useState<DesktopCrashStatus | null>(null);
+  const [desktopLoggingBusy, setDesktopLoggingBusy] = useState(false);
+  const [desktopLoggingLoading, setDesktopLoggingLoading] = useState(false);
+  const [desktopLoggingError, setDesktopLoggingError] = useState<string | null>(null);
+  const [rendererLogStatus, setRendererLogStatus] = useState<RendererLogStatus | null>(null);
+  const [rendererLoggingError, setRendererLoggingError] = useState<string | null>(null);
+  const [supportBundleBusy, setSupportBundleBusy] = useState(false);
+  const [supportBundleMessage, setSupportBundleMessage] = useState<string | null>(null);
+  const [supportBundleError, setSupportBundleError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!desktopApi.isAvailable) return;
@@ -112,6 +135,275 @@ const Settings: React.FC<SettingsProps> = ({
       setActiveSection(initialSection);
     }
   }, [initialSection, sectionRequestId]);
+
+  const loadScraperHealth = useCallback(async () => {
+    setScraperLoading(true);
+    setScraperError(null);
+    try {
+      const [healthResult, statusResult] = await Promise.allSettled([
+        api.getScraperHealth(),
+        api.getScraperLoggingStatus(),
+      ]);
+      if (healthResult.status === 'fulfilled') {
+        setScraperHealth(healthResult.value);
+      }
+      if (statusResult.status === 'fulfilled') {
+        setScraperLoggingStatus(statusResult.value);
+      }
+      if (healthResult.status === 'rejected' || statusResult.status === 'rejected') {
+        const error = healthResult.status === 'rejected'
+          ? healthResult.reason
+          : statusResult.status === 'rejected'
+            ? statusResult.reason
+            : null;
+        if (error) {
+          setScraperError(
+            error instanceof Error ? error.message : 'Failed to load scraper logging',
+          );
+        }
+      }
+    } catch (error) {
+      setScraperError(
+        error instanceof Error ? error.message : 'Failed to load scraper health',
+      );
+    } finally {
+      setScraperLoading(false);
+    }
+  }, []);
+
+  const handleToggleScraperLogging = async () => {
+    if (!scraperLoggingStatus) return;
+    setScraperLoggingBusy(true);
+    try {
+      const next = await api.setScraperLoggingEnabled(!scraperLoggingStatus.enabled);
+      setScraperLoggingStatus(next);
+    } catch (error) {
+      setScraperError(
+        error instanceof Error ? error.message : 'Failed to update logging status',
+      );
+    } finally {
+      setScraperLoggingBusy(false);
+    }
+  };
+
+  const handleClearScraperBuffer = async () => {
+    setScraperLoggingBusy(true);
+    try {
+      await api.clearScraperLoggingBuffer();
+      await loadScraperHealth();
+    } catch (error) {
+      setScraperError(
+        error instanceof Error ? error.message : 'Failed to clear scraper buffer',
+      );
+    } finally {
+      setScraperLoggingBusy(false);
+    }
+  };
+
+  const handleExportScraperLogs = async () => {
+    setScraperLoggingBusy(true);
+    try {
+      const bundle = await api.getScraperLogBundle();
+      const blob = new Blob([JSON.stringify(bundle, null, 2)], {
+        type: 'application/json',
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `manverse-scraper-logs-${bundle.generatedAt.replace(/[:.]/g, '-')}.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setScraperError(
+        error instanceof Error ? error.message : 'Failed to export scraper logs',
+      );
+    } finally {
+      setScraperLoggingBusy(false);
+    }
+  };
+
+  const loadDesktopLogging = useCallback(async () => {
+    if (!desktopApi.isAvailable) return;
+    setDesktopLoggingLoading(true);
+    setDesktopLoggingError(null);
+    try {
+      const [statusResult, crashResult] = await Promise.allSettled([
+        desktopApi.getDesktopLogStatus(),
+        desktopApi.getDesktopCrashStatus(),
+      ]);
+      if (statusResult.status === 'fulfilled' && statusResult.value) {
+        setDesktopLogStatus(statusResult.value);
+      }
+      if (crashResult.status === 'fulfilled' && crashResult.value) {
+        setDesktopCrashStatus(crashResult.value);
+      }
+      if (statusResult.status === 'rejected' || crashResult.status === 'rejected') {
+        const error = statusResult.status === 'rejected'
+          ? statusResult.reason
+          : crashResult.status === 'rejected'
+            ? crashResult.reason
+            : null;
+        if (error) {
+          setDesktopLoggingError(
+            error instanceof Error ? error.message : 'Failed to load desktop logs',
+          );
+        }
+      }
+    } catch (error) {
+      setDesktopLoggingError(
+        error instanceof Error ? error.message : 'Failed to load desktop logs',
+      );
+    } finally {
+      setDesktopLoggingLoading(false);
+    }
+  }, []);
+
+  const handleToggleDesktopLogging = async () => {
+    if (!desktopLogStatus) return;
+    setDesktopLoggingBusy(true);
+    try {
+      const next = await desktopApi.setDesktopLogEnabled(!desktopLogStatus.enabled);
+      if (next) {
+        setDesktopLogStatus(next);
+      }
+    } catch (error) {
+      setDesktopLoggingError(
+        error instanceof Error ? error.message : 'Failed to update desktop logging',
+      );
+    } finally {
+      setDesktopLoggingBusy(false);
+    }
+  };
+
+  const handleClearDesktopBuffer = async () => {
+    setDesktopLoggingBusy(true);
+    try {
+      await desktopApi.clearDesktopLogBuffer();
+      await loadDesktopLogging();
+    } catch (error) {
+      setDesktopLoggingError(
+        error instanceof Error ? error.message : 'Failed to clear desktop buffer',
+      );
+    } finally {
+      setDesktopLoggingBusy(false);
+    }
+  };
+
+  const handleOpenDesktopLogs = async () => {
+    try {
+      await desktopApi.openDesktopLogFolder();
+    } catch (error) {
+      setDesktopLoggingError(
+        error instanceof Error ? error.message : 'Failed to open desktop logs',
+      );
+    }
+  };
+
+  const handleOpenCrashDumps = async () => {
+    try {
+      await desktopApi.openDesktopCrashFolder();
+    } catch (error) {
+      setDesktopLoggingError(
+        error instanceof Error ? error.message : 'Failed to open crash dumps',
+      );
+    }
+  };
+
+  const loadRendererLogging = useCallback(() => {
+    try {
+      setRendererLogStatus(rendererLogger.status());
+      setRendererLoggingError(null);
+    } catch (error) {
+      setRendererLoggingError(
+        error instanceof Error ? error.message : 'Failed to load app logs',
+      );
+    }
+  }, []);
+
+  const handleClearRendererBuffer = () => {
+    rendererLogger.clear();
+    loadRendererLogging();
+  };
+
+  const handleExportRendererLogs = () => {
+    try {
+      const bundle = rendererLogger.exportBundle();
+      const blob = new Blob([JSON.stringify(bundle, null, 2)], {
+        type: 'application/json',
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `manverse-app-logs-${bundle.generatedAt.replace(/[:.]/g, '-')}.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setRendererLoggingError(
+        error instanceof Error ? error.message : 'Failed to export app logs',
+      );
+    }
+  };
+
+  const handleExportSupportBundle = async () => {
+    setSupportBundleBusy(true);
+    setSupportBundleError(null);
+    setSupportBundleMessage(null);
+    try {
+      const rendererBundle = rendererLogger.exportBundle();
+      if (desktopApi.isAvailable) {
+        const result = await desktopApi.exportSupportBundle(rendererBundle);
+        if (!result?.ok) {
+          throw new Error(result?.error || 'Failed to export support bundle');
+        }
+        setSupportBundleMessage(result.path ? `Saved to ${result.path}` : 'Exported support bundle');
+        return;
+      }
+
+      const apiBundle = await api.getScraperLogBundle();
+      const bundle = {
+        generatedAt: new Date().toISOString(),
+        api: apiBundle,
+        renderer: rendererBundle,
+      };
+      const blob = new Blob([JSON.stringify(bundle, null, 2)], {
+        type: 'application/json',
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `manverse-support-bundle-${bundle.generatedAt.replace(/[:.]/g, '-')}.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      setSupportBundleMessage('Exported support bundle');
+    } catch (error) {
+      setSupportBundleError(
+        error instanceof Error ? error.message : 'Failed to export support bundle',
+      );
+    } finally {
+      setSupportBundleBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeSection !== 'scrapers') return;
+    void loadScraperHealth();
+    void loadDesktopLogging();
+    loadRendererLogging();
+    const interval = window.setInterval(() => {
+      void loadScraperHealth();
+      void loadDesktopLogging();
+      loadRendererLogging();
+    }, 15000);
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [activeSection, loadScraperHealth, loadDesktopLogging, loadRendererLogging]);
 
   useEffect(() => {
     if (desktopApi.isAvailable) return;
@@ -173,6 +465,31 @@ const Settings: React.FC<SettingsProps> = ({
   const apiUrl = getApiUrl();
   const defaultRedirectUri = buildRedirectUri(apiUrl);
   const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+  const formatPercent = (value: number, total: number) => {
+    if (!total) return '0%';
+    return `${Math.round((value / total) * 100)}%`;
+  };
+  const formatDuration = (ms: number) => {
+    if (!Number.isFinite(ms)) return '—';
+    if (ms >= 1000) {
+      return `${(ms / 1000).toFixed(1)}s`;
+    }
+    return `${Math.round(ms)}ms`;
+  };
+  const formatBytes = (bytes: number) => {
+    if (!Number.isFinite(bytes)) return '—';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+  };
+  const operationLabels: Record<ScraperOperation, string> = {
+    search: 'Search',
+    details: 'Details',
+    chapters: 'Chapter list',
+    chapter: 'Chapter',
+    image: 'Image',
+  };
 
   const handleSaveCredentials = async () => {
     if (!credentials.clientId.trim() || !credentials.clientSecret.trim()) {
@@ -824,6 +1141,409 @@ const Settings: React.FC<SettingsProps> = ({
     );
   };
 
+  const renderScraperHealthSection = () => {
+    const health = scraperHealth;
+    const status = scraperLoggingStatus;
+    const lastUpdated = health?.updatedAt
+      ? new Date(health.updatedAt).toLocaleTimeString()
+      : '—';
+    const providers = health?.providers ?? [];
+    const recentErrors = health?.recentErrors ?? [];
+
+    return (
+      <div className="space-y-6">
+        <div className="bg-surface border border-white/10 rounded-2xl p-6 shadow-xl">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-xl font-bold text-white">Scraper logging</h2>
+              <p className="text-base text-gray-300 mt-2">
+                Track provider stability, response times, and the latest failures.
+              </p>
+              <div className="text-xs text-gray-500 mt-2">
+                Last updated: {lastUpdated}
+              </div>
+            </div>
+            <button
+              onClick={loadScraperHealth}
+              className="inline-flex items-center justify-center rounded-xl bg-primary px-5 py-3 text-sm font-bold text-black shadow-lg shadow-primary/30 transition hover:brightness-110"
+            >
+              Refresh
+            </button>
+          </div>
+
+          {scraperLoading && (
+            <div className="mt-4 text-sm text-gray-400">Loading logging data…</div>
+          )}
+          {scraperError && (
+            <div className="mt-4 rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+              {scraperError}
+            </div>
+          )}
+
+          {status && (
+            <div className="mt-6 rounded-2xl border border-white/10 bg-surfaceHighlight/40 p-4">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="text-sm font-semibold text-white">File logging</div>
+                  <div className="text-xs text-gray-400 mt-1">
+                    {status.enabled ? 'Enabled' : 'Disabled'} ·{' '}
+                    {status.logFile ? formatBytes(status.sizeBytes) : 'No file yet'}
+                  </div>
+                  {status.logFile && (
+                    <div className="text-[11px] text-gray-500 mt-1 break-all">
+                      {status.logFile}
+                    </div>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={handleToggleScraperLogging}
+                    disabled={scraperLoggingBusy}
+                    className={`px-4 py-2 rounded-lg text-xs font-bold border transition-colors disabled:opacity-60 ${
+                      status.enabled
+                        ? 'bg-rose-500/20 text-rose-200 border-rose-500/40'
+                        : 'bg-primary text-black border-primary'
+                    }`}
+                  >
+                    {status.enabled ? 'Turn off' : 'Turn on'}
+                  </button>
+                  <button
+                    onClick={handleClearScraperBuffer}
+                    disabled={scraperLoggingBusy}
+                    className="px-4 py-2 rounded-lg text-xs font-bold border border-white/10 text-gray-200 hover:text-white disabled:opacity-60"
+                  >
+                    Clear buffer
+                  </button>
+                  <button
+                    onClick={handleExportScraperLogs}
+                    disabled={scraperLoggingBusy}
+                    className="px-4 py-2 rounded-lg text-xs font-bold border border-white/10 text-gray-200 hover:text-white disabled:opacity-60"
+                  >
+                    Export logs
+                  </button>
+                </div>
+              </div>
+              <div className="mt-3 text-[11px] text-gray-500">
+                Logs are stored locally on the host. Sensitive tokens are redacted.
+              </div>
+            </div>
+          )}
+
+          {health && (
+            <div className="mt-6 grid gap-3 sm:grid-cols-3">
+              <div className="rounded-xl border border-white/10 bg-surfaceHighlight/40 px-4 py-3">
+                <div className="text-xs text-gray-500 uppercase tracking-wide">Total requests</div>
+                <div className="text-2xl font-bold text-white mt-1">{health.total}</div>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-surfaceHighlight/40 px-4 py-3">
+                <div className="text-xs text-gray-500 uppercase tracking-wide">Success rate</div>
+                <div className="text-2xl font-bold text-white mt-1">
+                  {formatPercent(health.success, health.total)}
+                </div>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-surfaceHighlight/40 px-4 py-3">
+                <div className="text-xs text-gray-500 uppercase tracking-wide">Avg duration</div>
+                <div className="text-2xl font-bold text-white mt-1">
+                  {formatDuration(health.avgDurationMs)}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {desktopApi.isAvailable && (
+          <div className="bg-surface border border-white/10 rounded-2xl p-6 shadow-xl">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-xl font-bold text-white">Desktop logging</h2>
+                <p className="text-base text-gray-300 mt-2">
+                  Capture what the desktop shell is doing and check for crash dumps.
+                </p>
+              </div>
+              <button
+                onClick={loadDesktopLogging}
+                className="inline-flex items-center justify-center rounded-xl bg-primary px-5 py-3 text-sm font-bold text-black shadow-lg shadow-primary/30 transition hover:brightness-110"
+              >
+                Refresh
+              </button>
+            </div>
+
+            {desktopLoggingLoading && (
+              <div className="mt-4 text-sm text-gray-400">Loading desktop logs…</div>
+            )}
+            {desktopLoggingError && (
+              <div className="mt-4 rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+                {desktopLoggingError}
+              </div>
+            )}
+
+            {desktopLogStatus && (
+              <div className="mt-6 rounded-2xl border border-white/10 bg-surfaceHighlight/40 p-4">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <div className="text-sm font-semibold text-white">File logging</div>
+                    <div className="text-xs text-gray-400 mt-1">
+                      {desktopLogStatus.enabled ? 'Enabled' : 'Disabled'} ·{' '}
+                      {desktopLogStatus.logFile
+                        ? formatBytes(desktopLogStatus.sizeBytes)
+                        : 'No file yet'}
+                    </div>
+                    {desktopLogStatus.logFile && (
+                      <div className="text-[11px] text-gray-500 mt-1 break-all">
+                        {desktopLogStatus.logFile}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={handleToggleDesktopLogging}
+                      disabled={desktopLoggingBusy}
+                      className={`px-4 py-2 rounded-lg text-xs font-bold border transition-colors disabled:opacity-60 ${
+                        desktopLogStatus.enabled
+                          ? 'bg-rose-500/20 text-rose-200 border-rose-500/40'
+                          : 'bg-primary text-black border-primary'
+                      }`}
+                    >
+                      {desktopLogStatus.enabled ? 'Turn off' : 'Turn on'}
+                    </button>
+                    <button
+                      onClick={handleClearDesktopBuffer}
+                      disabled={desktopLoggingBusy}
+                      className="px-4 py-2 rounded-lg text-xs font-bold border border-white/10 text-gray-200 hover:text-white disabled:opacity-60"
+                    >
+                      Clear buffer
+                    </button>
+                    <button
+                      onClick={handleOpenDesktopLogs}
+                      disabled={desktopLoggingBusy}
+                      className="px-4 py-2 rounded-lg text-xs font-bold border border-white/10 text-gray-200 hover:text-white disabled:opacity-60"
+                    >
+                      Open folder
+                    </button>
+                  </div>
+                </div>
+                <div className="mt-3 text-[11px] text-gray-500">
+                  Stored on this device only. Nothing is uploaded automatically.
+                </div>
+              </div>
+            )}
+
+            {desktopCrashStatus && (
+              <div className="mt-4 rounded-2xl border border-white/10 bg-surfaceHighlight/40 p-4">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <div className="text-sm font-semibold text-white">Crash dumps</div>
+                    <div className="text-xs text-gray-400 mt-1">
+                      {desktopCrashStatus.crashReportCount} stored
+                      {desktopCrashStatus.lastCrashTime
+                        ? ` · Last crash ${new Date(desktopCrashStatus.lastCrashTime).toLocaleString()}`
+                        : ' · No crashes recorded'}
+                    </div>
+                    <div className="text-[11px] text-gray-500 mt-1 break-all">
+                      {desktopCrashStatus.crashDumpDir}
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleOpenCrashDumps}
+                    disabled={desktopLoggingBusy}
+                    className="px-4 py-2 rounded-lg text-xs font-bold border border-white/10 text-gray-200 hover:text-white disabled:opacity-60"
+                  >
+                    Open folder
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="bg-surface border border-white/10 rounded-2xl p-6 shadow-xl">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-xl font-bold text-white">App logging</h2>
+              <p className="text-base text-gray-300 mt-2">
+                Keep recent renderer errors and UI events handy while you troubleshoot.
+              </p>
+            </div>
+            <button
+              onClick={loadRendererLogging}
+              className="inline-flex items-center justify-center rounded-xl bg-primary px-5 py-3 text-sm font-bold text-black shadow-lg shadow-primary/30 transition hover:brightness-110"
+            >
+              Refresh
+            </button>
+          </div>
+
+          {rendererLoggingError && (
+            <div className="mt-4 rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+              {rendererLoggingError}
+            </div>
+          )}
+
+          {rendererLogStatus && (
+            <div className="mt-6 rounded-2xl border border-white/10 bg-surfaceHighlight/40 p-4">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="text-sm font-semibold text-white">In-memory buffer</div>
+                  <div className="text-xs text-gray-400 mt-1">
+                    {rendererLogStatus.eventCount} events ·{' '}
+                    {rendererLogStatus.lastEventAt
+                      ? `Last event ${new Date(rendererLogStatus.lastEventAt).toLocaleTimeString()}`
+                      : 'No events yet'}
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={handleClearRendererBuffer}
+                    className="px-4 py-2 rounded-lg text-xs font-bold border border-white/10 text-gray-200 hover:text-white"
+                  >
+                    Clear buffer
+                  </button>
+                  <button
+                    onClick={handleExportRendererLogs}
+                    className="px-4 py-2 rounded-lg text-xs font-bold border border-white/10 text-gray-200 hover:text-white"
+                  >
+                    Export logs
+                  </button>
+                </div>
+              </div>
+              <div className="mt-3 text-[11px] text-gray-500">
+                Logs stay in memory until you export or clear them.
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="bg-surface border border-white/10 rounded-2xl p-6 shadow-xl">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-xl font-bold text-white">Support bundle</h2>
+              <p className="text-base text-gray-300 mt-2">
+                Export API, desktop, and app logs together for troubleshooting.
+              </p>
+            </div>
+            <button
+              onClick={handleExportSupportBundle}
+              disabled={supportBundleBusy}
+              className="inline-flex items-center justify-center rounded-xl bg-primary px-5 py-3 text-sm font-bold text-black shadow-lg shadow-primary/30 transition hover:brightness-110 disabled:opacity-60"
+            >
+              {supportBundleBusy ? 'Exporting…' : 'Export bundle'}
+            </button>
+          </div>
+          {supportBundleMessage && (
+            <div className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
+              {supportBundleMessage}
+            </div>
+          )}
+          {supportBundleError && (
+            <div className="mt-4 rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+              {supportBundleError}
+            </div>
+          )}
+          <div className="mt-3 text-[11px] text-gray-500">
+            Desktop builds include crash dumps; web builds export API + app logs.
+          </div>
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          {providers.length === 0 && (
+            <div className="rounded-2xl border border-white/10 bg-surface p-6 text-sm text-gray-400">
+              No scraper logs captured yet. Trigger a provider search or load a chapter.
+            </div>
+          )}
+          {providers.map((provider) => (
+            <div
+              key={provider.provider}
+              className="rounded-2xl border border-white/10 bg-surface p-5 shadow-lg"
+            >
+              <div className="flex items-center justify-between">
+                <div className="text-lg font-semibold text-white">
+                  {providerShortLabel(provider.provider)}
+                </div>
+                <span
+                  className={`text-xs font-semibold px-2 py-1 rounded-full ${
+                    provider.failed > 0
+                      ? 'bg-rose-500/20 text-rose-200'
+                      : 'bg-emerald-500/20 text-emerald-200'
+                  }`}
+                >
+                  {formatPercent(provider.success, provider.total)} ok
+                </span>
+              </div>
+              <div className="text-xs text-gray-500 mt-1">
+                Avg {formatDuration(provider.avgDurationMs)} · {provider.total} requests
+              </div>
+
+              {provider.lastError && (
+                <div className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
+                  <div className="font-semibold">
+                    Last error ({operationLabels[provider.lastError.operation ?? 'search']})
+                  </div>
+                  <div className="mt-1">
+                    {provider.lastError.message || 'Unknown error'}
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                {provider.actions.map((action) => (
+                  <div
+                    key={action.operation}
+                    className="rounded-lg border border-white/10 bg-surfaceHighlight/40 px-3 py-2 text-xs text-gray-200"
+                  >
+                    <div className="font-semibold text-white">
+                      {operationLabels[action.operation]}
+                    </div>
+                    <div className="mt-1 text-gray-400">
+                      {action.success}/{action.total} ok · {formatDuration(action.avgDurationMs)}
+                    </div>
+                    {action.failed > 0 && action.lastError?.message && (
+                      <div className="mt-1 text-rose-200">
+                        {action.lastError.message}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="bg-surface border border-white/10 rounded-2xl p-6 shadow-xl">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-white">Recent failures</h3>
+            <span className="text-xs text-gray-500">
+              {recentErrors.length} in buffer
+            </span>
+          </div>
+          {recentErrors.length === 0 ? (
+            <div className="mt-4 text-sm text-gray-400">
+              No failures captured yet.
+            </div>
+          ) : (
+            <div className="mt-4 space-y-3">
+              {recentErrors.map((event) => (
+                <div
+                  key={event.id}
+                  className="rounded-xl border border-white/10 bg-surfaceHighlight/40 px-4 py-3 text-sm text-gray-200"
+                >
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-gray-400">
+                    <span>{new Date(event.timestamp).toLocaleTimeString()}</span>
+                    <span>•</span>
+                    <span>{providerShortLabel(event.provider)}</span>
+                    <span>•</span>
+                    <span>{operationLabels[event.operation]}</span>
+                  </div>
+                  <div className="mt-2 text-sm text-rose-200">
+                    {event.message || 'Unknown error'}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   const handleOverrideChange = (key: keyof ThemeOverrides, value: string | boolean) => {
     setDraftOverrides((prev) => ({ ...prev, [key]: value }));
     setOverridesDirty(true);
@@ -1272,6 +1992,8 @@ const Settings: React.FC<SettingsProps> = ({
         return renderHostingSection();
       case 'themes':
         return renderThemesSection();
+      case 'scrapers':
+        return renderScraperHealthSection();
       default:
         return null;
     }

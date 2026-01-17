@@ -30,6 +30,7 @@ import {
   isProviderSource,
 } from './lib/providers';
 import { desktopApi, type LanAccessInfo, type UpdateStatus } from './lib/desktop';
+import { rendererLogger } from './lib/renderer-logger';
 import { useMediaQuery } from './lib/useMediaQuery';
 
 type View =
@@ -126,6 +127,10 @@ const AppContent: React.FC = () => {
     if (!desktopApi.isAvailable) return;
     desktopApi.log(message, data).catch(() => {});
   };
+
+  useEffect(() => {
+    rendererLogger.init();
+  }, []);
 
   const baseThemes = useMemo(() => themes.filter((option) => option.id !== 'custom'), []);
 

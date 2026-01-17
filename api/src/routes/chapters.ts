@@ -5,6 +5,7 @@ import { ScraperService } from '../services/scraper-service.ts';
 import { Providers } from '@manverse/core';
 import { ApiErrorSchema, ApiSuccessUnknownSchema } from '../openapi/schemas.ts';
 import { openApiHook } from '../openapi/hook.ts';
+import { scraperLogger } from '../services/scraper-logger.ts';
 
 const chapters = new OpenAPIHono<HonoEnv>({ defaultHook: openApiHook });
 const scraper = new ScraperService();
@@ -82,6 +83,28 @@ const shouldUseBrowserFallback = (hostname: string) =>
   hostname.endsWith('mangafire.to') ||
   isMangaFireCdnHost(hostname);
 
+const recordScraperLog = (
+  requestId: string | undefined,
+  provider: typeof Providers[keyof typeof Providers],
+  operation: 'chapter' | 'image',
+  startedAt: number,
+  error?: unknown,
+) => {
+  const durationMs = Math.max(0, Date.now() - startedAt);
+  const ok = !error;
+  const err = error as (Error & { code?: string; status?: number }) | undefined;
+  const errorCode = err?.code || (err?.status ? `HTTP_${err.status}` : undefined);
+  scraperLogger.record({
+    requestId,
+    provider,
+    operation,
+    ok,
+    durationMs,
+    errorCode,
+    message: err?.message,
+  });
+};
+
 chapters.openapi(imageRoute, async (c) => {
   const { url, referer } = c.req.valid('query');
   const parsed = new URL(url);
@@ -144,6 +167,7 @@ chapters.openapi(imageRoute, async (c) => {
 
   if (!response?.ok || !response.body) {
     if (shouldUseBrowserFallback(parsed.hostname)) {
+      const startedAt = Date.now();
       try {
         const provider = resolveProviderFromHost(parsed.hostname);
         const signal = c.req.raw.signal;
@@ -151,6 +175,7 @@ chapters.openapi(imageRoute, async (c) => {
         if (!result.buffer?.length) {
           throw new Error('Empty image response');
         }
+        recordScraperLog(c.get('requestId'), provider, 'image', startedAt);
         const fallbackHeaders = new Headers();
         if (result.contentType) {
           fallbackHeaders.set('Content-Type', result.contentType);
@@ -158,6 +183,8 @@ chapters.openapi(imageRoute, async (c) => {
         fallbackHeaders.set('Cache-Control', 'public, max-age=3600');
         return new Response(result.buffer, { status: 200, headers: fallbackHeaders });
       } catch (error) {
+        const provider = resolveProviderFromHost(parsed.hostname);
+        recordScraperLog(c.get('requestId'), provider, 'image', startedAt, error);
         return jsonError(
           c,
           {
@@ -220,6 +247,7 @@ chapters.openapi(chapterRoute, (c) => {
       ? (provider as (typeof Providers)[keyof typeof Providers])
       : Providers.AsuraScans;
   const signal = c.req.raw.signal;
+  const startedAt = Date.now();
 
   const { id } = c.req.valid('param');
   const resolvedUrl = url || decodeBase64Url(id);
@@ -230,17 +258,21 @@ chapters.openapi(chapterRoute, (c) => {
 
   return scraper
     .getChapterImages(resolvedUrl, providerId, { signal })
-    .then((pages) => jsonSuccess(c, pages))
-    .catch((error) =>
-      jsonError(
+    .then((pages) => {
+      recordScraperLog(c.get('requestId'), providerId, 'chapter', startedAt);
+      return jsonSuccess(c, pages);
+    })
+    .catch((error) => {
+      recordScraperLog(c.get('requestId'), providerId, 'chapter', startedAt, error);
+      return jsonError(
         c,
         {
           code: 'CHAPTER_FETCH_FAILED',
           message: error instanceof Error ? error.message : 'Unable to fetch chapter images',
         },
         502,
-      ),
-    );
+      );
+    });
 });
 
 export default chapters;
