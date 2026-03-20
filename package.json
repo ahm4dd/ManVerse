@@ -1,10 +1,14 @@
 {
   "name": "manverse",
+  "version": "0.0.0",
   "private": true,
   "scripts": {
-    "build": "turbo run build",
     "dev": "turbo run dev",
+    "dev:api": "turbo run dev --filter=api",
+    "build": "turbo run build",
+    "test": "turbo run test",
     "lint": "turbo run lint",
+    "clean": "turbo run clean",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "check-types": "turbo run check-types"
   },
