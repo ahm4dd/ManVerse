@@ -14,6 +14,7 @@
 import { prisma } from '../infrastructure/database/prisma/prisma.js';
 import { env } from '../config/env.js';
 import { betterAuth } from 'better-auth';
+import { openAPI } from 'better-auth/plugins';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
 
 // const prisma = new PrismaClient({
@@ -23,12 +24,14 @@ import { prismaAdapter } from 'better-auth/adapters/prisma';
 // });
 
 export const auth = betterAuth({
+  // basePath: 'auth',
   database: prismaAdapter(prisma, { provider: 'postgresql' }),
   baseURL: env.BETTER_AUTH_URL,
   secret: env.BETTER_AUTH_SECRET,
   // TODO: replace hardcoded urls with env ones
   trustedOrigins: ['http://localhost:3001', 'http://localhost:3000'],
   emailAndPassword: { enabled: true },
+  plugins: [openAPI({ path: 'reference' })],
   // TODO: add anilist oauth2 using the genericOAuth plugin
   // socialProviders: { google: { clientId: 'test', clientSecret: 'test' } },
 });

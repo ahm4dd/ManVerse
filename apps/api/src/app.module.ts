@@ -4,7 +4,10 @@ import { AppService } from './app.service.js';
 import { PrismaModule } from './infrastructure/database/prisma/prisma.module.js';
 import { ConfigModule } from './config/config.module.js';
 import { AuthModule } from '@thallesp/nestjs-better-auth';
+import { APP_PIPE } from '@nestjs/core';
+import { ZodValidationPipe } from 'nestjs-zod';
 import auth from './lib/auth.js';
+import { UserModule } from './modules/users/user.module.js';
 
 @Module({
   imports: [
@@ -23,8 +26,9 @@ import auth from './lib/auth.js';
         rawBody: true,
       },
     }),
+    UserModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, { provide: APP_PIPE, useClass: ZodValidationPipe }],
 })
 export class AppModule {}

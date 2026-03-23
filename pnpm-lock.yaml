@@ -47,6 +47,9 @@ importers:
       bullmq:
         specifier: ^5.71.0
         version: 5.71.0
+      express:
+        specifier: ^5.2.1
+        version: 5.2.1
       ioredis:
         specifier: ^5.10.1
         version: 5.10.1
