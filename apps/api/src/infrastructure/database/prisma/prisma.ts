@@ -7,4 +7,8 @@ const adapter = new PrismaPg({
 });
 
 // Export the singular instance
-export const prisma = new PrismaClient({ adapter });
+export const prisma = new PrismaClient(
+  env.NODE_ENV === 'development'
+    ? { adapter, log: ['error', 'info', 'query', 'warn'] }
+    : { adapter, log: [] },
+);
