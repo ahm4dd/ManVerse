@@ -30,7 +30,13 @@ export const auth = betterAuth({
   baseURL: env.BETTER_AUTH_URL,
   secret: env.BETTER_AUTH_SECRET,
   // TODO: replace hardcoded urls with env ones
-  trustedOrigins: ['http://localhost:3001', 'http://localhost:3000'],
+  trustedOrigins: [
+    // 'https://myapp.com', // Change this
+    // Only include localhost in development
+    ...(env.NODE_ENV === 'development'
+      ? ['http://localhost:3000', 'http://localhost:5173']
+      : []),
+  ],
   emailAndPassword: {
     enabled: true,
     hash: async (password) => {
