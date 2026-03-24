@@ -1,12 +1,11 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module.js';
-import { VersioningType } from '@nestjs/common';
 import { env } from './config/env.js';
+import { configureApp } from './bootstrap/configure-app.js';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  app.setGlobalPrefix('/api');
-  app.enableVersioning({ type: VersioningType.URI });
+  configureApp(app);
   await app.listen(env.PORT ?? 3000);
 }
 

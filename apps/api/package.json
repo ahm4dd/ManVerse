@@ -23,7 +23,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage",
-    "pretest:e2e": "dotenv -e .env.test -- prisma db push --skip-generate",
+    "pretest:e2e": "dotenv -e .env.test -- prisma db push",
     "test:e2e": "dotenv -e .env.test -- vitest run --config ./vitest.config.e2e.ts",
     "test:e2e:watch": "dotenv -e .env.test -- vitest --config ./vitest.config.e2e.ts",
     "// --- 4. PRODUCTION / future CI/CD PIPELINE ---": "",
