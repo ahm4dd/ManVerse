@@ -14,7 +14,7 @@ export class UsersController {
 
   @Get('accounts')
   async getAccounts(@Request() req: ExpressRequest) {
-    const accounts = this.authService.api.listUserAccounts({
+    const accounts = await this.authService.api.listUserAccounts({
       headers: fromNodeHeaders(req.headers),
     });
 
@@ -22,7 +22,7 @@ export class UsersController {
   }
 
   @Get('me')
-  async getProfile(@Session() session: UserSession) {
+  getProfile(@Session() session: UserSession) {
     return session;
   }
 

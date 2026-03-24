@@ -14,8 +14,9 @@
 import { prisma } from '../infrastructure/database/prisma/prisma.js';
 import { env } from '../config/env.js';
 import { betterAuth } from 'better-auth';
-import { openAPI } from 'better-auth/plugins';
+import { openAPI, testUtils } from 'better-auth/plugins';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
+import * as argon2 from 'argon2';
 
 // const prisma = new PrismaClient({
 //   adapter: new PrismaPg({
@@ -30,10 +31,24 @@ export const auth = betterAuth({
   secret: env.BETTER_AUTH_SECRET,
   // TODO: replace hardcoded urls with env ones
   trustedOrigins: ['http://localhost:3001', 'http://localhost:3000'],
-  emailAndPassword: { enabled: true },
-  plugins: [openAPI({ path: 'reference' })],
+  emailAndPassword: {
+    enabled: true,
+    hash: async (password) => {
+      return argon2.hash(password as string);
+    },
+    verify: async (hash, password) => {
+      return argon2.verify(hash as string, password as string);
+    },
+  },
+  plugins: [
+    openAPI({ path: 'reference' }),
+    testUtils(), // TODO: Put this to use in integration and E2E tests
+  ],
   // TODO: add anilist oauth2 using the genericOAuth plugin
   // socialProviders: { google: { clientId: 'test', clientSecret: 'test' } },
 });
+
+const ctx = await auth.$context;
+export const test = ctx.test;
 
 export default auth;

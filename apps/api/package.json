@@ -15,6 +15,7 @@
     "// --- 2. DATABASE & AUTH (Local Dev) ---": "",
     "prisma:generate": "pnpm dlx prisma generate",
     "prisma:migrate": "pnpm dlx prisma migrate dev",
+    "prisma:migrate:reset": "pnpm dlx prisma migrate reset",
     "prisma:studio": "pnpm dlx prisma studio",
     "prisma:seed": "pnpm dlx prisma db seed",
     "auth:generate": "pnpm dlx auth@latest generate --config ./src/lib/auth.ts",
@@ -37,6 +38,7 @@
     "@prisma/adapter-pg": "^7.5.0",
     "@prisma/client": "^7.5.0",
     "@thallesp/nestjs-better-auth": "^2.5.1",
+    "argon2": "^0.44.0",
     "better-auth": "^1.5.5",
     "bullmq": "^5.71.0",
     "express": "^5.2.1",
@@ -51,6 +53,7 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.5",
     "@eslint/js": "^9.39.4",
+    "@faker-js/faker": "^10.4.0",
     "@nestjs/cli": "^11.0.16",
     "@nestjs/schematics": "^11.0.9",
     "@nestjs/testing": "^11.1.17",
