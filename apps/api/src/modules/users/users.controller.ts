@@ -8,6 +8,7 @@ import { fromNodeHeaders } from 'better-auth/node';
 import type { Request as ExpressRequest } from 'express';
 import auth from 'src/lib/auth.js';
 
+// TODO: authService.api.generateOpenAPISchema()
 @Controller({ path: 'users', version: ['1'] })
 export class UsersController {
   constructor(private authService: AuthService<typeof auth>) {}
