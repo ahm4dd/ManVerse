@@ -17,6 +17,17 @@ const envSchema = z
     DATABASE_URL: z.url(),
     BETTER_AUTH_SECRET: z.base64(),
     BETTER_AUTH_URL: z.string().min(1),
+    TRUSTED_ORIGINS: z
+      .string()
+      .optional()
+      .default('')
+      .transform((value) =>
+        value
+          .split(',')
+          .map((origin) => origin.trim())
+          .filter(Boolean),
+      )
+      .pipe(z.array(z.url())),
     ANILIST_OAUTH_ENABLED: z
       .enum(['true', 'false'])
       .optional()

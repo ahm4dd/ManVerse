@@ -24,6 +24,12 @@ import * as argon2 from 'argon2';
 //   }),
 // });
 
+const anilistCallbackUrl = new URL(
+  '/api/auth/oauth2/callback/anilist',
+  env.BETTER_AUTH_URL,
+).toString();
+const anilistSyntheticEmailDomain = 'anilist.manverse.local';
+
 const oauthPlugins = env.ANILIST_OAUTH_ENABLED
   ? [
       genericOAuth({
@@ -31,9 +37,7 @@ const oauthPlugins = env.ANILIST_OAUTH_ENABLED
         config: [
           {
             responseType: 'code',
-            // redirectURI: 'https://anilist.co/api/v2/oauth/authorize',
-            redirectURI:
-              'http://localhost:3000/api/auth/oauth2/callback/anilist',
+            redirectURI: anilistCallbackUrl,
             authorizationUrl: 'https://anilist.co/api/v2/oauth/authorize',
             authorizationHeaders: {
               Accept: 'application/json',
@@ -102,7 +106,7 @@ const oauthPlugins = env.ANILIST_OAUTH_ENABLED
                 image: viewer.avatar?.large ?? undefined,
                 // AniList does not appear to expose a user email here, but Better Auth
                 // requires one for the provider sign-in flow.
-                email: `${viewer.id}@anilist.manverse.local`,
+                email: `${viewer.id}@${anilistSyntheticEmailDomain}`,
                 emailVerified: true,
               };
 
@@ -119,14 +123,7 @@ export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: 'postgresql' }),
   baseURL: env.BETTER_AUTH_URL,
   secret: env.BETTER_AUTH_SECRET,
-  // TODO: replace hardcoded urls with env ones
-  trustedOrigins: [
-    // 'https://myapp.com', // Change this
-    // Only include localhost in development
-    ...(env.NODE_ENV === 'development'
-      ? ['http://localhost:3000', 'http://localhost:5173']
-      : []),
-  ],
+  trustedOrigins: env.TRUSTED_ORIGINS,
   emailAndPassword: {
     enabled: true,
     hash: async (password) => {
