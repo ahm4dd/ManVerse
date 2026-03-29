@@ -12,7 +12,7 @@ import { ApiTags } from '@nestjs/swagger';
 import { LinkedAccountsResponseDto } from './dto/linked-accounts-response.dto.js';
 import { MeResponseDto } from './dto/me-response.dto.js';
 
-// TODO: authService.api.generateOpenAPISchema()
+// TODO: authService.api.generateOpenAPISchema(), probably no longer needed.
 @ApiTags('Users')
 @Controller({ path: 'users', version: ['1'] })
 export class UsersController {
