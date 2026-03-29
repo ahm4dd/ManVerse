@@ -1,15 +1,14 @@
-import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { App } from 'supertest/types.js';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from '../../src/app.module.js';
 import { configureApp } from '../../src/bootstrap/configure-app.js';
 
-export async function createE2eApp(): Promise<INestApplication<App>> {
+export async function createE2eApp(): Promise<NestExpressApplication> {
   const moduleFixture: TestingModule = await Test.createTestingModule({
     imports: [AppModule],
   }).compile();
 
-  const app = moduleFixture.createNestApplication();
+  const app = moduleFixture.createNestApplication<NestExpressApplication>();
   configureApp(app);
   await app.init();
 
