@@ -124,6 +124,21 @@ export const auth = betterAuth({
   baseURL: env.BETTER_AUTH_URL,
   secret: env.BETTER_AUTH_SECRET,
   trustedOrigins: env.TRUSTED_ORIGINS,
+  rateLimit: {
+    enabled: env.NODE_ENV === 'production' ? true : false,
+  },
+  session: {
+    cookieCache: {
+      /**
+       * When it is critical that all revoked session get deactivated on all devices
+       * as soon as they are revoked, you should use disableCookieCache: true
+       * or disable the following code.
+       */
+      enabled: true,
+      maxAge: 5 * 60, // Cache duration in seconds (5 minutes)
+      strategy: 'compact', // You can use 'jwt' or 'jwe' for signing and security
+    },
+  },
   emailAndPassword: {
     enabled: true,
     hash: async (password) => {

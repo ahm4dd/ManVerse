@@ -44,14 +44,6 @@ export class UsersController {
     };
   }
 
-  // @Get('accounts')
-  // async getAccounts(@Request() req: ExpressRequest) {
-  //   const accounts = await this.authService.api.listUserAccounts({
-  //     headers: fromNodeHeaders(req.headers),
-  //   });
-  //   return accounts;
-  // }
-
   @Get('me')
   @ZodResponse({
     type: MeResponseDto,
