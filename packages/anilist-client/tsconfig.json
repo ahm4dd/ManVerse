@@ -19,7 +19,7 @@
     "noImplicitAny": false,
     "strictBindCallApply": false,
     "noFallthroughCasesInSwitch": false,
-    "useDefineForClassFields": false,
-    "types": ["vitest/globals"]
-  }
+    "useDefineForClassFields": false
+  },
+  "exclude": ["node_modules", "test", "dist", "**/*spec.ts"]
 }
