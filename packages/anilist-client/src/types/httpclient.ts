@@ -1,4 +1,4 @@
-import type { AnilistClientLogger } from "./logger.js";
+import type { AnilistClientLogger } from './logger.js';
 
 export type HTTPHeaders = Record<string, string>;
 

@@ -3,18 +3,18 @@ import type {
   GraphQLResponse,
   HTTPHeaders,
   ResolvedHTTPConfig,
-} from "../types/httpclient.js";
+} from '../types/httpclient.js';
 import {
   HTTPClientAbortError,
   HTTPClientError,
   HTTPClientTimeoutError,
-} from "./errors.js";
-import { isAbortError } from "./utils.js";
+} from './errors.js';
+import { isAbortError } from './utils.js';
 
 export class HTTPClient {
   private readonly endpoint: string;
   private readonly headers: HTTPHeaders;
-  private readonly logger?: ResolvedHTTPConfig["logger"];
+  private readonly logger?: ResolvedHTTPConfig['logger'];
   private readonly fetchImpl: typeof fetch;
   private readonly timeoutMs: number;
 
@@ -65,7 +65,7 @@ export class HTTPClient {
       requestSignal = timeoutController.signal;
     }
 
-    this.logger?.debug?.("AniList GraphQL request started", {
+    this.logger?.debug?.('AniList GraphQL request started', {
       endpoint: this.endpoint,
       operationName,
       timeoutMs,
@@ -75,7 +75,7 @@ export class HTTPClient {
 
     try {
       response = await this.fetchImpl(this.endpoint, {
-        method: "POST",
+        method: 'POST',
         body: requestBody,
         headers: requestHeaders,
         signal: requestSignal,
@@ -86,7 +86,7 @@ export class HTTPClient {
       }
 
       if (timedOut) {
-        this.logger?.warn?.("AniList GraphQL request timed out", {
+        this.logger?.warn?.('AniList GraphQL request timed out', {
           endpoint: this.endpoint,
           operationName,
           timeoutMs,
@@ -99,7 +99,7 @@ export class HTTPClient {
       }
 
       if (isAbortError(err) || requestSignal?.aborted) {
-        this.logger?.warn?.("AniList GraphQL request was aborted", {
+        this.logger?.warn?.('AniList GraphQL request was aborted', {
           endpoint: this.endpoint,
           operationName,
         });
@@ -110,7 +110,7 @@ export class HTTPClient {
         );
       }
 
-      this.logger?.error?.("AniList GraphQL request failed before response", {
+      this.logger?.error?.('AniList GraphQL request failed before response', {
         endpoint: this.endpoint,
         operationName,
         err,
@@ -127,10 +127,10 @@ export class HTTPClient {
     }
 
     if (!response.ok) {
-      const responseBody = await response.text().catch(() => "");
+      const responseBody = await response.text().catch(() => '');
 
       this.logger?.warn?.(
-        "AniList GraphQL request returned a non-ok response",
+        'AniList GraphQL request returned a non-ok response',
         {
           endpoint: this.endpoint,
           operationName,
@@ -142,7 +142,7 @@ export class HTTPClient {
       throw new HTTPClientError(
         `GraphQL request to ${this.endpoint} failed with status ${response.status} ${response.statusText}`,
         {
-          cause: new Error(responseBody || "Response body could not be read"),
+          cause: new Error(responseBody || 'Response body could not be read'),
         },
       );
     }
@@ -153,7 +153,7 @@ export class HTTPClient {
       payload = (await response.json()) as GraphQLResponse<TData>;
     } catch (err: unknown) {
       this.logger?.error?.(
-        "AniList GraphQL response could not be parsed as JSON",
+        'AniList GraphQL response could not be parsed as JSON',
         {
           endpoint: this.endpoint,
           operationName,
@@ -169,7 +169,7 @@ export class HTTPClient {
     }
 
     if (payload.errors?.length) {
-      this.logger?.warn?.("AniList GraphQL response contained errors", {
+      this.logger?.warn?.('AniList GraphQL response contained errors', {
         endpoint: this.endpoint,
         operationName,
         errors: payload.errors,
@@ -183,8 +183,8 @@ export class HTTPClient {
       );
     }
 
-    if (typeof payload.data === "undefined") {
-      this.logger?.warn?.("AniList GraphQL response did not include data", {
+    if (typeof payload.data === 'undefined') {
+      this.logger?.warn?.('AniList GraphQL response did not include data', {
         endpoint: this.endpoint,
         operationName,
       });
@@ -194,7 +194,7 @@ export class HTTPClient {
       );
     }
 
-    this.logger?.debug?.("AniList GraphQL request completed", {
+    this.logger?.debug?.('AniList GraphQL request completed', {
       endpoint: this.endpoint,
       operationName,
       status: response.status,

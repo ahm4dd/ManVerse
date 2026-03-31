@@ -1,10 +1,10 @@
 export class HTTPClientError extends Error {
   constructor(
-    message: string = "An error occurred at the HTTPClient layer for Anilist",
+    message: string = 'An error occurred at the HTTPClient layer for Anilist',
     options?: ErrorOptions,
   ) {
     super(message, options);
-    this.name = "HTTPClientError";
+    this.name = 'HTTPClientError';
   }
 }
 
