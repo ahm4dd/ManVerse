@@ -5,9 +5,29 @@ export {
   HTTPClientError,
   HTTPClientTimeoutError,
 } from './src/client/errors.js';
+export {
+  getUserProfile,
+  getViewerProfile,
+  profileFavouriteMangaSchema,
+  profileUserSchema,
+  USER_PROFILE_FIELDS_FRAGMENT,
+  USER_PROFILE_QUERY,
+  userProfileDataSchema,
+  userProfileInputSchema,
+  VIEWER_PROFILE_QUERY,
+  viewerProfileDataSchema,
+} from './src/features/profile/index.js';
 export type { AnilistClientConfig } from './src/types/client.js';
 export type { AnilistClientLogger } from './src/types/logger.js';
 export type {
+  ProfileFavouriteManga,
+  ProfileUser,
+  UserProfileData,
+  UserProfileInput,
+  ViewerProfileData,
+} from './src/features/profile/index.js';
+export type {
+  GraphQLExecutor,
   GraphQLRequestOptions,
   GraphQLResponse,
   HTTPConfig,

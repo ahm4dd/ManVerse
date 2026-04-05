@@ -30,6 +30,10 @@ export type GraphQLRequestOptions = {
   timeoutMs?: number;
 };
 
+export type GraphQLExecutor = {
+  req<TData>(options: GraphQLRequestOptions): Promise<TData>;
+};
+
 export type GraphQLResponse<TData> = {
   data?: TData;
   errors?: GraphQLError[];

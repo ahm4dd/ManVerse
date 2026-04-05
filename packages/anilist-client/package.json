@@ -18,6 +18,9 @@
     "url": "https://github.com/ahm4dd/manverse"
   },
   "license": "MIT",
+  "dependencies": {
+    "zod": "^4.3.6"
+  },
   "devDependencies": {
     "@vitest/coverage-v8": "^4.1.2",
     "rimraf": "^6.1.3",
