@@ -1,4 +1,5 @@
 import type {
+  GraphQLExecutor,
   GraphQLRequestOptions,
   GraphQLResponse,
   HTTPHeaders,
@@ -11,7 +12,7 @@ import {
 } from './errors.js';
 import { isAbortError } from './utils.js';
 
-export class HTTPClient {
+export class HTTPClient implements GraphQLExecutor {
   private readonly endpoint: string;
   private readonly headers: HTTPHeaders;
   private readonly logger?: ResolvedHTTPConfig['logger'];
