@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ZodError } from 'zod';
 
+import { AnilistClientAuthError } from '../../client/errors.js';
 import type { GraphQLExecutor } from '../../types/httpclient.js';
 import { getUserProfile, getViewerProfile } from './operations.js';
 import { USER_PROFILE_QUERY, VIEWER_PROFILE_QUERY } from './queries.js';
@@ -58,12 +59,13 @@ describe('profile operations', () => {
       Viewer: viewer,
     });
 
-    const result = await getViewerProfile(executor);
+    const result = await getViewerProfile(executor, 'viewer-token');
 
     expect(executor.req).toHaveBeenCalledTimes(1);
     expect(executor.req).toHaveBeenCalledWith({
       query: VIEWER_PROFILE_QUERY,
       operationName: 'ViewerProfile',
+      accessToken: 'viewer-token',
     });
     expect(result).toEqual(viewer);
   });
@@ -73,9 +75,17 @@ describe('profile operations', () => {
       Viewer: null,
     });
 
-    const result = await getViewerProfile(executor);
+    const result = await getViewerProfile(executor, 'viewer-token');
 
     expect(result).toBeNull();
+  });
+
+  it('should reject missing viewer access token before calling the executor', async () => {
+    await expect(getViewerProfile(executor, '')).rejects.toBeInstanceOf(
+      AnilistClientAuthError,
+    );
+
+    expect(executor.req).not.toHaveBeenCalled();
   });
 
   it('should reject an invalid viewer payload', async () => {
@@ -85,7 +95,9 @@ describe('profile operations', () => {
       },
     });
 
-    await expect(getViewerProfile(executor)).rejects.toBeInstanceOf(ZodError);
+    await expect(
+      getViewerProfile(executor, 'viewer-token'),
+    ).rejects.toBeInstanceOf(ZodError);
   });
 
   it('should request and return a user profile by name', async () => {

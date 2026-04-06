@@ -1,4 +1,5 @@
 import type { GraphQLExecutor } from '../../types/httpclient.js';
+import { requireAccessToken } from '../../client/auth.js';
 import { USER_PROFILE_QUERY, VIEWER_PROFILE_QUERY } from './queries.js';
 import {
   userProfileDataSchema,
@@ -9,10 +10,17 @@ import type { ProfileUser, UserProfileInput } from './schemas.js';
 
 export async function getViewerProfile(
   executor: GraphQLExecutor,
+  accessToken: string,
 ): Promise<ProfileUser | null> {
+  const requiredAccessToken = requireAccessToken(
+    accessToken,
+    'The Viewer profile operation',
+  );
+
   const rawData = await executor.req<unknown>({
     query: VIEWER_PROFILE_QUERY,
     operationName: 'ViewerProfile',
+    accessToken: requiredAccessToken,
   });
   const data = viewerProfileDataSchema.parse(rawData);
 

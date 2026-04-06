@@ -27,3 +27,13 @@ export class HTTPClientTimeoutError extends HTTPClientAbortError {
     this.name = 'HTTPClientTimeoutError';
   }
 }
+
+export class AnilistClientAuthError extends Error {
+  constructor(
+    message: string = 'This AniList operation requires an access token',
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
+    this.name = 'AnilistClientAuthError';
+  }
+}

@@ -1,6 +1,7 @@
 export { AnilistClient } from './src/client/client.js';
 export { resolveAnilistClientConfig } from './src/client/bootstrap.js';
 export {
+  AnilistClientAuthError,
   HTTPClientAbortError,
   HTTPClientError,
   HTTPClientTimeoutError,

@@ -20,12 +20,12 @@ export class AnilistClient {
     this.httpClient = new HTTPClient(resolvedConfig.httpConfig);
   }
 
-  async getViewerProfile(): Promise<ProfileUser | null> {
-    return getViewerProfile(this.httpClient);
+  async getViewerProfile(accessToken: string): Promise<ProfileUser | null> {
+    return getViewerProfile(this.httpClient, accessToken);
   }
 
-  async viewer(): Promise<ProfileUser | null> {
-    return this.getViewerProfile();
+  async viewer(accessToken: string): Promise<ProfileUser | null> {
+    return this.getViewerProfile(accessToken);
   }
 
   async getUserProfile(input: UserProfileInput): Promise<ProfileUser | null> {
