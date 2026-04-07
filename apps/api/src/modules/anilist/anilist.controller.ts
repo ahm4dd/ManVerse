@@ -12,11 +12,12 @@ import {
   Session,
   type UserSession,
 } from '@thallesp/nestjs-better-auth';
+import { ANILIST_PROVIDER_ID } from '../../common/constants/provider.constants.js';
 import { PrismaClient } from '../../generated/prisma/client.js';
 import { GetUserQueryDto } from './dto/get-user.dto.js';
 
 @ApiTags('Anilist')
-@Controller({ path: 'anilist', version: ['1'] })
+@Controller({ path: ANILIST_PROVIDER_ID, version: ['1'] })
 export class AnilistController {
   constructor(
     @Inject('ANILIST_CLIENT') private readonly anilistClient: AnilistClient,
@@ -28,7 +29,7 @@ export class AnilistController {
     const anilistAccount = await this.prisma.account.findFirst({
       where: {
         userId: session.user.id,
-        providerId: 'anilist',
+        providerId: ANILIST_PROVIDER_ID,
       },
       select: {
         accessToken: true,

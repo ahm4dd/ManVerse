@@ -4,6 +4,7 @@ import { NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import type { UserSession } from '@thallesp/nestjs-better-auth';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ANILIST_PROVIDER_ID } from '../../common/constants/provider.constants.js';
 import { PrismaClient } from '../../generated/prisma/client.js';
 import { AnilistController } from './anilist.controller.js';
 
@@ -97,7 +98,7 @@ describe('AnilistController', () => {
     expect(mockPrismaClient.account.findFirst).toHaveBeenCalledWith({
       where: {
         userId: session.user.id,
-        providerId: 'anilist',
+        providerId: ANILIST_PROVIDER_ID,
       },
       select: {
         accessToken: true,

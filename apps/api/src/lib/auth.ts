@@ -13,6 +13,7 @@
 // import { createAuth } from '../infrastructure/auth/create-auth.js';
 import { prisma } from '../infrastructure/database/prisma/prisma.js';
 import { env } from '../config/env.js';
+import { ANILIST_PROVIDER_ID } from '../common/constants/provider.constants.js';
 import { betterAuth, OAuth2UserInfo } from 'better-auth';
 import { genericOAuth, openAPI, testUtils } from 'better-auth/plugins';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
@@ -45,7 +46,7 @@ const oauthPlugins = env.ANILIST_OAUTH_ENABLED
             tokenUrl: 'https://anilist.co/api/v2/oauth/token',
             clientId: env.ANILIST_CLIENT_ID!,
             clientSecret: env.ANILIST_CLIENT_SECRET!,
-            providerId: 'anilist',
+            providerId: ANILIST_PROVIDER_ID,
             pkce: true,
             getUserInfo: async (tokens) => {
               if (!tokens.accessToken) {

@@ -4,6 +4,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AuthService, type UserSession } from '@thallesp/nestjs-better-auth';
 import type { Request } from 'express';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ANILIST_PROVIDER_ID } from '../../common/constants/provider.constants.js';
 import { UsersController } from './users.controller.js';
 
 describe('UsersController', () => {
@@ -91,7 +92,7 @@ describe('UsersController', () => {
     mockAuthService.api.listUserAccounts.mockResolvedValueOnce([
       {
         id: accountRecordId,
-        providerId: 'anilist',
+        providerId: ANILIST_PROVIDER_ID,
         accountId: providerAccountId,
         userId,
         createdAt,
@@ -104,7 +105,7 @@ describe('UsersController', () => {
       accounts: [
         {
           id: accountRecordId,
-          providerId: 'anilist',
+          providerId: ANILIST_PROVIDER_ID,
           accountId: providerAccountId,
           userId,
           createdAt,
