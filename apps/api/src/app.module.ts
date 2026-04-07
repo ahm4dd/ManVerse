@@ -8,6 +8,7 @@ import { APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 import { createZodSerializerInterceptor, ZodValidationPipe } from 'nestjs-zod';
 import auth from './lib/auth.js';
 import { UserModule } from './modules/users/user.module.js';
+import { AnilistModule } from './modules/anilist/anilist.module.js';
 
 const CustomZodSerializerInterceptor = createZodSerializerInterceptor({
   reportInput: true,
@@ -31,6 +32,7 @@ const CustomZodSerializerInterceptor = createZodSerializerInterceptor({
       },
     }),
     UserModule,
+    AnilistModule,
   ],
   controllers: [AppController],
   providers: [

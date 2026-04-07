@@ -36,6 +36,7 @@
     "prod:migrate": "prisma migrate deploy"
   },
   "dependencies": {
+    "@manverse/anilist-client": "workspace:*",
     "@nestjs/bull": "^11.0.4",
     "@nestjs/common": "^11.1.17",
     "@nestjs/core": "^11.1.17",

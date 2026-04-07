@@ -16,7 +16,7 @@ import { MeResponseDto } from './dto/me-response.dto.js';
 @ApiTags('Users')
 @Controller({ path: 'users', version: ['1'] })
 export class UsersController {
-  constructor(private authService: AuthService<typeof auth>) {}
+  constructor(private readonly authService: AuthService<typeof auth>) {}
 
   @Get('accounts')
   @ZodResponse({
