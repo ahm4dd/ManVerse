@@ -20,7 +20,7 @@ import { GetUserQueryDto } from './dto/get-user.dto.js';
 export class AnilistController {
   constructor(
     @Inject('ANILIST_CLIENT') private readonly anilistClient: AnilistClient,
-    private readonly prisma: PrismaClient,
+    @Inject(PrismaClient) private readonly prisma: PrismaClient,
   ) {}
 
   @Get('viewer')
