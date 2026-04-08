@@ -1,3 +1,4 @@
+import type { DocumentNode } from '@apollo/client/core';
 import type { AnilistClientLogger } from './logger.js';
 
 export type HTTPHeaders = Record<string, string>;
@@ -21,7 +22,7 @@ export type ResolvedHTTPConfig = HTTPConfig & {
 };
 
 export type GraphQLRequestOptions = {
-  query: string;
+  query: string | DocumentNode;
   operationName?: string;
   variables?: GraphQLVariables;
   accessToken?: string;

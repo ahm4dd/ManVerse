@@ -1,3 +1,4 @@
+import { gql } from '@apollo/client/core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -57,6 +58,40 @@ describe('HTTPClient', () => {
       }),
     );
     expect(result).toEqual({ Media: { id: 1 } });
+  });
+
+  it('should print a gql document before sending the request body', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        data: { Viewer: { id: 1 } },
+      }),
+    });
+
+    const query = gql`
+      query ViewerProfile {
+        Viewer {
+          id
+        }
+      }
+    `;
+
+    await httpclient.req<{ Viewer: { id: number } }>({
+      query,
+      operationName: 'ViewerProfile',
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      DEFAULT_ANILIST_GRAPHQL_ENDPOINT,
+      expect.objectContaining({
+        body: JSON.stringify({
+          query: 'query ViewerProfile {\n  Viewer {\n    id\n  }\n}',
+          variables: undefined,
+          operationName: 'ViewerProfile',
+        }),
+      }),
+    );
   });
 
   it('should merge auth and request headers with default headers', async () => {

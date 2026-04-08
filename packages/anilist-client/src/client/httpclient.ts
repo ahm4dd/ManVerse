@@ -1,3 +1,4 @@
+import { print } from '@apollo/client/utilities';
 import type {
   GraphQLExecutor,
   GraphQLRequestOptions,
@@ -36,13 +37,14 @@ export class HTTPClient implements GraphQLExecutor {
     signal,
     timeoutMs = this.timeoutMs,
   }: GraphQLRequestOptions): Promise<TData> {
+    const printableQuery = typeof query === 'string' ? query : print(query);
     const requestHeaders: HTTPHeaders = {
       ...this.headers,
       ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
       ...headers,
     };
     const requestBody = JSON.stringify({
-      query,
+      query: printableQuery,
       variables,
       operationName,
     });
