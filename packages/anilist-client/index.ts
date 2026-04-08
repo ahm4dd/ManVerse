@@ -18,6 +18,7 @@ export {
   VIEWER_PROFILE_QUERY,
   viewerProfileDataSchema,
 } from './src/features/profile/index.js';
+export { MEDIA_SEARCH_FIELDS_FRAGMENT, SEARCH_MEDIA_QUERY } from './src/features/search/index.js';
 export type { AnilistClientConfig } from './src/types/client.js';
 export type { AnilistClientLogger } from './src/types/logger.js';
 export type {

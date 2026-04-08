@@ -1,4 +1,6 @@
-export const USER_PROFILE_FIELDS_FRAGMENT = /* GraphQL */ `
+import { gql } from '@apollo/client';
+
+export const USER_PROFILE_FIELDS_FRAGMENT = gql`
   fragment UserProfileFields on User {
     id
     name
@@ -28,7 +30,7 @@ export const USER_PROFILE_FIELDS_FRAGMENT = /* GraphQL */ `
   }
 `;
 
-export const VIEWER_PROFILE_QUERY = /* GraphQL */ `
+export const VIEWER_PROFILE_QUERY = gql`
   query ViewerProfile {
     Viewer {
       ...UserProfileFields
@@ -38,7 +40,7 @@ export const VIEWER_PROFILE_QUERY = /* GraphQL */ `
   ${USER_PROFILE_FIELDS_FRAGMENT}
 `;
 
-export const USER_PROFILE_QUERY = /* GraphQL */ `
+export const USER_PROFILE_QUERY = gql`
   query UserProfile($name: String, $id: Int) {
     User(name: $name, id: $id) {
       ...UserProfileFields
