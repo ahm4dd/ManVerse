@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+// TODO verify types in apollo for anilist (if nullable or not)
 export const profileFavouriteMangaSchema = z.object({
   id: z.number(),
   chapters: z.number().nullable(),
