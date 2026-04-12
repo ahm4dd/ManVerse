@@ -10,6 +10,10 @@
       "cache": false,
       "persistent": true
     },
+    "setup": {
+      "cache": false,
+      "outputs": ["src/generated/**"]
+    },
     "lint": {
       "dependsOn": ["^lint"]
     },

@@ -26,7 +26,5 @@ services:
       timeout: 30s
       retries: 5
       start_period: 30s
-    env_file:
-      - path: ./.env.development
 volumes:
   api-db-dev-vol:
