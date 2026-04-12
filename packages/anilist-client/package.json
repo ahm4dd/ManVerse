@@ -21,6 +21,7 @@
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest --passWithNoTests",
     "test:cov": "vitest run --coverage --passWithNoTests",
+    "check-types": "tsc --noEmit -p ./tsconfig.spec.json",
     "clean": "rimraf dist",
     "build": "pnpm run clean && tsc"
   },

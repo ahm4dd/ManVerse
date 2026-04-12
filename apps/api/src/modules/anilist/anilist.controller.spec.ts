@@ -4,9 +4,11 @@ import { NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import type { UserSession } from '@thallesp/nestjs-better-auth';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { SearchMediaPage } from '@manverse/anilist-client';
 import { ANILIST_PROVIDER_ID } from '../../common/constants/provider.constants.js';
 import { PrismaClient } from '../../generated/prisma/client.js';
 import { AnilistController } from './anilist.controller.js';
+import type { SearchMediaDto } from './dto/search-media.dto.js';
 
 describe('AnilistController', () => {
   let anilistController: AnilistController;
@@ -14,6 +16,7 @@ describe('AnilistController', () => {
   const mockAnilistClient = {
     getUserProfile: vi.fn(),
     getViewerProfile: vi.fn(),
+    searchMedia: vi.fn(),
   };
 
   const mockPrismaClient = {
@@ -145,5 +148,114 @@ describe('AnilistController', () => {
     );
 
     expect(mockAnilistClient.getViewerProfile).not.toHaveBeenCalled();
+  });
+
+  it('searchMedia() should return AniList search results for the provided query', async () => {
+    const query: SearchMediaDto = {
+      search: 'solo leveling',
+      page: 2,
+      perPage: 5,
+      isAdult: false,
+    };
+    const result: SearchMediaPage = {
+      pageInfo: {
+        currentPage: 2,
+        hasNextPage: true,
+        lastPage: 12,
+        perPage: 5,
+        total: 60,
+      },
+      media: [
+        {
+          id: 151807,
+          idMal: null,
+          type: 'MANGA',
+          format: 'NOVEL',
+          status: 'RELEASING',
+          description: faker.lorem.sentence(),
+          startDate: {
+            year: 2023,
+            month: 4,
+            day: 10,
+          },
+          endDate: {
+            year: null,
+            month: null,
+            day: null,
+          },
+          season: 'SPRING',
+          seasonYear: 2023,
+          chapters: null,
+          volumes: null,
+          countryOfOrigin: 'KR',
+          source: 'LIGHT_NOVEL',
+          coverImage: {
+            extraLarge: faker.image.url(),
+            large: faker.image.url(),
+            medium: faker.image.url(),
+            color: '#0f172a',
+          },
+          bannerImage: faker.image.url(),
+          title: {
+            romaji: 'Solo Leveling',
+            english: 'Solo Leveling',
+            native: 'Na Honjaman Level Up',
+            userPreferred: 'Solo Leveling',
+          },
+          synonyms: ['Only I Level Up'],
+          genres: ['Action', 'Fantasy'],
+          tags: [
+            {
+              id: 1,
+              name: 'Dungeon',
+              rank: 90,
+              isGeneralSpoiler: false,
+              isMediaSpoiler: false,
+              category: 'Setting',
+            },
+          ],
+          averageScore: 86,
+          meanScore: 85,
+          popularity: 120000,
+          favourites: 15000,
+          trending: 230,
+          isAdult: false,
+          siteUrl: 'https://anilist.co/manga/151807',
+          relations: {
+            edges: [
+              {
+                relationType: 'ADAPTATION',
+                node: {
+                  id: 127760,
+                  type: 'ANIME',
+                  format: 'TV',
+                  status: 'FINISHED',
+                  chapters: null,
+                  volumes: null,
+                  countryOfOrigin: 'JP',
+                  title: {
+                    romaji: 'Ore dake Level Up na Ken',
+                    english: 'Solo Leveling',
+                    native: '俺だけレベルアップな件',
+                    userPreferred: 'Solo Leveling',
+                  },
+                  coverImage: {
+                    large: faker.image.url(),
+                    medium: faker.image.url(),
+                  },
+                  siteUrl: 'https://anilist.co/anime/127760',
+                },
+              },
+            ],
+          },
+        },
+      ],
+    };
+
+    mockAnilistClient.searchMedia.mockResolvedValueOnce(result);
+
+    await expect(anilistController.searchMedia(query)).resolves.toEqual(result);
+
+    expect(mockAnilistClient.searchMedia).toHaveBeenCalledWith(query);
   });
 });

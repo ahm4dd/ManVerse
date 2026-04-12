@@ -21,6 +21,17 @@ export {
 export {
   MEDIA_SEARCH_FIELDS_FRAGMENT,
   SEARCH_MEDIA_QUERY,
+  searchMedia,
+  searchMediaCoverImageSchema,
+  searchMediaDataSchema,
+  searchMediaInputSchema,
+  searchMediaPageInfoSchema,
+  searchMediaPageSchema,
+  searchMediaRelationEdgeSchema,
+  searchMediaRelationNodeSchema,
+  searchMediaSchema,
+  searchMediaTagSchema,
+  searchMediaTitleSchema,
 } from './src/features/search/index.js';
 export type { AnilistClientConfig } from './src/types/client.js';
 export type { AnilistClientLogger } from './src/types/logger.js';
@@ -31,6 +42,19 @@ export type {
   UserProfileInput,
   ViewerProfileData,
 } from './src/features/profile/index.js';
+export type {
+  ResolvedSearchMediaInput,
+  SearchMedia,
+  SearchMediaCoverImage,
+  SearchMediaData,
+  SearchMediaInput,
+  SearchMediaPage,
+  SearchMediaPageInfo,
+  SearchMediaRelationEdge,
+  SearchMediaRelationNode,
+  SearchMediaTag,
+  SearchMediaTitle,
+} from './src/features/search/index.js';
 export type {
   GraphQLExecutor,
   GraphQLRequestOptions,

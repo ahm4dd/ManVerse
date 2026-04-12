@@ -1,15 +1,14 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { ZodError } from 'zod';
 
 import { AnilistClientAuthError } from '../../client/errors.js';
-import type { GraphQLExecutor } from '../../types/httpclient.js';
+import {
+  createMockGraphQLExecutor,
+  type MockGraphQLExecutor,
+} from '../../test-utils/graphql-executor.mock.js';
 import { getUserProfile, getViewerProfile } from './operations.js';
 import { USER_PROFILE_QUERY, VIEWER_PROFILE_QUERY } from './queries.js';
 import type { ProfileUser } from './schemas.js';
-
-type MockExecutor = GraphQLExecutor & {
-  req: ReturnType<typeof vi.fn>;
-};
 
 function createProfileUser(): ProfileUser {
   return {
@@ -44,12 +43,10 @@ function createProfileUser(): ProfileUser {
 }
 
 describe('profile operations', () => {
-  let executor: MockExecutor;
+  let executor: MockGraphQLExecutor;
 
   beforeEach(() => {
-    executor = {
-      req: vi.fn(),
-    } as MockExecutor;
+    executor = createMockGraphQLExecutor();
   });
 
   it('should request and return the viewer profile', async () => {

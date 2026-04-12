@@ -5,6 +5,11 @@ import {
   type ProfileUser,
   type UserProfileInput,
 } from '../features/profile/index.js';
+import {
+  searchMedia,
+  type SearchMediaInput,
+  type SearchMediaPage,
+} from '../features/search/index.js';
 import { HTTPClient } from './httpclient.js';
 import { resolveAnilistClientConfig } from './bootstrap.js';
 
@@ -34,5 +39,13 @@ export class AnilistClient {
 
   async user(input: UserProfileInput): Promise<ProfileUser | null> {
     return this.getUserProfile(input);
+  }
+
+  async searchMedia(input: SearchMediaInput): Promise<SearchMediaPage | null> {
+    return searchMedia(this.httpClient, input);
+  }
+
+  async search(input: SearchMediaInput): Promise<SearchMediaPage | null> {
+    return this.searchMedia(input);
   }
 }
