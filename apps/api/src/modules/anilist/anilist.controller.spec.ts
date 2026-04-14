@@ -1,13 +1,17 @@
 import 'reflect-metadata';
+import type {
+  SearchMediaPage,
+  ViewerMangaListCollection,
+} from '@manverse/anilist-client';
 import { faker } from '@faker-js/faker';
 import { NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import type { UserSession } from '@thallesp/nestjs-better-auth';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { SearchMediaPage } from '@manverse/anilist-client';
 import { ANILIST_PROVIDER_ID } from '../../common/constants/provider.constants.js';
 import { PrismaClient } from '../../generated/prisma/client.js';
 import { AnilistController } from './anilist.controller.js';
+import type { GetViewerMangaListsQueryDto } from './dto/get-viewer-manga-lists.dto.js';
 import type { SearchMediaDto } from './dto/search-media.dto.js';
 
 describe('AnilistController', () => {
@@ -16,6 +20,7 @@ describe('AnilistController', () => {
   const mockAnilistClient = {
     getUserProfile: vi.fn(),
     getViewerProfile: vi.fn(),
+    getViewerMangaLists: vi.fn(),
     searchMedia: vi.fn(),
   };
 
@@ -148,6 +153,139 @@ describe('AnilistController', () => {
     );
 
     expect(mockAnilistClient.getViewerProfile).not.toHaveBeenCalled();
+  });
+
+  it('getViewerMangaLists() should return the current linked AniList viewer manga lists', async () => {
+    const session = {
+      user: {
+        id: faker.string.nanoid(),
+      },
+    } as UserSession;
+    const accessToken = faker.string.alphanumeric(32);
+    const query: GetViewerMangaListsQueryDto = {
+      chunk: 2,
+      perChunk: 50,
+    };
+    const collection: ViewerMangaListCollection = {
+      hasNextChunk: true,
+      lists: [
+        {
+          name: 'Current',
+          isCustomList: false,
+          isSplitCompletedList: false,
+          status: 'CURRENT',
+          entries: [
+            {
+              id: 71,
+              mediaId: 151807,
+              status: 'CURRENT',
+              score: 8.5,
+              progress: 120,
+              progressVolumes: 12,
+              repeat: 0,
+              priority: 1,
+              private: false,
+              hiddenFromStatusLists: false,
+              notes: faker.lorem.words(3),
+              updatedAt: 1_712_345_678,
+              startedAt: {
+                year: 2024,
+                month: 1,
+                day: 1,
+              },
+              completedAt: null,
+              media: {
+                id: 151807,
+                idMal: null,
+                title: {
+                  romaji: 'Solo Leveling',
+                  english: 'Solo Leveling',
+                  native: 'Na Honjaman Level Up',
+                  userPreferred: 'Solo Leveling',
+                },
+                coverImage: {
+                  extraLarge: faker.image.url(),
+                  large: faker.image.url(),
+                  medium: faker.image.url(),
+                  color: '#0f172a',
+                },
+                format: 'NOVEL',
+                status: 'RELEASING',
+                chapters: null,
+                volumes: null,
+                countryOfOrigin: 'KR',
+                siteUrl: 'https://anilist.co/manga/151807',
+              },
+            },
+          ],
+        },
+      ],
+    };
+
+    mockPrismaClient.account.findFirst.mockResolvedValueOnce({
+      accessToken,
+    });
+    mockAnilistClient.getViewerMangaLists.mockResolvedValueOnce(collection);
+
+    await expect(
+      anilistController.getViewerMangaLists(session, query),
+    ).resolves.toEqual(collection);
+
+    expect(mockPrismaClient.account.findFirst).toHaveBeenCalledWith({
+      where: {
+        userId: session.user.id,
+        providerId: ANILIST_PROVIDER_ID,
+      },
+      select: {
+        accessToken: true,
+      },
+    });
+    expect(mockAnilistClient.getViewerMangaLists).toHaveBeenCalledWith(
+      accessToken,
+      query,
+    );
+  });
+
+  it('getViewerMangaLists() should throw when the current user has no linked AniList account', async () => {
+    const session = {
+      user: {
+        id: faker.string.nanoid(),
+      },
+    } as UserSession;
+
+    mockPrismaClient.account.findFirst.mockResolvedValueOnce(null);
+
+    await expect(
+      anilistController.getViewerMangaLists(session, {}),
+    ).rejects.toThrow(
+      new NotFoundException(
+        'AniList account is not linked for the current user',
+      ),
+    );
+
+    expect(mockAnilistClient.getViewerMangaLists).not.toHaveBeenCalled();
+  });
+
+  it('getViewerMangaLists() should throw when the linked AniList account has no access token', async () => {
+    const session = {
+      user: {
+        id: faker.string.nanoid(),
+      },
+    } as UserSession;
+
+    mockPrismaClient.account.findFirst.mockResolvedValueOnce({
+      accessToken: null,
+    });
+
+    await expect(
+      anilistController.getViewerMangaLists(session, {}),
+    ).rejects.toThrow(
+      new NotFoundException(
+        'AniList access token is not available for the current user',
+      ),
+    );
+
+    expect(mockAnilistClient.getViewerMangaLists).not.toHaveBeenCalled();
   });
 
   it('searchMedia() should return AniList search results for the provided query', async () => {

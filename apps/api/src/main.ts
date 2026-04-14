@@ -6,6 +6,10 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { cleanupOpenApiDoc } from 'nestjs-zod';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { apiReference } from '@scalar/nestjs-api-reference';
+import {
+  BETTER_AUTH_SESSION_COOKIE_NAME,
+  BETTER_AUTH_SESSION_SECURITY_SCHEME,
+} from './common/decorators/api-session-auth.decorator.js';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
@@ -16,9 +20,27 @@ async function bootstrap() {
 
   const config = new DocumentBuilder()
     .setTitle('ManVerse example')
-    .setDescription('The ManVerse API description')
+    .setDescription(
+      [
+        'The ManVerse API description.',
+        '',
+        'Protected application endpoints use cookie-session authentication only.',
+        `Send the Better Auth session cookie \`${BETTER_AUTH_SESSION_COOKIE_NAME}\` to access protected routes.`,
+        'Create and manage sessions through the Better Auth endpoints under `/api/auth/*`.',
+        'Better Auth route documentation lives separately at `/api/auth/reference`.',
+      ].join('\n'),
+    )
     .setVersion('1.0')
     .addTag('ManVerse')
+    .addCookieAuth(
+      BETTER_AUTH_SESSION_COOKIE_NAME,
+      {
+        type: 'apiKey',
+        in: 'cookie',
+        name: BETTER_AUTH_SESSION_COOKIE_NAME,
+      },
+      BETTER_AUTH_SESSION_SECURITY_SCHEME,
+    )
     .build();
 
   const rawOpenApiDoc = SwaggerModule.createDocument(app, config);
@@ -29,6 +51,7 @@ async function bootstrap() {
     apiReference({
       pageTitle: 'ManVerse API Reference',
       content: openApiDoc,
+      theme: 'deepSpace',
     }),
   );
 

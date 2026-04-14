@@ -8,7 +8,8 @@ import { fromNodeHeaders } from 'better-auth/node';
 import type { Request as ExpressRequest } from 'express';
 import { ZodResponse } from 'nestjs-zod';
 import auth from 'src/lib/auth.js';
-import { ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiSessionAuth } from '../../common/decorators/api-session-auth.decorator.js';
 import { LinkedAccountsResponseDto } from './dto/linked-accounts-response.dto.js';
 import { MeResponseDto } from './dto/me-response.dto.js';
 
@@ -19,6 +20,12 @@ export class UsersController {
   constructor(private readonly authService: AuthService<typeof auth>) {}
 
   @Get('accounts')
+  @ApiSessionAuth()
+  @ApiOperation({
+    summary: 'Get the current user linked accounts',
+    description:
+      'Protected endpoint. Requires the Better Auth session cookie. See /api/auth/reference for the auth flow and session endpoints.',
+  })
   @ZodResponse({
     type: LinkedAccountsResponseDto,
     status: 200,
@@ -45,6 +52,12 @@ export class UsersController {
   }
 
   @Get('me')
+  @ApiSessionAuth()
+  @ApiOperation({
+    summary: 'Get the current authenticated user profile',
+    description:
+      'Protected endpoint. Requires the Better Auth session cookie. See /api/auth/reference for the auth flow and session endpoints.',
+  })
   @ZodResponse({
     type: MeResponseDto,
     status: 200,

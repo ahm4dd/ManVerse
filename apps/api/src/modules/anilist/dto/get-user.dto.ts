@@ -3,28 +3,30 @@ import z from 'zod';
 
 export const getUserQueryDtoSchema = z
   .object({
-    id: z.coerce.number().optional(),
-    name: z.string().optional(),
+    id: z.coerce
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe('AniList numeric user ID to resolve'),
+    name: z
+      .string()
+      .min(1)
+      .optional()
+      .describe('AniList user name or handle to resolve'),
   })
-  .superRefine((val, ctx) => {
-    if (!(val.name || val.id)) {
+  .superRefine((data, ctx) => {
+    if (data.id === undefined && data.name === undefined) {
       ctx.addIssue({
         code: 'custom',
-        path: ['ANILIST_GET_USER_QUERY_MISSING'],
         message: 'AniList requires at least one query argument: id or name.',
       });
     }
+  })
+  .meta({
+    id: 'AniListGetUserQuery',
+    description:
+      'AniList user lookup query. Provide either a numeric id or a username.',
   });
 
-// TODO: spiritually accept Kai's answer to zod schemas
-// Kai's passionate type refinement
-// const schema = z.union([
-//   z.object({ name: z.string(), id: z.number() }),
-//   z.object({ name: z.string() }),
-//   z.object({ id: z.number() }),
-// ]);
-
-// type test = z.infer<typeof schema>;
-
 export class GetUserQueryDto extends createZodDto(getUserQueryDtoSchema) {}
-// export class GetUserQueryDto extends createZodDto(schema) {}

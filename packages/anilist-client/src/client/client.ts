@@ -6,6 +6,11 @@ import {
   type UserProfileInput,
 } from '../features/profile/index.js';
 import {
+  getViewerMangaLists,
+  type ViewerMangaListCollection,
+  type ViewerMangaListsInput,
+} from '../features/media-list/index.js';
+import {
   searchMedia,
   type SearchMediaInput,
   type SearchMediaPage,
@@ -47,5 +52,19 @@ export class AnilistClient {
 
   async search(input: SearchMediaInput): Promise<SearchMediaPage | null> {
     return this.searchMedia(input);
+  }
+
+  async getViewerMangaLists(
+    accessToken: string,
+    input?: ViewerMangaListsInput,
+  ): Promise<ViewerMangaListCollection | null> {
+    return getViewerMangaLists(this.httpClient, accessToken, input);
+  }
+
+  async viewerMangaLists(
+    accessToken: string,
+    input?: ViewerMangaListsInput,
+  ): Promise<ViewerMangaListCollection | null> {
+    return this.getViewerMangaLists(accessToken, input);
   }
 }

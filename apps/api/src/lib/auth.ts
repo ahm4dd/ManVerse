@@ -34,9 +34,9 @@ const anilistSyntheticEmailDomain = 'anilist.manverse.local';
 const oauthPlugins = env.ANILIST_OAUTH_ENABLED
   ? [
       genericOAuth({
-        // TODO: Add the AniList OAuth provider config here.
         config: [
           {
+            // Anilist OAuth2 configuration based on their documentation
             responseType: 'code',
             redirectURI: anilistCallbackUrl,
             authorizationUrl: 'https://anilist.co/api/v2/oauth/authorize',
@@ -127,6 +127,7 @@ export const auth = betterAuth({
   trustedOrigins: env.TRUSTED_ORIGINS,
   rateLimit: {
     enabled: env.NODE_ENV === 'production' ? true : false,
+    // TODO: Tune these settings
   },
   session: {
     cookieCache: {
@@ -154,7 +155,6 @@ export const auth = betterAuth({
     ...oauthPlugins,
     testUtils(), // TODO: Put this to use in integration and E2E tests
   ],
-  // TODO: add anilist oauth2 using the genericOAuth plugin
   // socialProviders: { google: { clientId: 'test', clientSecret: 'test' } },
 });
 

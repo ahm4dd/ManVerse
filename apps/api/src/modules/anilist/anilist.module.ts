@@ -7,7 +7,10 @@ import { PrismaModule } from '../../infrastructure/database/prisma/prisma.module
   imports: [PrismaModule],
   controllers: [AnilistController],
   providers: [
-    { provide: 'ANILIST_CLIENT', useFactory: () => new AnilistClient() },
+    {
+      provide: 'ANILIST_CLIENT',
+      useFactory: (): AnilistClient => new AnilistClient(),
+    },
   ],
 })
 export class AnilistModule {}
