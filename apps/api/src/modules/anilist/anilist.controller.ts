@@ -4,6 +4,7 @@ import {
   Get,
   Inject,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiExtraModels,
@@ -12,8 +13,10 @@ import {
   ApiOperation,
   ApiOkResponse,
   ApiTags,
+  ApiTooManyRequestsResponse,
   getSchemaPath,
 } from '@nestjs/swagger';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { ZodSerializerDto } from 'nestjs-zod';
 import {
   AllowAnonymous,
@@ -32,6 +35,10 @@ import {
 } from './dto/get-viewer-manga-lists-response.dto.js';
 import { SearchMediaDto } from './dto/search-media.dto.js';
 import { AnilistClient } from '@manverse/anilist-client';
+
+const PUBLIC_LOOKUP_THROTTLE_TTL_MS = 60_000;
+const PUBLIC_USERS_THROTTLE_LIMIT = 60;
+const PUBLIC_SEARCH_MEDIA_THROTTLE_LIMIT = 30;
 
 @ApiTags('Anilist')
 @ApiExtraModels(GetViewerMangaListsResponseDto)
@@ -133,6 +140,13 @@ export class AnilistController {
 
   @AllowAnonymous()
   @Get('users')
+  @UseGuards(ThrottlerGuard)
+  @Throttle({
+    default: {
+      limit: PUBLIC_USERS_THROTTLE_LIMIT,
+      ttl: PUBLIC_LOOKUP_THROTTLE_TTL_MS,
+    },
+  })
   @ApiOperation({
     summary: 'Lookup a public AniList user profile',
     description:
@@ -145,6 +159,10 @@ export class AnilistController {
     description:
       'Returned when neither an AniList user id nor username is provided.',
   })
+  @ApiTooManyRequestsResponse({
+    description:
+      'Returned when the anonymous lookup rate limit is exceeded for the current client IP.',
+  })
   getUser(@Query() query: GetUserQueryDto) {
     return this.anilistClient.getUserProfile({
       id: query.id,
@@ -154,6 +172,13 @@ export class AnilistController {
 
   @AllowAnonymous()
   @Get('search-media')
+  @UseGuards(ThrottlerGuard)
+  @Throttle({
+    default: {
+      limit: PUBLIC_SEARCH_MEDIA_THROTTLE_LIMIT,
+      ttl: PUBLIC_LOOKUP_THROTTLE_TTL_MS,
+    },
+  })
   @ApiOperation({
     summary: 'Search public AniList media',
     description:
@@ -161,6 +186,10 @@ export class AnilistController {
   })
   @ApiBadRequestResponse({
     description: 'Returned when the search query parameters are invalid.',
+  })
+  @ApiTooManyRequestsResponse({
+    description:
+      'Returned when the anonymous search rate limit is exceeded for the current client IP.',
   })
   @ApiOkResponse({
     description: 'Return AniList media search results for the given query.',
