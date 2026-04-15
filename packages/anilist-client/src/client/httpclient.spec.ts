@@ -1,5 +1,5 @@
 import { gql } from '@apollo/client/core';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   DEFAULT_ANILIST_GRAPHQL_ENDPOINT,
@@ -7,6 +7,15 @@ import {
   DEFAULT_HTTP_TIMEOUT_MS,
 } from '../constants/http.js';
 import type { ResolvedHTTPConfig } from '../types/httpclient.js';
+import {
+  HTTPClientAbortError,
+  HTTPClientGraphQLError,
+  HTTPClientInvalidJSONError,
+  HTTPClientMissingDataError,
+  HTTPClientResponseError,
+  HTTPClientTimeoutError,
+  HTTPClientTransportError,
+} from './errors.js';
 import { HTTPClient } from './httpclient.js';
 
 describe('HTTPClient', () => {
@@ -29,7 +38,11 @@ describe('HTTPClient', () => {
     httpclient = new HTTPClient(config);
   });
 
-  it('should send a POST request to the configured endpoint', async () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('sends a POST request to the configured endpoint', async () => {
     fetchMock.mockResolvedValue({
       ok: true,
       status: 200,
@@ -60,7 +73,7 @@ describe('HTTPClient', () => {
     expect(result).toEqual({ Media: { id: 1 } });
   });
 
-  it('should print a gql document before sending the request body', async () => {
+  it('prints a gql document before sending the request body', async () => {
     fetchMock.mockResolvedValue({
       ok: true,
       status: 200,
@@ -94,7 +107,7 @@ describe('HTTPClient', () => {
     );
   });
 
-  it('should merge auth and request headers with default headers', async () => {
+  it('merges auth and request headers with default headers', async () => {
     fetchMock.mockResolvedValue({
       ok: true,
       status: 200,
@@ -123,5 +136,142 @@ describe('HTTPClient', () => {
         },
       }),
     );
+  });
+
+  it('throws HTTPClientTimeoutError when the request exceeds the timeout', async () => {
+    vi.useFakeTimers();
+
+    fetchMock.mockImplementation((_url, init) => {
+      const signal = init?.signal as AbortSignal | undefined;
+
+      return new Promise((_resolve, reject) => {
+        signal?.addEventListener('abort', () => {
+          reject(signal.reason ?? new DOMException('Aborted', 'AbortError'));
+        });
+      });
+    });
+
+    const requestPromise = httpclient.req({
+      query: 'query Timeout { Viewer { id } }',
+      timeoutMs: 25,
+    });
+    const timeoutExpectation = expect(requestPromise).rejects.toBeInstanceOf(
+      HTTPClientTimeoutError,
+    );
+
+    await vi.advanceTimersByTimeAsync(25);
+
+    await timeoutExpectation;
+  });
+
+  it('throws HTTPClientAbortError when the caller aborts the request', async () => {
+    fetchMock.mockImplementation((_url, init) => {
+      const signal = init?.signal as AbortSignal | undefined;
+
+      return new Promise((_resolve, reject) => {
+        signal?.addEventListener('abort', () => {
+          reject(new DOMException('Aborted', 'AbortError'));
+        });
+      });
+    });
+
+    const controller = new AbortController();
+    const requestPromise = httpclient.req({
+      query: 'query Abort { Viewer { id } }',
+      signal: controller.signal,
+      timeoutMs: 0,
+    });
+
+    controller.abort();
+
+    await expect(requestPromise).rejects.toBeInstanceOf(HTTPClientAbortError);
+  });
+
+  it('throws HTTPClientTransportError for transport failures before a response', async () => {
+    fetchMock.mockRejectedValue(new Error('network down'));
+
+    await expect(
+      httpclient.req({
+        query: 'query Viewer { Viewer { id } }',
+        timeoutMs: 0,
+      }),
+    ).rejects.toBeInstanceOf(HTTPClientTransportError);
+  });
+
+  it('throws HTTPClientResponseError for non-ok responses', async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 503,
+      statusText: 'Service Unavailable',
+      text: async () => 'upstream unavailable',
+    });
+
+    await expect(
+      httpclient.req({
+        query: 'query Viewer { Viewer { id } }',
+      }),
+    ).rejects.toMatchObject({
+      status: 503,
+      statusText: 'Service Unavailable',
+      responseBody: 'upstream unavailable',
+    });
+    await expect(
+      httpclient.req({
+        query: 'query Viewer { Viewer { id } }',
+      }),
+    ).rejects.toBeInstanceOf(HTTPClientResponseError);
+  });
+
+  it('throws HTTPClientInvalidJSONError when the response is not valid JSON', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => {
+        throw new Error('bad json');
+      },
+    });
+
+    await expect(
+      httpclient.req({
+        query: 'query Viewer { Viewer { id } }',
+      }),
+    ).rejects.toBeInstanceOf(HTTPClientInvalidJSONError);
+  });
+
+  it('throws HTTPClientGraphQLError when the GraphQL payload contains errors', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        errors: [{ message: 'Forbidden' }],
+      }),
+    });
+
+    await expect(
+      httpclient.req({
+        query: 'query Viewer { Viewer { id } }',
+      }),
+    ).rejects.toMatchObject({
+      errors: [{ message: 'Forbidden' }],
+    });
+    await expect(
+      httpclient.req({
+        query: 'query Viewer { Viewer { id } }',
+      }),
+    ).rejects.toBeInstanceOf(HTTPClientGraphQLError);
+  });
+
+  it('throws HTTPClientMissingDataError when the GraphQL payload has no data', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({}),
+    });
+
+    await expect(
+      httpclient.req({
+        query: 'query Viewer { Viewer { id } }',
+      }),
+    ).rejects.toBeInstanceOf(HTTPClientMissingDataError);
   });
 });

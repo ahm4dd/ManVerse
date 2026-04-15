@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Test, TestingModule } from '@nestjs/testing';
+import { ThrottlerStorage, ThrottlerStorageService } from '@nestjs/throttler';
 import {
   beforeAll,
   afterAll,
@@ -12,12 +13,13 @@ import {
   vi,
 } from 'vitest';
 import request from 'supertest';
+import type { Express } from 'express';
 import { z } from 'zod';
 import { AppModule } from '../../src/app.module.js';
 import { configureApp } from '../../src/bootstrap/configure-app.js';
 import { ANILIST_PROVIDER_ID } from '../../src/common/constants/provider.constants.js';
 import { PrismaClient } from '../../src/generated/prisma/client.js';
-import { test as authTest } from '../../src/lib/auth.js';
+import { authTest } from '../helpers/auth-test.js';
 import { apiPath } from '../helpers/api-path.js';
 
 const validationErrorBodySchema = z.object({
@@ -36,8 +38,9 @@ const errorMessageBodySchema = z.object({
 
 describe('AnilistController (e2e)', () => {
   let app: NestExpressApplication;
-  let httpServer: ReturnType<NestExpressApplication['getHttpServer']>;
+  let httpServer: Express;
   let prisma: PrismaClient;
+  let throttlerStorage: ThrottlerStorageService;
   const createdUserIds: string[] = [];
 
   const mockAnilistClient = {
@@ -58,8 +61,11 @@ describe('AnilistController (e2e)', () => {
     app = moduleFixture.createNestApplication<NestExpressApplication>();
     configureApp(app);
     await app.init();
-    httpServer = app.getHttpServer();
+    httpServer = app.getHttpAdapter().getInstance();
     prisma = app.get(PrismaClient);
+    throttlerStorage = app.get<ThrottlerStorageService>(
+      ThrottlerStorage as never,
+    );
   });
 
   afterAll(async () => {
@@ -68,6 +74,7 @@ describe('AnilistController (e2e)', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    throttlerStorage.storage.clear();
   });
 
   afterEach(async () => {
@@ -111,6 +118,16 @@ describe('AnilistController (e2e)', () => {
       cookie,
       accessToken,
     };
+  };
+
+  const expectSuccessfulAnonymousGet = async (
+    path: string,
+    query: Record<string, string | number | boolean>,
+    count: number,
+  ) => {
+    for (let attempt = 0; attempt < count; attempt += 1) {
+      await request(httpServer).get(apiPath(path)).query(query).expect(200);
+    }
   };
 
   it('GET /api/v1/anilist/users returns the requested AniList user', async () => {
@@ -190,6 +207,15 @@ describe('AnilistController (e2e)', () => {
           accessToken,
         );
         expect(body).toEqual(profile);
+      });
+  });
+
+  it('GET /api/v1/anilist/viewer returns 401 without a session cookie', async () => {
+    await request(httpServer)
+      .get(apiPath('/anilist/viewer'))
+      .expect(401)
+      .expect(() => {
+        expect(mockAnilistClient.getViewerProfile).not.toHaveBeenCalled();
       });
   });
 
@@ -293,6 +319,70 @@ describe('AnilistController (e2e)', () => {
           query,
         );
         expect(body).toEqual(collection);
+      });
+  });
+
+  it('GET /api/v1/anilist/viewer/manga-lists returns null when AniList has no manga list collection', async () => {
+    const { cookie, accessToken } = await createAuthenticatedAniListUser();
+
+    mockAnilistClient.getViewerMangaLists.mockResolvedValueOnce(null);
+
+    await request(httpServer)
+      .get(apiPath('/anilist/viewer/manga-lists'))
+      .set('cookie', cookie)
+      .expect(200)
+      .expect(({ body }) => {
+        expect(mockAnilistClient.getViewerMangaLists).toHaveBeenCalledWith(
+          accessToken,
+          {},
+        );
+        expect(body).toBeNull();
+      });
+  });
+
+  it('GET /api/v1/anilist/viewer/manga-lists fails closed when AniList returns malformed nested payload data', async () => {
+    const { cookie, accessToken } = await createAuthenticatedAniListUser();
+
+    mockAnilistClient.getViewerMangaLists.mockResolvedValueOnce({
+      hasNextChunk: true,
+      lists: [
+        {
+          name: 'Current',
+          isCustomList: false,
+          isSplitCompletedList: false,
+          status: 'CURRENT',
+          entries: [
+            {
+              id: 'not-a-number',
+              mediaId: 151807,
+            },
+          ],
+        },
+      ],
+    });
+
+    await request(httpServer)
+      .get(apiPath('/anilist/viewer/manga-lists'))
+      .set('cookie', cookie)
+      .expect(500)
+      .expect(({ body }) => {
+        expect(mockAnilistClient.getViewerMangaLists).toHaveBeenCalledWith(
+          accessToken,
+          {},
+        );
+        expect(body).toEqual({
+          message: 'Internal Server Error',
+          statusCode: 500,
+        });
+      });
+  });
+
+  it('GET /api/v1/anilist/viewer/manga-lists returns 401 without a session cookie', async () => {
+    await request(httpServer)
+      .get(apiPath('/anilist/viewer/manga-lists'))
+      .expect(401)
+      .expect(() => {
+        expect(mockAnilistClient.getViewerMangaLists).not.toHaveBeenCalled();
       });
   });
 
@@ -427,5 +517,65 @@ describe('AnilistController (e2e)', () => {
         expect(mockAnilistClient.searchMedia).toHaveBeenCalledWith(query);
         expect(body).toEqual(searchResults);
       });
+  });
+
+  it('GET /api/v1/users/me returns 401 without a session cookie', async () => {
+    await request(httpServer).get(apiPath('/users/me')).expect(401);
+  });
+
+  it('GET /api/v1/users/accounts returns 401 without a session cookie', async () => {
+    await request(httpServer).get(apiPath('/users/accounts')).expect(401);
+  });
+
+  it('GET /api/v1/anilist/users returns 429 after 60 anonymous requests from the same IP', async () => {
+    mockAnilistClient.getUserProfile.mockResolvedValue({
+      id: 7_407_199,
+      name: 'ahm4dd',
+      about: null,
+      bannerImage: null,
+      siteUrl: 'https://anilist.co/user/ahm4dd',
+      createdAt: 1_711_630_400,
+      avatar: null,
+      favourites: null,
+    });
+
+    await expectSuccessfulAnonymousGet(
+      '/anilist/users',
+      { name: 'ahm4dd' },
+      60,
+    );
+
+    await request(httpServer)
+      .get(apiPath('/anilist/users'))
+      .query({ name: 'ahm4dd' })
+      .expect(429);
+
+    expect(mockAnilistClient.getUserProfile).toHaveBeenCalledTimes(60);
+  });
+
+  it('GET /api/v1/anilist/search-media returns 429 after 30 anonymous requests from the same IP', async () => {
+    mockAnilistClient.searchMedia.mockResolvedValue({
+      pageInfo: {
+        currentPage: 1,
+        hasNextPage: false,
+        lastPage: 1,
+        perPage: 5,
+        total: 1,
+      },
+      media: [],
+    });
+
+    await expectSuccessfulAnonymousGet(
+      '/anilist/search-media',
+      { search: 'solo leveling', page: 1, perPage: 5, isAdult: false },
+      30,
+    );
+
+    await request(httpServer)
+      .get(apiPath('/anilist/search-media'))
+      .query({ search: 'solo leveling', page: 1, perPage: 5, isAdult: false })
+      .expect(429);
+
+    expect(mockAnilistClient.searchMedia).toHaveBeenCalledTimes(30);
   });
 });

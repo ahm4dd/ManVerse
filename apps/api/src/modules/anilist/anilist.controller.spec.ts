@@ -5,6 +5,7 @@ import type {
 } from '@manverse/anilist-client';
 import { faker } from '@faker-js/faker';
 import { NotFoundException } from '@nestjs/common';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { Test, TestingModule } from '@nestjs/testing';
 import type { UserSession } from '@thallesp/nestjs-better-auth';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -32,6 +33,14 @@ describe('AnilistController', () => {
 
   beforeAll(async () => {
     const app: TestingModule = await Test.createTestingModule({
+      imports: [
+        ThrottlerModule.forRoot([
+          {
+            ttl: 60_000,
+            limit: 60,
+          },
+        ]),
+      ],
       controllers: [AnilistController],
       providers: [
         { provide: 'ANILIST_CLIENT', useValue: mockAnilistClient },
@@ -243,6 +252,29 @@ describe('AnilistController', () => {
     expect(mockAnilistClient.getViewerMangaLists).toHaveBeenCalledWith(
       accessToken,
       query,
+    );
+  });
+
+  it('getViewerMangaLists() should return null when AniList has no manga list collection', async () => {
+    const session = {
+      user: {
+        id: faker.string.nanoid(),
+      },
+    } as UserSession;
+    const accessToken = faker.string.alphanumeric(32);
+
+    mockPrismaClient.account.findFirst.mockResolvedValueOnce({
+      accessToken,
+    });
+    mockAnilistClient.getViewerMangaLists.mockResolvedValueOnce(null);
+
+    await expect(
+      anilistController.getViewerMangaLists(session, {}),
+    ).resolves.toBeNull();
+
+    expect(mockAnilistClient.getViewerMangaLists).toHaveBeenCalledWith(
+      accessToken,
+      {},
     );
   });
 

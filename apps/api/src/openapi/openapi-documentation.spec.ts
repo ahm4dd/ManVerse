@@ -126,12 +126,12 @@ describe('OpenAPI documentation', () => {
       Object.keys(
         openApiDoc.paths?.['/api/v1/anilist/users']?.get?.responses ?? {},
       ),
-    ).toEqual(expect.arrayContaining(['200', '400']));
+    ).toEqual(expect.arrayContaining(['200', '400', '429']));
     expect(
       Object.keys(
         openApiDoc.paths?.['/api/v1/anilist/search-media']?.get?.responses ??
           {},
       ),
-    ).toEqual(expect.arrayContaining(['200', '400']));
+    ).toEqual(expect.arrayContaining(['200', '400', '429']));
   });
 });
