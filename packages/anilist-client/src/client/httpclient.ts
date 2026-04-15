@@ -8,8 +8,12 @@ import type {
 } from '../types/httpclient.js';
 import {
   HTTPClientAbortError,
-  HTTPClientError,
+  HTTPClientGraphQLError,
+  HTTPClientInvalidJSONError,
+  HTTPClientMissingDataError,
+  HTTPClientResponseError,
   HTTPClientTimeoutError,
+  HTTPClientTransportError,
 } from './errors.js';
 import { isAbortError } from './utils.js';
 
@@ -119,7 +123,7 @@ export class HTTPClient implements GraphQLExecutor {
         err,
       });
 
-      throw new HTTPClientError(
+      throw new HTTPClientTransportError(
         `Could not perform GraphQL request to ${this.endpoint} at the ${HTTPClient.name} layer`,
         { cause: err },
       );
@@ -142,7 +146,10 @@ export class HTTPClient implements GraphQLExecutor {
         },
       );
 
-      throw new HTTPClientError(
+      throw new HTTPClientResponseError(
+        response.status,
+        response.statusText,
+        responseBody || null,
         `GraphQL request to ${this.endpoint} failed with status ${response.status} ${response.statusText}`,
         {
           cause: new Error(responseBody || 'Response body could not be read'),
@@ -165,7 +172,7 @@ export class HTTPClient implements GraphQLExecutor {
         },
       );
 
-      throw new HTTPClientError(
+      throw new HTTPClientInvalidJSONError(
         `Response from ${this.endpoint} could not be parsed as JSON`,
         { cause: err },
       );
@@ -178,7 +185,8 @@ export class HTTPClient implements GraphQLExecutor {
         errors: payload.errors,
       });
 
-      throw new HTTPClientError(
+      throw new HTTPClientGraphQLError(
+        payload.errors,
         `GraphQL request to ${this.endpoint} returned errors`,
         {
           cause: new Error(JSON.stringify(payload.errors)),
@@ -192,7 +200,7 @@ export class HTTPClient implements GraphQLExecutor {
         operationName,
       });
 
-      throw new HTTPClientError(
+      throw new HTTPClientMissingDataError(
         `GraphQL request to ${this.endpoint} completed without data`,
       );
     }

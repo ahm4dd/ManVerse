@@ -4,7 +4,12 @@ export {
   AnilistClientAuthError,
   HTTPClientAbortError,
   HTTPClientError,
+  HTTPClientGraphQLError,
+  HTTPClientInvalidJSONError,
+  HTTPClientMissingDataError,
+  HTTPClientResponseError,
   HTTPClientTimeoutError,
+  HTTPClientTransportError,
 } from './src/client/errors.js';
 export {
   getUserProfile,

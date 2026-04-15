@@ -34,24 +34,12 @@ export class AnilistClient {
     return getViewerProfile(this.httpClient, accessToken);
   }
 
-  async viewer(accessToken: string): Promise<ProfileUser | null> {
-    return this.getViewerProfile(accessToken);
-  }
-
   async getUserProfile(input: UserProfileInput): Promise<ProfileUser | null> {
     return getUserProfile(this.httpClient, input);
   }
 
-  async user(input: UserProfileInput): Promise<ProfileUser | null> {
-    return this.getUserProfile(input);
-  }
-
   async searchMedia(input: SearchMediaInput): Promise<SearchMediaPage | null> {
     return searchMedia(this.httpClient, input);
-  }
-
-  async search(input: SearchMediaInput): Promise<SearchMediaPage | null> {
-    return this.searchMedia(input);
   }
 
   async getViewerMangaLists(
@@ -59,12 +47,5 @@ export class AnilistClient {
     input?: ViewerMangaListsInput,
   ): Promise<ViewerMangaListCollection | null> {
     return getViewerMangaLists(this.httpClient, accessToken, input);
-  }
-
-  async viewerMangaLists(
-    accessToken: string,
-    input?: ViewerMangaListsInput,
-  ): Promise<ViewerMangaListCollection | null> {
-    return this.getViewerMangaLists(accessToken, input);
   }
 }
