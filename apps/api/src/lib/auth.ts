@@ -119,6 +119,8 @@ const oauthPlugins = env.ANILIST_OAUTH_ENABLED
     ]
   : [];
 
+const testPlugins = env.NODE_ENV === 'test' ? [testUtils()] : [];
+
 export const auth = betterAuth({
   // basePath: 'auth',
   database: prismaAdapter(prisma, { provider: 'postgresql' }),
@@ -150,15 +152,8 @@ export const auth = betterAuth({
       return argon2.verify(hash as string, password as string);
     },
   },
-  plugins: [
-    openAPI({ path: 'reference' }),
-    ...oauthPlugins,
-    testUtils(), // TODO: Put this to use in integration and E2E tests
-  ],
+  plugins: [openAPI({ path: 'reference' }), ...oauthPlugins, ...testPlugins],
   // socialProviders: { google: { clientId: 'test', clientSecret: 'test' } },
 });
-
-const ctx = await auth.$context;
-export const test = ctx.test;
 
 export default auth;
