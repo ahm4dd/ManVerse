@@ -187,6 +187,35 @@ describe('HTTPClient', () => {
     await expect(requestPromise).rejects.toBeInstanceOf(HTTPClientAbortError);
   });
 
+  it('still throws HTTPClientTimeoutError when a timed request also has a caller signal', async () => {
+    vi.useFakeTimers();
+
+    fetchMock.mockImplementation((_url, init) => {
+      const signal = init?.signal as AbortSignal | undefined;
+
+      return new Promise((_resolve, reject) => {
+        signal?.addEventListener('abort', () => {
+          reject(signal.reason ?? new DOMException('Aborted', 'AbortError'));
+        });
+      });
+    });
+
+    const controller = new AbortController();
+    const requestPromise = httpclient.req({
+      query: 'query Timeout { Viewer { id } }',
+      signal: controller.signal,
+      timeoutMs: 25,
+    });
+    const timeoutExpectation = expect(requestPromise).rejects.toBeInstanceOf(
+      HTTPClientTimeoutError,
+    );
+
+    await vi.advanceTimersByTimeAsync(25);
+    controller.abort();
+
+    await timeoutExpectation;
+  });
+
   it('throws HTTPClientTransportError for transport failures before a response', async () => {
     fetchMock.mockRejectedValue(new Error('network down'));
 
@@ -220,6 +249,27 @@ describe('HTTPClient', () => {
         query: 'query Viewer { Viewer { id } }',
       }),
     ).rejects.toBeInstanceOf(HTTPClientResponseError);
+  });
+
+  it('throws HTTPClientResponseError with a null body when a non-ok response body cannot be read', async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 502,
+      statusText: 'Bad Gateway',
+      text: async () => {
+        throw new Error('stream closed');
+      },
+    });
+
+    await expect(
+      httpclient.req({
+        query: 'query Viewer { Viewer { id } }',
+      }),
+    ).rejects.toMatchObject({
+      status: 502,
+      statusText: 'Bad Gateway',
+      responseBody: null,
+    });
   });
 
   it('throws HTTPClientInvalidJSONError when the response is not valid JSON', async () => {

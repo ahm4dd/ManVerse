@@ -1,12 +1,16 @@
 import { faker } from '@faker-js/faker';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  HTTPClientGraphQLError,
+  HTTPClientInvalidJSONError,
+  HTTPClientResponseError,
+} from '@manverse/anilist-client';
 import { ANILIST_PROVIDER_ID } from '../common/constants/provider.constants.js';
 import {
   ANILIST_SYNTHETIC_EMAIL_DOMAIN,
   anilistAccountOptions,
   buildAnilistSyntheticEmail,
   createAnilistOAuthProviderConfig,
-  fetchAnilistOAuthViewer,
 } from './anilist-oauth.js';
 
 describe('AniList OAuth helpers', () => {
@@ -53,49 +57,63 @@ describe('AniList OAuth helpers', () => {
     );
   });
 
-  it('throws when AniList returns a non-ok response body', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: false,
-      status: 401,
-      statusText: 'Unauthorized',
-      text: () =>
-        Promise.resolve(
-          JSON.stringify({ errors: [{ message: 'Unauthorized' }] }),
+  it('surfaces shared client response errors from the AniList viewer resolver', async () => {
+    const providerConfig = createAnilistOAuthProviderConfig({
+      callbackUrl:
+        'https://api.manverse.local/api/auth/oauth2/callback/anilist',
+      clientId: 'anilist-client-id',
+      clientSecret: 'anilist-client-secret',
+      secret: Buffer.from('response-secret').toString('base64'),
+      resolveViewer: vi
+        .fn()
+        .mockRejectedValue(
+          new HTTPClientResponseError(
+            401,
+            'Unauthorized',
+            '{"errors":[{"message":"Unauthorized"}]}',
+          ),
         ),
     });
 
     await expect(
-      fetchAnilistOAuthViewer('viewer-token', fetchMock as typeof fetch),
-    ).rejects.toThrow(JSON.stringify([{ message: 'Unauthorized' }]));
+      providerConfig.getUserInfo?.({ accessToken: 'viewer-token' }),
+    ).rejects.toBeInstanceOf(HTTPClientResponseError);
   });
 
-  it('throws when AniList returns invalid JSON for the viewer payload', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      statusText: 'OK',
-      text: () => Promise.resolve('{invalid-json'),
+  it('surfaces shared client JSON parsing errors from the AniList viewer resolver', async () => {
+    const providerConfig = createAnilistOAuthProviderConfig({
+      callbackUrl:
+        'https://api.manverse.local/api/auth/oauth2/callback/anilist',
+      clientId: 'anilist-client-id',
+      clientSecret: 'anilist-client-secret',
+      secret: Buffer.from('json-secret').toString('base64'),
+      resolveViewer: vi
+        .fn()
+        .mockRejectedValue(new HTTPClientInvalidJSONError()),
     });
 
     await expect(
-      fetchAnilistOAuthViewer('viewer-token', fetchMock as typeof fetch),
-    ).rejects.toThrow(
-      'AniList returned invalid JSON while loading the viewer.',
-    );
+      providerConfig.getUserInfo?.({ accessToken: 'viewer-token' }),
+    ).rejects.toBeInstanceOf(HTTPClientInvalidJSONError);
   });
 
-  it('throws when AniList returns GraphQL errors in the viewer payload', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      statusText: 'OK',
-      text: () =>
-        Promise.resolve(JSON.stringify({ errors: [{ message: 'Forbidden' }] })),
+  it('surfaces shared client GraphQL errors from the AniList viewer resolver', async () => {
+    const providerConfig = createAnilistOAuthProviderConfig({
+      callbackUrl:
+        'https://api.manverse.local/api/auth/oauth2/callback/anilist',
+      clientId: 'anilist-client-id',
+      clientSecret: 'anilist-client-secret',
+      secret: Buffer.from('graphql-secret').toString('base64'),
+      resolveViewer: vi
+        .fn()
+        .mockRejectedValue(
+          new HTTPClientGraphQLError([{ message: 'Forbidden' }]),
+        ),
     });
 
     await expect(
-      fetchAnilistOAuthViewer('viewer-token', fetchMock as typeof fetch),
-    ).rejects.toThrow(JSON.stringify([{ message: 'Forbidden' }]));
+      providerConfig.getUserInfo?.({ accessToken: 'viewer-token' }),
+    ).rejects.toBeInstanceOf(HTTPClientGraphQLError);
   });
 
   it('getUserInfo() returns null when AniList resolves no authenticated viewer', async () => {

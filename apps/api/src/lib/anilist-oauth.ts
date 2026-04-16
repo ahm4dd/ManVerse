@@ -1,20 +1,8 @@
 import { createHmac } from 'node:crypto';
+import type { ProfileUser } from '@manverse/anilist-client';
 import type { OAuth2UserInfo } from 'better-auth';
 import type { GenericOAuthConfig } from 'better-auth/plugins/generic-oauth';
 import { ANILIST_PROVIDER_ID } from '../common/constants/provider.constants.js';
-
-const ANILIST_GRAPHQL_ENDPOINT = 'https://graphql.anilist.co';
-const ANILIST_VIEWER_QUERY = `
-  query Viewer {
-    Viewer {
-      id
-      name
-      avatar {
-        large
-      }
-    }
-  }
-`;
 
 export const ANILIST_SYNTHETIC_EMAIL_DOMAIN = 'anilist.manverse.local';
 export const ANILIST_ACCOUNT_NOT_LINKED_MESSAGE =
@@ -22,20 +10,7 @@ export const ANILIST_ACCOUNT_NOT_LINKED_MESSAGE =
 export const ANILIST_RELINK_REQUIRED_MESSAGE =
   'AniList access token could not be retrieved for the current user. Please relink your AniList account.';
 
-type AnilistOAuthViewer = {
-  id: number;
-  name: string;
-  avatar?: {
-    large?: string | null;
-  } | null;
-};
-
-type AnilistViewerPayload = {
-  data?: {
-    Viewer?: AnilistOAuthViewer | null;
-  };
-  errors?: unknown;
-};
+type AnilistOAuthViewer = Pick<ProfileUser, 'id' | 'name' | 'avatar'>;
 
 export type ResolveAnilistOAuthViewer = (
   accessToken: string,
@@ -46,7 +21,6 @@ export type CreateAnilistOAuthProviderConfigOptions = {
   clientId: string;
   clientSecret: string;
   secret: string;
-  fetchImpl?: typeof fetch;
   resolveViewer?: ResolveAnilistOAuthViewer;
 };
 
@@ -56,18 +30,6 @@ export const anilistAccountOptions = {
     enabled: false,
   },
 } as const;
-
-function parseAnilistViewerPayload(rawPayload: string): AnilistViewerPayload {
-  if (!rawPayload) {
-    return {};
-  }
-
-  try {
-    return JSON.parse(rawPayload) as AnilistViewerPayload;
-  } catch {
-    throw new Error('AniList returned invalid JSON while loading the viewer.');
-  }
-}
 
 export function buildAnilistSyntheticEmail(input: {
   secret: string;
@@ -110,57 +72,9 @@ export function mapAnilistViewerToOAuthUserInfo(input: {
   };
 }
 
-export async function fetchAnilistOAuthViewer(
-  accessToken: string,
-  fetchImpl: typeof fetch = fetch,
-): Promise<AnilistOAuthViewer | null> {
-  const normalizedAccessToken = accessToken.trim();
-
-  if (!normalizedAccessToken) {
-    throw new Error('AniList did not return an access token.');
-  }
-
-  const response = await fetchImpl(ANILIST_GRAPHQL_ENDPOINT, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-      Authorization: `Bearer ${normalizedAccessToken}`,
-    },
-    body: JSON.stringify({
-      query: ANILIST_VIEWER_QUERY,
-      operationName: 'Viewer',
-    }),
-  });
-
-  const payload = parseAnilistViewerPayload(await response.text());
-
-  if (!response.ok) {
-    throw new Error(
-      JSON.stringify(
-        payload.errors ?? {
-          status: response.status,
-          statusText: response.statusText,
-        },
-      ),
-    );
-  }
-
-  if (payload.errors) {
-    throw new Error(JSON.stringify(payload.errors));
-  }
-
-  return payload.data?.Viewer ?? null;
-}
-
 export function createAnilistOAuthProviderConfig(
   options: CreateAnilistOAuthProviderConfigOptions,
 ): GenericOAuthConfig {
-  const resolveViewer =
-    options.resolveViewer ??
-    ((accessToken: string) =>
-      fetchAnilistOAuthViewer(accessToken, options.fetchImpl));
-
   return {
     responseType: 'code',
     redirectURI: options.callbackUrl,
@@ -178,7 +92,11 @@ export function createAnilistOAuthProviderConfig(
         throw new Error('AniList did not return an access token.');
       }
 
-      const viewer = await resolveViewer(tokens.accessToken);
+      if (!options.resolveViewer) {
+        throw new Error('AniList viewer resolver is not configured.');
+      }
+
+      const viewer = await options.resolveViewer(tokens.accessToken);
 
       if (!viewer) {
         return null;

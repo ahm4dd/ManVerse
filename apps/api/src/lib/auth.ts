@@ -18,6 +18,7 @@ import { openAPI, testUtils } from 'better-auth/plugins';
 import { genericOAuth } from 'better-auth/plugins/generic-oauth';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
 import * as argon2 from 'argon2';
+import { AnilistClient } from '@manverse/anilist-client';
 import {
   anilistAccountOptions,
   createAnilistOAuthProviderConfig,
@@ -33,6 +34,7 @@ const anilistCallbackUrl = new URL(
   '/api/auth/oauth2/callback/anilist',
   env.BETTER_AUTH_URL,
 ).toString();
+const anilistClient = new AnilistClient();
 
 const oauthPlugins = env.ANILIST_OAUTH_ENABLED
   ? [
@@ -43,6 +45,8 @@ const oauthPlugins = env.ANILIST_OAUTH_ENABLED
             clientId: env.ANILIST_CLIENT_ID!,
             clientSecret: env.ANILIST_CLIENT_SECRET!,
             secret: env.BETTER_AUTH_SECRET,
+            resolveViewer: (accessToken: string) =>
+              anilistClient.getViewerProfile(accessToken),
           }),
         ],
       }),

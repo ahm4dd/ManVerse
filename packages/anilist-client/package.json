@@ -18,6 +18,7 @@
   "scripts": {
     "dev": "tsc -w --preserveWatchOutput",
     "format": "prettier --write \"src/**/*.ts\" \"*.ts\"",
+    "lint": "eslint --config ./eslint.config.mjs ./index.ts ./src --max-warnings=0",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest --passWithNoTests",
     "test:cov": "vitest run --coverage --passWithNoTests",

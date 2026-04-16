@@ -1,19 +1,7 @@
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import swc from 'unplugin-swc';
 import { defineConfig } from 'vitest/config';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
 export default defineConfig({
-  resolve: {
-    alias: {
-      '@manverse/anilist-client': path.resolve(
-        __dirname,
-        '../../packages/anilist-client/index.ts',
-      ),
-    },
-  },
   test: {
     globals: true,
     root: './',
