@@ -134,4 +134,130 @@ describe('OpenAPI documentation', () => {
       ),
     ).toEqual(expect.arrayContaining(['200', '400', '429']));
   });
+
+  it('documents concrete AniList response body schemas', () => {
+    const viewerResponse = openApiDoc.paths?.['/api/v1/anilist/viewer']?.get
+      ?.responses?.['200'] as any;
+    const viewerUnauthorizedResponse = openApiDoc.paths?.[
+      '/api/v1/anilist/viewer'
+    ]?.get?.responses?.['401'] as any;
+    const viewerNotFoundResponse = openApiDoc.paths?.['/api/v1/anilist/viewer']
+      ?.get?.responses?.['404'] as any;
+    const viewerMangaListsResponse = openApiDoc.paths?.[
+      '/api/v1/anilist/viewer/manga-lists'
+    ]?.get?.responses?.['200'] as any;
+    const viewerMangaListsBadRequestResponse = openApiDoc.paths?.[
+      '/api/v1/anilist/viewer/manga-lists'
+    ]?.get?.responses?.['400'] as any;
+    const viewerMangaListsUnauthorizedResponse = openApiDoc.paths?.[
+      '/api/v1/anilist/viewer/manga-lists'
+    ]?.get?.responses?.['401'] as any;
+    const viewerMangaListsNotFoundResponse = openApiDoc.paths?.[
+      '/api/v1/anilist/viewer/manga-lists'
+    ]?.get?.responses?.['404'] as any;
+    const usersResponse = openApiDoc.paths?.['/api/v1/anilist/users']?.get
+      ?.responses?.['200'] as any;
+    const usersBadRequestResponse = openApiDoc.paths?.['/api/v1/anilist/users']
+      ?.get?.responses?.['400'] as any;
+    const usersTooManyRequestsResponse = openApiDoc.paths?.[
+      '/api/v1/anilist/users'
+    ]?.get?.responses?.['429'] as any;
+    const searchMediaResponse = openApiDoc.paths?.[
+      '/api/v1/anilist/search-media'
+    ]?.get?.responses?.['200'] as any;
+    const searchMediaBadRequestResponse = openApiDoc.paths?.[
+      '/api/v1/anilist/search-media'
+    ]?.get?.responses?.['400'] as any;
+    const searchMediaTooManyRequestsResponse = openApiDoc.paths?.[
+      '/api/v1/anilist/search-media'
+    ]?.get?.responses?.['429'] as any;
+
+    expect(viewerResponse.content?.['application/json']?.schema).toEqual({
+      anyOf: [
+        {
+          $ref: '#/components/schemas/AniListProfileResponse',
+        },
+        {
+          type: 'null',
+        },
+      ],
+    });
+    expect(viewerUnauthorizedResponse.content?.['application/json']?.schema).toEqual(
+      {
+        $ref: '#/components/schemas/HttpErrorResponse',
+      },
+    );
+    expect(viewerNotFoundResponse.content?.['application/json']?.schema).toEqual(
+      {
+        $ref: '#/components/schemas/HttpErrorResponse',
+      },
+    );
+    expect(viewerMangaListsResponse.content?.['application/json']?.schema).toEqual(
+      {
+        anyOf: [
+          {
+            $ref: '#/components/schemas/AniListViewerMangaListsResponse',
+          },
+          {
+            type: 'null',
+          },
+        ],
+      },
+    );
+    expect(
+      viewerMangaListsBadRequestResponse.content?.['application/json']?.schema,
+    ).toEqual({
+      $ref: '#/components/schemas/ValidationErrorResponse',
+    });
+    expect(
+      viewerMangaListsUnauthorizedResponse.content?.['application/json']?.schema,
+    ).toEqual({
+      $ref: '#/components/schemas/HttpErrorResponse',
+    });
+    expect(
+      viewerMangaListsNotFoundResponse.content?.['application/json']?.schema,
+    ).toEqual({
+      $ref: '#/components/schemas/HttpErrorResponse',
+    });
+    expect(usersResponse.content?.['application/json']?.schema).toEqual({
+      anyOf: [
+        {
+          $ref: '#/components/schemas/AniListProfileResponse',
+        },
+        {
+          type: 'null',
+        },
+      ],
+    });
+    expect(usersBadRequestResponse.content?.['application/json']?.schema).toEqual(
+      {
+        $ref: '#/components/schemas/ValidationErrorResponse',
+      },
+    );
+    expect(
+      usersTooManyRequestsResponse.content?.['application/json']?.schema,
+    ).toEqual({
+      $ref: '#/components/schemas/HttpErrorResponse',
+    });
+    expect(searchMediaResponse.content?.['application/json']?.schema).toEqual({
+      anyOf: [
+        {
+          $ref: '#/components/schemas/AniListSearchMediaPageResponse',
+        },
+        {
+          type: 'null',
+        },
+      ],
+    });
+    expect(
+      searchMediaBadRequestResponse.content?.['application/json']?.schema,
+    ).toEqual({
+      $ref: '#/components/schemas/ValidationErrorResponse',
+    });
+    expect(
+      searchMediaTooManyRequestsResponse.content?.['application/json']?.schema,
+    ).toEqual({
+      $ref: '#/components/schemas/HttpErrorResponse',
+    });
+  });
 });
