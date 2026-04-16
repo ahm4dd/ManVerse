@@ -19,6 +19,10 @@ import { AppModule } from '../../src/app.module.js';
 import { configureApp } from '../../src/bootstrap/configure-app.js';
 import { ANILIST_PROVIDER_ID } from '../../src/common/constants/provider.constants.js';
 import { PrismaClient } from '../../src/generated/prisma/client.js';
+import {
+  ANILIST_ACCOUNT_NOT_LINKED_MESSAGE,
+  ANILIST_RELINK_REQUIRED_MESSAGE,
+} from '../../src/lib/anilist-oauth.js';
 import { authTest } from '../helpers/auth-test.js';
 import { apiPath } from '../helpers/api-path.js';
 
@@ -238,9 +242,24 @@ describe('AnilistController (e2e)', () => {
         expect(mockAnilistClient.getViewerProfile).not.toHaveBeenCalled();
         const parsedBody = errorMessageBodySchema.parse(body);
 
-        expect(parsedBody.message).toBe(
-          'AniList account is not linked for the current user',
-        );
+        expect(parsedBody.message).toBe(ANILIST_ACCOUNT_NOT_LINKED_MESSAGE);
+      });
+  });
+
+  it('GET /api/v1/anilist/viewer returns 404 when the AniList account must be relinked', async () => {
+    const { cookie } = await createAuthenticatedAniListUser({
+      accessToken: '$ba$corrupted-encrypted-token',
+    });
+
+    await request(httpServer)
+      .get(apiPath('/anilist/viewer'))
+      .set('cookie', cookie)
+      .expect(404)
+      .expect(({ body }) => {
+        expect(mockAnilistClient.getViewerProfile).not.toHaveBeenCalled();
+        const parsedBody = errorMessageBodySchema.parse(body);
+
+        expect(parsedBody.message).toBe(ANILIST_RELINK_REQUIRED_MESSAGE);
       });
   });
 
@@ -322,7 +341,7 @@ describe('AnilistController (e2e)', () => {
       });
   });
 
-  it('GET /api/v1/anilist/viewer/manga-lists returns null when AniList has no manga list collection', async () => {
+  it('GET /api/v1/anilist/viewer/manga-lists returns an empty response body when AniList has no manga list collection', async () => {
     const { cookie, accessToken } = await createAuthenticatedAniListUser();
 
     mockAnilistClient.getViewerMangaLists.mockResolvedValueOnce(null);
@@ -336,7 +355,7 @@ describe('AnilistController (e2e)', () => {
           accessToken,
           {},
         );
-        expect(body).toBeNull();
+        expect(body).toEqual({});
       });
   });
 
@@ -386,7 +405,7 @@ describe('AnilistController (e2e)', () => {
       });
   });
 
-  it('GET /api/v1/anilist/viewer/manga-lists returns 404 when the linked AniList account has no access token', async () => {
+  it('GET /api/v1/anilist/viewer/manga-lists returns 404 when the linked AniList account must be relinked', async () => {
     const { cookie } = await createAuthenticatedAniListUser({
       accessToken: null,
     });
@@ -399,9 +418,7 @@ describe('AnilistController (e2e)', () => {
         expect(mockAnilistClient.getViewerMangaLists).not.toHaveBeenCalled();
         const parsedBody = errorMessageBodySchema.parse(body);
 
-        expect(parsedBody.message).toBe(
-          'AniList access token is not available for the current user',
-        );
+        expect(parsedBody.message).toBe(ANILIST_RELINK_REQUIRED_MESSAGE);
       });
   });
 

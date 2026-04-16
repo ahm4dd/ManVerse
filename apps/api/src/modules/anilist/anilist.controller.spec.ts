@@ -9,8 +9,11 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { Test, TestingModule } from '@nestjs/testing';
 import type { UserSession } from '@thallesp/nestjs-better-auth';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ANILIST_PROVIDER_ID } from '../../common/constants/provider.constants.js';
-import { PrismaClient } from '../../generated/prisma/client.js';
+import {
+  ANILIST_ACCOUNT_NOT_LINKED_MESSAGE,
+  ANILIST_RELINK_REQUIRED_MESSAGE,
+} from '../../lib/anilist-oauth.js';
+import { AnilistAccountService } from './anilist-account.service.js';
 import { AnilistController } from './anilist.controller.js';
 import type { GetViewerMangaListsQueryDto } from './dto/get-viewer-manga-lists.dto.js';
 import type { SearchMediaDto } from './dto/search-media.dto.js';
@@ -24,11 +27,8 @@ describe('AnilistController', () => {
     getViewerMangaLists: vi.fn(),
     searchMedia: vi.fn(),
   };
-
-  const mockPrismaClient = {
-    account: {
-      findFirst: vi.fn(),
-    },
+  const mockAnilistAccountService = {
+    getCurrentUserAccessToken: vi.fn(),
   };
 
   beforeAll(async () => {
@@ -44,7 +44,10 @@ describe('AnilistController', () => {
       controllers: [AnilistController],
       providers: [
         { provide: 'ANILIST_CLIENT', useValue: mockAnilistClient },
-        { provide: PrismaClient, useValue: mockPrismaClient },
+        {
+          provide: AnilistAccountService,
+          useValue: mockAnilistAccountService,
+        },
       ],
     }).compile();
 
@@ -103,24 +106,18 @@ describe('AnilistController', () => {
       favourites: null,
     };
 
-    mockPrismaClient.account.findFirst.mockResolvedValueOnce({
+    mockAnilistAccountService.getCurrentUserAccessToken.mockResolvedValueOnce(
       accessToken,
-    });
+    );
     mockAnilistClient.getViewerProfile.mockResolvedValueOnce(profile);
 
     await expect(anilistController.getViewer(session)).resolves.toEqual(
       profile,
     );
 
-    expect(mockPrismaClient.account.findFirst).toHaveBeenCalledWith({
-      where: {
-        userId: session.user.id,
-        providerId: ANILIST_PROVIDER_ID,
-      },
-      select: {
-        accessToken: true,
-      },
-    });
+    expect(
+      mockAnilistAccountService.getCurrentUserAccessToken,
+    ).toHaveBeenCalledWith(session.user.id);
     expect(mockAnilistClient.getViewerProfile).toHaveBeenCalledWith(
       accessToken,
     );
@@ -133,32 +130,30 @@ describe('AnilistController', () => {
       },
     } as UserSession;
 
-    mockPrismaClient.account.findFirst.mockResolvedValueOnce(null);
+    mockAnilistAccountService.getCurrentUserAccessToken.mockRejectedValueOnce(
+      new NotFoundException(ANILIST_ACCOUNT_NOT_LINKED_MESSAGE),
+    );
 
     await expect(anilistController.getViewer(session)).rejects.toThrow(
-      new NotFoundException(
-        'AniList account is not linked for the current user',
-      ),
+      new NotFoundException(ANILIST_ACCOUNT_NOT_LINKED_MESSAGE),
     );
 
     expect(mockAnilistClient.getViewerProfile).not.toHaveBeenCalled();
   });
 
-  it('getViewer() should throw when the linked AniList account has no access token', async () => {
+  it('getViewer() should throw when the linked AniList account must be relinked', async () => {
     const session = {
       user: {
         id: faker.string.nanoid(),
       },
     } as UserSession;
 
-    mockPrismaClient.account.findFirst.mockResolvedValueOnce({
-      accessToken: null,
-    });
+    mockAnilistAccountService.getCurrentUserAccessToken.mockRejectedValueOnce(
+      new NotFoundException(ANILIST_RELINK_REQUIRED_MESSAGE),
+    );
 
     await expect(anilistController.getViewer(session)).rejects.toThrow(
-      new NotFoundException(
-        'AniList access token is not available for the current user',
-      ),
+      new NotFoundException(ANILIST_RELINK_REQUIRED_MESSAGE),
     );
 
     expect(mockAnilistClient.getViewerProfile).not.toHaveBeenCalled();
@@ -231,24 +226,18 @@ describe('AnilistController', () => {
       ],
     };
 
-    mockPrismaClient.account.findFirst.mockResolvedValueOnce({
+    mockAnilistAccountService.getCurrentUserAccessToken.mockResolvedValueOnce(
       accessToken,
-    });
+    );
     mockAnilistClient.getViewerMangaLists.mockResolvedValueOnce(collection);
 
     await expect(
       anilistController.getViewerMangaLists(session, query),
     ).resolves.toEqual(collection);
 
-    expect(mockPrismaClient.account.findFirst).toHaveBeenCalledWith({
-      where: {
-        userId: session.user.id,
-        providerId: ANILIST_PROVIDER_ID,
-      },
-      select: {
-        accessToken: true,
-      },
-    });
+    expect(
+      mockAnilistAccountService.getCurrentUserAccessToken,
+    ).toHaveBeenCalledWith(session.user.id);
     expect(mockAnilistClient.getViewerMangaLists).toHaveBeenCalledWith(
       accessToken,
       query,
@@ -263,9 +252,9 @@ describe('AnilistController', () => {
     } as UserSession;
     const accessToken = faker.string.alphanumeric(32);
 
-    mockPrismaClient.account.findFirst.mockResolvedValueOnce({
+    mockAnilistAccountService.getCurrentUserAccessToken.mockResolvedValueOnce(
       accessToken,
-    });
+    );
     mockAnilistClient.getViewerMangaLists.mockResolvedValueOnce(null);
 
     await expect(
@@ -285,37 +274,33 @@ describe('AnilistController', () => {
       },
     } as UserSession;
 
-    mockPrismaClient.account.findFirst.mockResolvedValueOnce(null);
+    mockAnilistAccountService.getCurrentUserAccessToken.mockRejectedValueOnce(
+      new NotFoundException(ANILIST_ACCOUNT_NOT_LINKED_MESSAGE),
+    );
 
     await expect(
       anilistController.getViewerMangaLists(session, {}),
     ).rejects.toThrow(
-      new NotFoundException(
-        'AniList account is not linked for the current user',
-      ),
+      new NotFoundException(ANILIST_ACCOUNT_NOT_LINKED_MESSAGE),
     );
 
     expect(mockAnilistClient.getViewerMangaLists).not.toHaveBeenCalled();
   });
 
-  it('getViewerMangaLists() should throw when the linked AniList account has no access token', async () => {
+  it('getViewerMangaLists() should throw when the linked AniList account must be relinked', async () => {
     const session = {
       user: {
         id: faker.string.nanoid(),
       },
     } as UserSession;
 
-    mockPrismaClient.account.findFirst.mockResolvedValueOnce({
-      accessToken: null,
-    });
+    mockAnilistAccountService.getCurrentUserAccessToken.mockRejectedValueOnce(
+      new NotFoundException(ANILIST_RELINK_REQUIRED_MESSAGE),
+    );
 
     await expect(
       anilistController.getViewerMangaLists(session, {}),
-    ).rejects.toThrow(
-      new NotFoundException(
-        'AniList access token is not available for the current user',
-      ),
-    );
+    ).rejects.toThrow(new NotFoundException(ANILIST_RELINK_REQUIRED_MESSAGE));
 
     expect(mockAnilistClient.getViewerMangaLists).not.toHaveBeenCalled();
   });

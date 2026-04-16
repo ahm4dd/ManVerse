@@ -14,6 +14,14 @@ describe('OpenAPI documentation', () => {
   let app: NestExpressApplication;
   let openApiDoc: ReturnType<typeof cleanupOpenApiDoc>;
 
+  type DocumentedJsonResponse = {
+    content?: {
+      'application/json'?: {
+        schema?: unknown;
+      };
+    };
+  };
+
   const mockAnilistClient = {
     getUserProfile: vi.fn(),
     getViewerProfile: vi.fn(),
@@ -136,41 +144,63 @@ describe('OpenAPI documentation', () => {
   });
 
   it('documents concrete AniList response body schemas', () => {
-    const viewerResponse = openApiDoc.paths?.['/api/v1/anilist/viewer']?.get
-      ?.responses?.['200'] as any;
-    const viewerUnauthorizedResponse = openApiDoc.paths?.[
-      '/api/v1/anilist/viewer'
-    ]?.get?.responses?.['401'] as any;
-    const viewerNotFoundResponse = openApiDoc.paths?.['/api/v1/anilist/viewer']
-      ?.get?.responses?.['404'] as any;
-    const viewerMangaListsResponse = openApiDoc.paths?.[
-      '/api/v1/anilist/viewer/manga-lists'
-    ]?.get?.responses?.['200'] as any;
-    const viewerMangaListsBadRequestResponse = openApiDoc.paths?.[
-      '/api/v1/anilist/viewer/manga-lists'
-    ]?.get?.responses?.['400'] as any;
-    const viewerMangaListsUnauthorizedResponse = openApiDoc.paths?.[
-      '/api/v1/anilist/viewer/manga-lists'
-    ]?.get?.responses?.['401'] as any;
-    const viewerMangaListsNotFoundResponse = openApiDoc.paths?.[
-      '/api/v1/anilist/viewer/manga-lists'
-    ]?.get?.responses?.['404'] as any;
-    const usersResponse = openApiDoc.paths?.['/api/v1/anilist/users']?.get
-      ?.responses?.['200'] as any;
-    const usersBadRequestResponse = openApiDoc.paths?.['/api/v1/anilist/users']
-      ?.get?.responses?.['400'] as any;
-    const usersTooManyRequestsResponse = openApiDoc.paths?.[
-      '/api/v1/anilist/users'
-    ]?.get?.responses?.['429'] as any;
-    const searchMediaResponse = openApiDoc.paths?.[
-      '/api/v1/anilist/search-media'
-    ]?.get?.responses?.['200'] as any;
-    const searchMediaBadRequestResponse = openApiDoc.paths?.[
-      '/api/v1/anilist/search-media'
-    ]?.get?.responses?.['400'] as any;
-    const searchMediaTooManyRequestsResponse = openApiDoc.paths?.[
-      '/api/v1/anilist/search-media'
-    ]?.get?.responses?.['429'] as any;
+    const getDocumentedResponse = (
+      path: string,
+      statusCode: string,
+    ): DocumentedJsonResponse =>
+      openApiDoc.paths?.[path]?.get?.responses?.[
+        statusCode
+      ] as DocumentedJsonResponse;
+
+    const viewerResponse = getDocumentedResponse(
+      '/api/v1/anilist/viewer',
+      '200',
+    );
+    const viewerUnauthorizedResponse = getDocumentedResponse(
+      '/api/v1/anilist/viewer',
+      '401',
+    );
+    const viewerNotFoundResponse = getDocumentedResponse(
+      '/api/v1/anilist/viewer',
+      '404',
+    );
+    const viewerMangaListsResponse = getDocumentedResponse(
+      '/api/v1/anilist/viewer/manga-lists',
+      '200',
+    );
+    const viewerMangaListsBadRequestResponse = getDocumentedResponse(
+      '/api/v1/anilist/viewer/manga-lists',
+      '400',
+    );
+    const viewerMangaListsUnauthorizedResponse = getDocumentedResponse(
+      '/api/v1/anilist/viewer/manga-lists',
+      '401',
+    );
+    const viewerMangaListsNotFoundResponse = getDocumentedResponse(
+      '/api/v1/anilist/viewer/manga-lists',
+      '404',
+    );
+    const usersResponse = getDocumentedResponse('/api/v1/anilist/users', '200');
+    const usersBadRequestResponse = getDocumentedResponse(
+      '/api/v1/anilist/users',
+      '400',
+    );
+    const usersTooManyRequestsResponse = getDocumentedResponse(
+      '/api/v1/anilist/users',
+      '429',
+    );
+    const searchMediaResponse = getDocumentedResponse(
+      '/api/v1/anilist/search-media',
+      '200',
+    );
+    const searchMediaBadRequestResponse = getDocumentedResponse(
+      '/api/v1/anilist/search-media',
+      '400',
+    );
+    const searchMediaTooManyRequestsResponse = getDocumentedResponse(
+      '/api/v1/anilist/search-media',
+      '429',
+    );
 
     expect(viewerResponse.content?.['application/json']?.schema).toEqual({
       anyOf: [
@@ -182,35 +212,36 @@ describe('OpenAPI documentation', () => {
         },
       ],
     });
-    expect(viewerUnauthorizedResponse.content?.['application/json']?.schema).toEqual(
-      {
-        $ref: '#/components/schemas/HttpErrorResponse',
-      },
-    );
-    expect(viewerNotFoundResponse.content?.['application/json']?.schema).toEqual(
-      {
-        $ref: '#/components/schemas/HttpErrorResponse',
-      },
-    );
-    expect(viewerMangaListsResponse.content?.['application/json']?.schema).toEqual(
-      {
-        anyOf: [
-          {
-            $ref: '#/components/schemas/AniListViewerMangaListsResponse',
-          },
-          {
-            type: 'null',
-          },
-        ],
-      },
-    );
+    expect(
+      viewerUnauthorizedResponse.content?.['application/json']?.schema,
+    ).toEqual({
+      $ref: '#/components/schemas/HttpErrorResponse',
+    });
+    expect(
+      viewerNotFoundResponse.content?.['application/json']?.schema,
+    ).toEqual({
+      $ref: '#/components/schemas/HttpErrorResponse',
+    });
+    expect(
+      viewerMangaListsResponse.content?.['application/json']?.schema,
+    ).toEqual({
+      anyOf: [
+        {
+          $ref: '#/components/schemas/AniListViewerMangaListsResponse',
+        },
+        {
+          type: 'null',
+        },
+      ],
+    });
     expect(
       viewerMangaListsBadRequestResponse.content?.['application/json']?.schema,
     ).toEqual({
       $ref: '#/components/schemas/ValidationErrorResponse',
     });
     expect(
-      viewerMangaListsUnauthorizedResponse.content?.['application/json']?.schema,
+      viewerMangaListsUnauthorizedResponse.content?.['application/json']
+        ?.schema,
     ).toEqual({
       $ref: '#/components/schemas/HttpErrorResponse',
     });
@@ -229,11 +260,11 @@ describe('OpenAPI documentation', () => {
         },
       ],
     });
-    expect(usersBadRequestResponse.content?.['application/json']?.schema).toEqual(
-      {
-        $ref: '#/components/schemas/ValidationErrorResponse',
-      },
-    );
+    expect(
+      usersBadRequestResponse.content?.['application/json']?.schema,
+    ).toEqual({
+      $ref: '#/components/schemas/ValidationErrorResponse',
+    });
     expect(
       usersTooManyRequestsResponse.content?.['application/json']?.schema,
     ).toEqual({

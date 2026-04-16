@@ -2,11 +2,10 @@ import { Module } from '@nestjs/common';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AnilistController } from './anilist.controller.js';
 import { AnilistClient } from '@manverse/anilist-client';
-import { PrismaModule } from '../../infrastructure/database/prisma/prisma.module.js';
+import { AnilistAccountService } from './anilist-account.service.js';
 
 @Module({
   imports: [
-    PrismaModule,
     ThrottlerModule.forRoot([
       {
         ttl: 60_000, // 60 seconds
@@ -17,6 +16,7 @@ import { PrismaModule } from '../../infrastructure/database/prisma/prisma.module
   controllers: [AnilistController],
   providers: [
     ThrottlerGuard,
+    AnilistAccountService,
     {
       provide: 'ANILIST_CLIENT',
       useFactory: (): AnilistClient => new AnilistClient(),

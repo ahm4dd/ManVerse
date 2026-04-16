@@ -13,11 +13,15 @@
 // import { createAuth } from '../infrastructure/auth/create-auth.js';
 import { prisma } from '../infrastructure/database/prisma/prisma.js';
 import { env } from '../config/env.js';
-import { ANILIST_PROVIDER_ID } from '../common/constants/provider.constants.js';
-import { betterAuth, OAuth2UserInfo } from 'better-auth';
-import { genericOAuth, openAPI, testUtils } from 'better-auth/plugins';
+import { betterAuth } from 'better-auth';
+import { openAPI, testUtils } from 'better-auth/plugins';
+import { genericOAuth } from 'better-auth/plugins/generic-oauth';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
 import * as argon2 from 'argon2';
+import {
+  anilistAccountOptions,
+  createAnilistOAuthProviderConfig,
+} from './anilist-oauth.js';
 
 // const prisma = new PrismaClient({
 //   adapter: new PrismaPg({
@@ -29,91 +33,17 @@ const anilistCallbackUrl = new URL(
   '/api/auth/oauth2/callback/anilist',
   env.BETTER_AUTH_URL,
 ).toString();
-const anilistSyntheticEmailDomain = 'anilist.manverse.local';
 
 const oauthPlugins = env.ANILIST_OAUTH_ENABLED
   ? [
       genericOAuth({
         config: [
-          {
-            // Anilist OAuth2 configuration based on their documentation
-            responseType: 'code',
-            redirectURI: anilistCallbackUrl,
-            authorizationUrl: 'https://anilist.co/api/v2/oauth/authorize',
-            authorizationHeaders: {
-              Accept: 'application/json',
-            },
-            tokenUrl: 'https://anilist.co/api/v2/oauth/token',
+          createAnilistOAuthProviderConfig({
+            callbackUrl: anilistCallbackUrl,
             clientId: env.ANILIST_CLIENT_ID!,
             clientSecret: env.ANILIST_CLIENT_SECRET!,
-            providerId: ANILIST_PROVIDER_ID,
-            pkce: true,
-            getUserInfo: async (tokens) => {
-              if (!tokens.accessToken) {
-                throw new Error('AniList did not return an access token.');
-              }
-
-              const query = `
-                query Viewer {
-                  Viewer {
-                    id
-                    name
-                    avatar {
-                      large
-                    }
-                  }
-                }
-              `;
-
-              const res = await fetch('https://graphql.anilist.co', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  Accept: 'application/json',
-                  Authorization: `Bearer ${tokens.accessToken}`,
-                },
-                body: JSON.stringify({
-                  query,
-                  operationName: 'Viewer',
-                }),
-              });
-
-              const json = (await res.json()) as {
-                data?: {
-                  Viewer?: {
-                    id: number;
-                    name: string;
-                    avatar?: {
-                      large?: string | null;
-                    } | null;
-                  } | null;
-                };
-                errors?: unknown;
-              };
-
-              if (!res.ok || json.errors) {
-                throw new Error(JSON.stringify(json.errors ?? json));
-              }
-
-              const viewer = json.data?.Viewer;
-
-              if (!viewer) {
-                return null;
-              }
-
-              const user: OAuth2UserInfo = {
-                id: String(viewer.id),
-                name: viewer.name,
-                image: viewer.avatar?.large ?? undefined,
-                // AniList does not appear to expose a user email here, but Better Auth
-                // requires one for the provider sign-in flow.
-                email: `${viewer.id}@${anilistSyntheticEmailDomain}`,
-                emailVerified: true,
-              };
-
-              return user;
-            },
-          },
+            secret: env.BETTER_AUTH_SECRET,
+          }),
         ],
       }),
     ]
@@ -126,6 +56,7 @@ export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: 'postgresql' }),
   baseURL: env.BETTER_AUTH_URL,
   secret: env.BETTER_AUTH_SECRET,
+  account: anilistAccountOptions,
   trustedOrigins: env.TRUSTED_ORIGINS,
   rateLimit: {
     enabled: env.NODE_ENV === 'production' ? true : false,

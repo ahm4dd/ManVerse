@@ -1,11 +1,4 @@
-import {
-  NotFoundException,
-  Controller,
-  Get,
-  Inject,
-  Query,
-  UseGuards,
-} from '@nestjs/common';
+import { Controller, Get, Inject, Query, UseGuards } from '@nestjs/common';
 import {
   ApiExtraModels,
   ApiBadRequestResponse,
@@ -28,7 +21,6 @@ import {
   HttpErrorResponseDto,
   ValidationErrorResponseDto,
 } from '../../common/dto/http-error-response.dto.js';
-import { PrismaClient } from '../../generated/prisma/client.js';
 import { ApiSessionAuth } from '../../common/decorators/api-session-auth.decorator.js';
 import { GetUserQueryDto } from './dto/get-user.dto.js';
 import { GetViewerMangaListsQueryDto } from './dto/get-viewer-manga-lists.dto.js';
@@ -47,6 +39,7 @@ import {
 } from './dto/search-media-response.dto.js';
 import { SearchMediaDto } from './dto/search-media.dto.js';
 import { AnilistClient } from '@manverse/anilist-client';
+import { AnilistAccountService } from './anilist-account.service.js';
 
 const PUBLIC_LOOKUP_THROTTLE_TTL_MS = 60_000;
 const PUBLIC_USERS_THROTTLE_LIMIT = 60;
@@ -72,36 +65,8 @@ export class AnilistController {
   constructor(
     @Inject('ANILIST_CLIENT')
     private readonly anilistClient: AnilistClient,
-    @Inject(PrismaClient) private readonly prisma: PrismaClient,
+    private readonly anilistAccountService: AnilistAccountService,
   ) {}
-
-  private async getCurrentUserAnilistAccessToken(
-    session: UserSession,
-  ): Promise<string> {
-    const anilistAccount = await this.prisma.account.findFirst({
-      where: {
-        userId: session.user.id,
-        providerId: ANILIST_PROVIDER_ID,
-      },
-      select: {
-        accessToken: true,
-      },
-    });
-
-    if (!anilistAccount) {
-      throw new NotFoundException(
-        'AniList account is not linked for the current user',
-      );
-    }
-
-    if (!anilistAccount.accessToken) {
-      throw new NotFoundException(
-        'AniList access token is not available for the current user',
-      );
-    }
-
-    return anilistAccount.accessToken;
-  }
 
   @Get('viewer')
   @ApiSessionAuth()
@@ -126,7 +91,7 @@ export class AnilistController {
   })
   @ApiNotFoundResponse({
     description:
-      'Returned when the current user does not have a linked AniList account or no AniList access token is available.',
+      'Returned when the current user does not have a linked AniList account or the AniList access token can no longer be retrieved and the account must be relinked.',
     schema: {
       $ref: getSchemaPath(HTTP_ERROR_RESPONSE_SCHEMA),
     },
@@ -134,7 +99,10 @@ export class AnilistController {
   async getViewer(
     @Session() session: UserSession,
   ): Promise<AniListProfileNullableResponse> {
-    const accessToken = await this.getCurrentUserAnilistAccessToken(session);
+    const accessToken =
+      await this.anilistAccountService.getCurrentUserAccessToken(
+        session.user.id,
+      );
 
     return this.anilistClient.getViewerProfile(accessToken);
   }
@@ -170,7 +138,7 @@ export class AnilistController {
   })
   @ApiNotFoundResponse({
     description:
-      'Returned when the current user does not have a linked AniList account or no AniList access token is available.',
+      'Returned when the current user does not have a linked AniList account or the AniList access token can no longer be retrieved and the account must be relinked.',
     schema: {
       $ref: getSchemaPath(HTTP_ERROR_RESPONSE_SCHEMA),
     },
@@ -179,7 +147,10 @@ export class AnilistController {
     @Session() session: UserSession,
     @Query() query: GetViewerMangaListsQueryDto,
   ): Promise<GetViewerMangaListsResponse> {
-    const accessToken = await this.getCurrentUserAnilistAccessToken(session);
+    const accessToken =
+      await this.anilistAccountService.getCurrentUserAccessToken(
+        session.user.id,
+      );
 
     return this.anilistClient.getViewerMangaLists(accessToken, query);
   }
