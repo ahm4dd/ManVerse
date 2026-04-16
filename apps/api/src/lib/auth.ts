@@ -80,11 +80,11 @@ export const auth = betterAuth({
   },
   emailAndPassword: {
     enabled: true,
-    hash: async (password) => {
-      return argon2.hash(password as string);
+    hash: async (password: string) => {
+      return argon2.hash(password);
     },
-    verify: async (hash, password) => {
-      return argon2.verify(hash as string, password as string);
+    verify: async (hash: string, password: string) => {
+      return argon2.verify(hash, password);
     },
   },
   plugins: [openAPI({ path: 'reference' }), ...oauthPlugins, ...testPlugins],

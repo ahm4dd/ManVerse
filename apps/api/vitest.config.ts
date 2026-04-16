@@ -6,7 +6,7 @@ export default defineConfig({
     globals: true,
     root: './',
     environment: 'node',
-    include: ['src/**/*.spec.ts'],
+    include: ['src/**/*.spec.ts', 'src/**/*.spec.mjs'],
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],

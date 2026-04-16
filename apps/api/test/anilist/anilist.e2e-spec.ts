@@ -474,6 +474,23 @@ describe('AnilistController (e2e)', () => {
       });
   });
 
+  it('GET /api/v1/anilist/viewer/manga-lists returns 400 when the chunk pagination query is invalid', async () => {
+    const { cookie } = await createAuthenticatedAniListUser();
+
+    await request(httpServer)
+      .get(apiPath('/anilist/viewer/manga-lists'))
+      .set('cookie', cookie)
+      .query({ chunk: 0, perChunk: 501 })
+      .expect(400)
+      .expect(({ body }) => {
+        expect(mockAnilistClient.getViewerMangaLists).not.toHaveBeenCalled();
+        const parsedBody = validationErrorBodySchema.parse(body);
+
+        expect(parsedBody.message).toContain('Validation failed');
+        expect(parsedBody.errors).toHaveLength(2);
+      });
+  });
+
   it('GET /api/v1/anilist/viewer/manga-lists returns an empty response body when AniList has no manga list collection', async () => {
     const { cookie, accessToken } = await createAuthenticatedAniListUser();
 
@@ -666,6 +683,72 @@ describe('AnilistController (e2e)', () => {
       .expect(({ body }) => {
         expect(mockAnilistClient.searchMedia).toHaveBeenCalledWith(query);
         expect(body).toEqual(searchResults);
+      });
+  });
+
+  it('GET /api/v1/anilist/search-media returns 400 when the search query is missing', async () => {
+    await request(httpServer)
+      .get(apiPath('/anilist/search-media'))
+      .query({ page: 1, perPage: 5 })
+      .expect(400)
+      .expect(({ body }) => {
+        expect(mockAnilistClient.searchMedia).not.toHaveBeenCalled();
+        const parsedBody = validationErrorBodySchema.parse(body);
+
+        expect(parsedBody.message).toContain('Validation failed');
+        expect(parsedBody.errors.length).toBeGreaterThan(0);
+      });
+  });
+
+  it('GET /api/v1/anilist/search-media coerces the isAdult query string to true', async () => {
+    mockAnilistClient.searchMedia.mockResolvedValueOnce({
+      pageInfo: {
+        currentPage: 1,
+        hasNextPage: false,
+        lastPage: 1,
+        perPage: 10,
+        total: 0,
+      },
+      media: [],
+    });
+
+    await request(httpServer)
+      .get(apiPath('/anilist/search-media'))
+      .query({ search: 'solo leveling', isAdult: 'true' })
+      .expect(200)
+      .expect(() => {
+        expect(mockAnilistClient.searchMedia).toHaveBeenCalledWith({
+          search: 'solo leveling',
+          page: 1,
+          perPage: 10,
+          isAdult: true,
+        });
+      });
+  });
+
+  it('GET /api/v1/anilist/search-media coerces the isAdult query string to false', async () => {
+    mockAnilistClient.searchMedia.mockResolvedValueOnce({
+      pageInfo: {
+        currentPage: 1,
+        hasNextPage: false,
+        lastPage: 1,
+        perPage: 10,
+        total: 0,
+      },
+      media: [],
+    });
+
+    await request(httpServer)
+      .get(apiPath('/anilist/search-media'))
+      .query({ search: 'solo leveling', isAdult: 'false' })
+      .expect(200)
+      .expect(() => {
+        expect(mockAnilistClient.searchMedia).toHaveBeenCalledWith({
+          search: 'solo leveling',
+          page: 1,
+          perPage: 10,
+          isAdult: false,
+        });
       });
   });
 

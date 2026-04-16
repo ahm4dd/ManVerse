@@ -254,7 +254,7 @@ export class HTTPClient implements GraphQLExecutor {
       );
     }
 
-    return payload.data as TData;
+    return payload.data;
   }
 
   private logRequestCompletion(

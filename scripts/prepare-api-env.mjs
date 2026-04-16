@@ -5,43 +5,93 @@ import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
-const apiDir = path.join(rootDir, 'apps', 'api');
-const envExamplePath = path.join(apiDir, '.env.example');
-const envPath = path.join(apiDir, '.env');
-const testEnvExamplePath = path.join(apiDir, '.env.test.example');
-const testEnvPath = path.join(apiDir, '.env.test');
 const secretPlaceholder = 'replace-me-with-base64-secret';
 
-function copyExampleFile(sourcePath, destinationPath) {
-  const fileContents = readFileSync(sourcePath, 'utf8');
-  const generatedSecret = randomBytes(48).toString('base64');
-  const nextContents = fileContents.replaceAll(secretPlaceholder, generatedSecret);
+export function createPrepareApiEnvPaths(baseDir = rootDir) {
+  const apiDir = path.join(baseDir, 'apps', 'api');
 
-  writeFileSync(destinationPath, nextContents, 'utf8');
+  return {
+    envExamplePath: path.join(apiDir, '.env.example'),
+    envPath: path.join(apiDir, '.env'),
+    testEnvExamplePath: path.join(apiDir, '.env.test.example'),
+    testEnvPath: path.join(apiDir, '.env.test'),
+  };
 }
 
-if (!existsSync(envExamplePath)) {
-  console.error('Missing apps/api/.env.example, cannot prepare the API environment.');
-  process.exit(1);
+export function copyExampleFile({
+  sourcePath,
+  destinationPath,
+  readFile = readFileSync,
+  writeFile = writeFileSync,
+  generateSecret = () => randomBytes(48).toString('base64'),
+}) {
+  const fileContents = readFile(sourcePath, 'utf8');
+  const nextContents = fileContents.replaceAll(
+    secretPlaceholder,
+    generateSecret(),
+  );
+
+  writeFile(destinationPath, nextContents, 'utf8');
 }
 
-if (!existsSync(envPath)) {
-  copyExampleFile(envExamplePath, envPath);
-  console.log('Created apps/api/.env from apps/api/.env.example.');
-} else {
-  console.log('Using existing apps/api/.env.');
-}
-
-if (!existsSync(testEnvPath)) {
-  if (!existsSync(testEnvExamplePath)) {
-    console.warn(
-      'apps/api/.env.test is missing and no apps/api/.env.test.example template was found.',
-    );
-    process.exit(0);
+export function prepareApiEnv({
+  paths = createPrepareApiEnvPaths(),
+  exists = existsSync,
+  readFile = readFileSync,
+  writeFile = writeFileSync,
+  generateSecret = () => randomBytes(48).toString('base64'),
+  log = console.log,
+  warn = console.warn,
+  error = console.error,
+} = {}) {
+  if (!exists(paths.envExamplePath)) {
+    error('Missing apps/api/.env.example, cannot prepare the API environment.');
+    return 1;
   }
 
-  copyExampleFile(testEnvExamplePath, testEnvPath);
-  console.log('Created apps/api/.env.test from apps/api/.env.test.example.');
+  if (!exists(paths.envPath)) {
+    copyExampleFile({
+      sourcePath: paths.envExamplePath,
+      destinationPath: paths.envPath,
+      readFile,
+      writeFile,
+      generateSecret,
+    });
+    log('Created apps/api/.env from apps/api/.env.example.');
+  } else {
+    log('Using existing apps/api/.env.');
+  }
+
+  if (exists(paths.testEnvPath)) {
+    return 0;
+  }
+
+  if (!exists(paths.testEnvExamplePath)) {
+    warn(
+      'apps/api/.env.test is missing and no apps/api/.env.test.example template was found.',
+    );
+    return 0;
+  }
+
+  copyExampleFile({
+    sourcePath: paths.testEnvExamplePath,
+    destinationPath: paths.testEnvPath,
+    readFile,
+    writeFile,
+    generateSecret,
+  });
+  log('Created apps/api/.env.test from apps/api/.env.test.example.');
+
+  return 0;
+}
+
+export function main() {
+  process.exit(prepareApiEnv());
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
+  main();
 }
