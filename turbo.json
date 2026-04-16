@@ -8,7 +8,8 @@
     },
     "dev": {
       "cache": false,
-      "persistent": true
+      "persistent": true,
+      "interruptible": true
     },
     "setup": {
       "cache": false,
@@ -19,15 +20,50 @@
     },
     "test": {
       "dependsOn": ["^build"],
-      "outputs": ["coverage/**"],
-      "inputs": ["src/**/*.ts", "test/**/*.ts"]
+      "outputs": []
+    },
+    "test:cov": {
+      "dependsOn": ["^build"],
+      "outputs": ["coverage/**"]
+    },
+    "test:e2e": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "test:watch": {
+      "cache": false,
+      "persistent": true,
+      "interruptible": true
+    },
+    "test:e2e:watch": {
+      "cache": false,
+      "persistent": true,
+      "interruptible": true
     },
     "clean": {
       "cache": false
     },
-    "typecheck": {
+    "check-types": {
       "dependsOn": ["^build"],
       "outputs": []
+    },
+    "api#dev": {
+      "cache": false,
+      "persistent": true,
+      "interruptible": true,
+      "with": ["@manverse/anilist-client#dev"]
+    },
+    "api#test:watch": {
+      "cache": false,
+      "persistent": true,
+      "interruptible": true,
+      "with": ["@manverse/anilist-client#dev"]
+    },
+    "api#test:e2e:watch": {
+      "cache": false,
+      "persistent": true,
+      "interruptible": true,
+      "with": ["@manverse/anilist-client#dev"]
     }
   }
 }

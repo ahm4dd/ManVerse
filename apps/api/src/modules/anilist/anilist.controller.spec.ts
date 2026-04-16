@@ -14,6 +14,7 @@ import {
   ANILIST_RELINK_REQUIRED_MESSAGE,
 } from '../../lib/anilist-oauth.js';
 import { AnilistAccountService } from './anilist-account.service.js';
+import { ANILIST_CLIENT_TOKEN } from './anilist.constants.js';
 import { AnilistController } from './anilist.controller.js';
 import type { GetViewerMangaListsQueryDto } from './dto/get-viewer-manga-lists.dto.js';
 import type { SearchMediaDto } from './dto/search-media.dto.js';
@@ -43,7 +44,7 @@ describe('AnilistController', () => {
       ],
       controllers: [AnilistController],
       providers: [
-        { provide: 'ANILIST_CLIENT', useValue: mockAnilistClient },
+        { provide: ANILIST_CLIENT_TOKEN, useValue: mockAnilistClient },
         {
           provide: AnilistAccountService,
           useValue: mockAnilistAccountService,

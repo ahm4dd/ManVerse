@@ -9,6 +9,7 @@ import {
   BETTER_AUTH_SESSION_COOKIE_NAME,
   BETTER_AUTH_SESSION_SECURITY_SCHEME,
 } from '../common/decorators/api-session-auth.decorator.js';
+import { ANILIST_CLIENT_TOKEN } from '../modules/anilist/anilist.constants.js';
 
 describe('OpenAPI documentation', () => {
   let app: NestExpressApplication;
@@ -33,7 +34,7 @@ describe('OpenAPI documentation', () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
-      .overrideProvider('ANILIST_CLIENT')
+      .overrideProvider(ANILIST_CLIENT_TOKEN)
       .useValue(mockAnilistClient)
       .compile();
 

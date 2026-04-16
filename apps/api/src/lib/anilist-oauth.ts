@@ -20,7 +20,7 @@ export type CreateAnilistOAuthProviderConfigOptions = {
   callbackUrl: string;
   clientId: string;
   clientSecret: string;
-  secret: string;
+  identitySalt: string;
   resolveViewer?: ResolveAnilistOAuthViewer;
 };
 
@@ -32,7 +32,7 @@ export const anilistAccountOptions = {
 } as const;
 
 export function buildAnilistSyntheticEmail(input: {
-  secret: string;
+  identitySalt: string;
   viewerId: number | string;
   providerId?: string;
 }): string {
@@ -45,7 +45,7 @@ export function buildAnilistSyntheticEmail(input: {
     );
   }
 
-  const digest = createHmac('sha256', input.secret)
+  const digest = createHmac('sha256', input.identitySalt)
     .update(`${providerId}:${viewerId}`)
     .digest('hex');
 
@@ -54,7 +54,7 @@ export function buildAnilistSyntheticEmail(input: {
 
 export function mapAnilistViewerToOAuthUserInfo(input: {
   viewer: AnilistOAuthViewer;
-  secret: string;
+  identitySalt: string;
   providerId?: string;
 }): OAuth2UserInfo {
   const providerId = input.providerId ?? ANILIST_PROVIDER_ID;
@@ -64,7 +64,7 @@ export function mapAnilistViewerToOAuthUserInfo(input: {
     name: input.viewer.name,
     image: input.viewer.avatar?.large ?? undefined,
     email: buildAnilistSyntheticEmail({
-      secret: input.secret,
+      identitySalt: input.identitySalt,
       viewerId: input.viewer.id,
       providerId,
     }),
@@ -104,7 +104,7 @@ export function createAnilistOAuthProviderConfig(
 
       return mapAnilistViewerToOAuthUserInfo({
         viewer,
-        secret: options.secret,
+        identitySalt: options.identitySalt,
       });
     },
   };

@@ -3,6 +3,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AnilistController } from './anilist.controller.js';
 import { AnilistClient } from '@manverse/anilist-client';
 import { AnilistAccountService } from './anilist-account.service.js';
+import { ANILIST_CLIENT_TOKEN } from './anilist.constants.js';
 
 @Module({
   imports: [
@@ -18,7 +19,7 @@ import { AnilistAccountService } from './anilist-account.service.js';
     ThrottlerGuard,
     AnilistAccountService,
     {
-      provide: 'ANILIST_CLIENT',
+      provide: ANILIST_CLIENT_TOKEN,
       useFactory: (): AnilistClient => new AnilistClient(),
     },
   ],

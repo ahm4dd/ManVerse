@@ -44,7 +44,7 @@ const oauthPlugins = env.ANILIST_OAUTH_ENABLED
             callbackUrl: anilistCallbackUrl,
             clientId: env.ANILIST_CLIENT_ID!,
             clientSecret: env.ANILIST_CLIENT_SECRET!,
-            secret: env.BETTER_AUTH_SECRET,
+            identitySalt: env.ANILIST_IDENTITY_SALT ?? env.BETTER_AUTH_SECRET,
             resolveViewer: (accessToken: string) =>
               anilistClient.getViewerProfile(accessToken),
           }),

@@ -40,6 +40,7 @@ import {
 import { SearchMediaDto } from './dto/search-media.dto.js';
 import { AnilistClient } from '@manverse/anilist-client';
 import { AnilistAccountService } from './anilist-account.service.js';
+import { ANILIST_CLIENT_TOKEN } from './anilist.constants.js';
 
 const PUBLIC_LOOKUP_THROTTLE_TTL_MS = 60_000;
 const PUBLIC_USERS_THROTTLE_LIMIT = 60;
@@ -63,7 +64,7 @@ const VALIDATION_ERROR_RESPONSE_SCHEMA = 'ValidationErrorResponse';
 @Controller({ path: ANILIST_PROVIDER_ID, version: ['1'] })
 export class AnilistController {
   constructor(
-    @Inject('ANILIST_CLIENT')
+    @Inject(ANILIST_CLIENT_TOKEN)
     private readonly anilistClient: AnilistClient,
     private readonly anilistAccountService: AnilistAccountService,
   ) {}

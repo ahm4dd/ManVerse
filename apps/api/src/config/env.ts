@@ -17,6 +17,14 @@ const envSchema = z
     DATABASE_URL: z.url(),
     BETTER_AUTH_SECRET: z.base64(),
     BETTER_AUTH_URL: z.string().min(1),
+    ANILIST_IDENTITY_SALT: z
+      .string()
+      .optional()
+      .transform((value) => {
+        const normalizedValue = value?.trim();
+
+        return normalizedValue ? normalizedValue : undefined;
+      }),
     TRUSTED_ORIGINS: z
       .string()
       .optional()

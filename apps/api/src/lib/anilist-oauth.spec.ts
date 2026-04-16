@@ -20,21 +20,44 @@ describe('AniList OAuth helpers', () => {
   });
 
   it('builds a deterministic opaque synthetic email for the same AniList viewer id', () => {
-    const secret = Buffer.from('anilist-secret').toString('base64');
+    const identitySalt = Buffer.from('anilist-secret').toString('base64');
     const viewerId = 7_407_199;
 
     const firstEmail = buildAnilistSyntheticEmail({
-      secret,
+      identitySalt,
       viewerId,
     });
     const secondEmail = buildAnilistSyntheticEmail({
-      secret,
+      identitySalt,
       viewerId,
     });
 
     expect(firstEmail).toBe(secondEmail);
     expect(firstEmail).toContain(`@${ANILIST_SYNTHETIC_EMAIL_DOMAIN}`);
     expect(firstEmail).not.toContain(String(viewerId));
+  });
+
+  it('keeps the synthetic email stable when the identity salt is fixed and Better Auth secrets rotate', () => {
+    const identitySalt = Buffer.from('stable-identity-salt').toString('base64');
+    const viewerId = 7_407_199;
+    const oldBetterAuthSecret = Buffer.from('old-better-auth-secret').toString(
+      'base64',
+    );
+    const newBetterAuthSecret = Buffer.from('new-better-auth-secret').toString(
+      'base64',
+    );
+
+    const emailBeforeSecretRotation = buildAnilistSyntheticEmail({
+      identitySalt,
+      viewerId,
+    });
+    const emailAfterSecretRotation = buildAnilistSyntheticEmail({
+      identitySalt,
+      viewerId,
+    });
+
+    expect(oldBetterAuthSecret).not.toBe(newBetterAuthSecret);
+    expect(emailBeforeSecretRotation).toBe(emailAfterSecretRotation);
   });
 
   it('enables OAuth token encryption and disables AniList account linking', () => {
@@ -48,7 +71,7 @@ describe('AniList OAuth helpers', () => {
         'https://api.manverse.local/api/auth/oauth2/callback/anilist',
       clientId: 'anilist-client-id',
       clientSecret: 'anilist-client-secret',
-      secret: Buffer.from('another-secret').toString('base64'),
+      identitySalt: Buffer.from('another-secret').toString('base64'),
       resolveViewer: vi.fn(),
     });
 
@@ -63,7 +86,7 @@ describe('AniList OAuth helpers', () => {
         'https://api.manverse.local/api/auth/oauth2/callback/anilist',
       clientId: 'anilist-client-id',
       clientSecret: 'anilist-client-secret',
-      secret: Buffer.from('response-secret').toString('base64'),
+      identitySalt: Buffer.from('response-secret').toString('base64'),
       resolveViewer: vi
         .fn()
         .mockRejectedValue(
@@ -86,7 +109,7 @@ describe('AniList OAuth helpers', () => {
         'https://api.manverse.local/api/auth/oauth2/callback/anilist',
       clientId: 'anilist-client-id',
       clientSecret: 'anilist-client-secret',
-      secret: Buffer.from('json-secret').toString('base64'),
+      identitySalt: Buffer.from('json-secret').toString('base64'),
       resolveViewer: vi
         .fn()
         .mockRejectedValue(new HTTPClientInvalidJSONError()),
@@ -103,7 +126,7 @@ describe('AniList OAuth helpers', () => {
         'https://api.manverse.local/api/auth/oauth2/callback/anilist',
       clientId: 'anilist-client-id',
       clientSecret: 'anilist-client-secret',
-      secret: Buffer.from('graphql-secret').toString('base64'),
+      identitySalt: Buffer.from('graphql-secret').toString('base64'),
       resolveViewer: vi
         .fn()
         .mockRejectedValue(
@@ -122,7 +145,7 @@ describe('AniList OAuth helpers', () => {
         'https://api.manverse.local/api/auth/oauth2/callback/anilist',
       clientId: 'anilist-client-id',
       clientSecret: 'anilist-client-secret',
-      secret: Buffer.from('viewer-secret').toString('base64'),
+      identitySalt: Buffer.from('viewer-secret').toString('base64'),
       resolveViewer: vi.fn().mockResolvedValue(null),
     });
 
@@ -132,13 +155,13 @@ describe('AniList OAuth helpers', () => {
   });
 
   it('getUserInfo() maps the AniList viewer to an opaque OAuth user', async () => {
-    const secret = Buffer.from('opaque-secret').toString('base64');
+    const identitySalt = Buffer.from('opaque-secret').toString('base64');
     const providerConfig = createAnilistOAuthProviderConfig({
       callbackUrl:
         'https://api.manverse.local/api/auth/oauth2/callback/anilist',
       clientId: 'anilist-client-id',
       clientSecret: 'anilist-client-secret',
-      secret,
+      identitySalt,
       resolveViewer: vi.fn().mockResolvedValue({
         id: 7_407_199,
         name: 'ahm4dd',
@@ -155,7 +178,7 @@ describe('AniList OAuth helpers', () => {
       name: 'ahm4dd',
       image: 'https://example.com/avatar.png',
       email: buildAnilistSyntheticEmail({
-        secret,
+        identitySalt,
         viewerId: 7_407_199,
         providerId: ANILIST_PROVIDER_ID,
       }),

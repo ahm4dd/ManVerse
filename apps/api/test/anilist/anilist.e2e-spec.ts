@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ThrottlerStorage, ThrottlerStorageService } from '@nestjs/throttler';
+import { AnilistClient, type ProfileUser } from '@manverse/anilist-client';
 import {
   beforeAll,
   afterAll,
@@ -23,6 +24,8 @@ import {
   ANILIST_ACCOUNT_NOT_LINKED_MESSAGE,
   ANILIST_RELINK_REQUIRED_MESSAGE,
 } from '../../src/lib/anilist-oauth.js';
+import auth from '../../src/lib/auth.js';
+import { ANILIST_CLIENT_TOKEN } from '../../src/modules/anilist/anilist.constants.js';
 import { authTest } from '../helpers/auth-test.js';
 import { apiPath } from '../helpers/api-path.js';
 
@@ -38,6 +41,10 @@ const validationErrorBodySchema = z.object({
 
 const errorMessageBodySchema = z.object({
   message: z.string(),
+});
+
+const oauthSignInResponseBodySchema = z.object({
+  url: z.url(),
 });
 
 describe('AnilistController (e2e)', () => {
@@ -58,7 +65,7 @@ describe('AnilistController (e2e)', () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
-      .overrideProvider('ANILIST_CLIENT')
+      .overrideProvider(ANILIST_CLIENT_TOKEN)
       .useValue(mockAnilistClient)
       .compile();
 
@@ -82,6 +89,8 @@ describe('AnilistController (e2e)', () => {
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
+
     await Promise.all(
       createdUserIds.splice(0).map(async (userId) => {
         await authTest.deleteUser(userId);
@@ -122,6 +131,35 @@ describe('AnilistController (e2e)', () => {
       cookie,
       accessToken,
     };
+  };
+
+  const startAniListOAuthSignIn = async (callbackURL: string) => {
+    const response = await request(httpServer)
+      .post('/api/auth/sign-in/oauth2')
+      .send({
+        providerId: ANILIST_PROVIDER_ID,
+        callbackURL,
+        disableRedirect: true,
+      })
+      .expect(200);
+
+    const parsedBody = oauthSignInResponseBodySchema.parse(response.body);
+    const authorizationUrl = new URL(parsedBody.url);
+    const state = authorizationUrl.searchParams.get('state');
+
+    if (!state) {
+      throw new Error('Expected Better Auth OAuth sign-in to return state');
+    }
+
+    const cookies = response.headers['set-cookie'];
+
+    if (!cookies || cookies.length === 0) {
+      throw new Error(
+        'Expected Better Auth OAuth sign-in to return state cookies',
+      );
+    }
+
+    return { state, cookies };
   };
 
   const expectSuccessfulAnonymousGet = async (
@@ -261,6 +299,101 @@ describe('AnilistController (e2e)', () => {
 
         expect(parsedBody.message).toBe(ANILIST_RELINK_REQUIRED_MESSAGE);
       });
+  });
+
+  it('stores AniList OAuth access tokens encrypted when Better Auth persists the OAuth account through the callback flow', async () => {
+    const callbackURL = 'http://localhost:3000/oauth-complete';
+    const plaintextAccessToken = 'anilist-access-token-from-oauth';
+    const viewerId = 7_407_199;
+    const viewerProfile = {
+      id: viewerId,
+      name: 'ahm4dd',
+      about: 'Backend engineer in training',
+      bannerImage: null,
+      siteUrl: 'https://anilist.co/user/ahm4dd',
+      createdAt: 1_711_630_400,
+      avatar: {
+        large: 'https://example.com/avatar.png',
+      },
+      favourites: {
+        manga: {
+          nodes: [],
+        },
+      },
+    } satisfies ProfileUser;
+
+    const { state, cookies } = await startAniListOAuthSignIn(callbackURL);
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(
+      (input: string | URL | Request) => {
+        const requestUrl =
+          typeof input === 'string'
+            ? input
+            : input instanceof URL
+              ? input.toString()
+              : input.url;
+
+        if (requestUrl === 'https://anilist.co/api/v2/oauth/token') {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                access_token: plaintextAccessToken,
+                token_type: 'Bearer',
+                expires_in: 3600,
+              }),
+              {
+                status: 200,
+                headers: {
+                  'content-type': 'application/json',
+                },
+              },
+            ),
+          );
+        }
+
+        throw new Error(
+          `Unexpected fetch request in AniList OAuth test: ${requestUrl}`,
+        );
+      },
+    );
+
+    vi.spyOn(AnilistClient.prototype, 'getViewerProfile').mockResolvedValue(
+      viewerProfile,
+    );
+
+    await request(httpServer)
+      .get(`/api/auth/oauth2/callback/${ANILIST_PROVIDER_ID}`)
+      .set('cookie', cookies)
+      .query({
+        code: 'anilist-oauth-code',
+        state,
+      })
+      .expect(302)
+      .expect('Location', callbackURL);
+
+    const storedAccount = await prisma.account.findFirstOrThrow({
+      where: {
+        providerId: ANILIST_PROVIDER_ID,
+        accountId: String(viewerId),
+      },
+    });
+
+    createdUserIds.push(storedAccount.userId);
+
+    expect(storedAccount.accessToken).not.toBeNull();
+    expect(storedAccount.accessToken).not.toBe(plaintextAccessToken);
+    expect(storedAccount.accessToken).not.toHaveLength(0);
+
+    await expect(
+      auth.api.getAccessToken({
+        body: {
+          providerId: ANILIST_PROVIDER_ID,
+          userId: storedAccount.userId,
+        },
+      }),
+    ).resolves.toMatchObject({
+      accessToken: plaintextAccessToken,
+    });
   });
 
   it('GET /api/v1/anilist/viewer/manga-lists returns the linked AniList manga lists for the authenticated user', async () => {
