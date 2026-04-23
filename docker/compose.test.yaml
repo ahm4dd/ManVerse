@@ -18,7 +18,7 @@ services:
       # Uncomment if you are not storing it on SSDs
       # DB_STORAGE_TYPE: 'HDD'
     volumes:
-      - "api-db-test-vol:/var/lib/postgresql/data"
+      - "api-db-test-vol:/var/lib/postgresql"
     healthcheck:
       test:
         ["CMD-SHELL", "pg_isready -U $${DB_USERNAME} -d $${DB_DATABASE_NAME}"]
