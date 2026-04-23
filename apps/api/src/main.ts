@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module.js';
 import { env } from './config/env.js';
@@ -16,6 +17,7 @@ async function bootstrap() {
     // The library (Better-auth) will re-add the default body parses for non-auth routes.
     bodyParser: false,
   });
+  app.enableShutdownHooks();
   configureApp(app);
 
   const config = new DocumentBuilder()
@@ -58,4 +60,12 @@ async function bootstrap() {
   await app.listen(env.PORT);
 }
 
-void bootstrap();
+void bootstrap().catch((error: unknown) => {
+  const logger = new Logger('Bootstrap');
+
+  logger.error(
+    'Application startup failed',
+    error instanceof Error ? (error.stack ?? error.message) : String(error),
+  );
+  process.exit(1);
+});
