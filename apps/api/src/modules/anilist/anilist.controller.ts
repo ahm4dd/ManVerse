@@ -1,4 +1,4 @@
-import { Controller, Get, Inject, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import {
   ApiExtraModels,
   ApiBadRequestResponse,
@@ -38,9 +38,7 @@ import {
   type AniListSearchMediaPageNullableResponse,
 } from './dto/search-media-response.dto.js';
 import { SearchMediaDto } from './dto/search-media.dto.js';
-import { AnilistClient } from '@manverse/anilist-client';
-import { AnilistAccountService } from './anilist-account.service.js';
-import { ANILIST_CLIENT_TOKEN } from './anilist.constants.js';
+import { AnilistService } from './anilist.service.js';
 
 const PUBLIC_LOOKUP_THROTTLE_TTL_MS = 60_000;
 const PUBLIC_USERS_THROTTLE_LIMIT = 60;
@@ -63,11 +61,7 @@ const VALIDATION_ERROR_RESPONSE_SCHEMA = 'ValidationErrorResponse';
 )
 @Controller({ path: ANILIST_PROVIDER_ID, version: ['1'] })
 export class AnilistController {
-  constructor(
-    @Inject(ANILIST_CLIENT_TOKEN)
-    private readonly anilistClient: AnilistClient,
-    private readonly anilistAccountService: AnilistAccountService,
-  ) {}
+  constructor(private readonly anilistService: AnilistService) {}
 
   @Get('viewer')
   @ApiSessionAuth()
@@ -100,12 +94,7 @@ export class AnilistController {
   async getViewer(
     @Session() session: UserSession,
   ): Promise<AniListProfileNullableResponse> {
-    const accessToken =
-      await this.anilistAccountService.getCurrentUserAccessToken(
-        session.user.id,
-      );
-
-    return this.anilistClient.getViewerProfile(accessToken);
+    return this.anilistService.getViewer(session.user.id);
   }
 
   @Get('viewer/manga-lists')
@@ -148,12 +137,7 @@ export class AnilistController {
     @Session() session: UserSession,
     @Query() query: GetViewerMangaListsQueryDto,
   ): Promise<GetViewerMangaListsResponse> {
-    const accessToken =
-      await this.anilistAccountService.getCurrentUserAccessToken(
-        session.user.id,
-      );
-
-    return this.anilistClient.getViewerMangaLists(accessToken, query);
+    return this.anilistService.getViewerMangaLists(session.user.id, query);
   }
 
   @AllowAnonymous()
@@ -199,10 +183,7 @@ export class AnilistController {
     },
   })
   getUser(@Query() query: GetUserQueryDto) {
-    return this.anilistClient.getUserProfile({
-      id: query.id,
-      name: query.name,
-    });
+    return this.anilistService.getUser(query);
   }
 
   @AllowAnonymous()
@@ -249,6 +230,6 @@ export class AnilistController {
   async searchMedia(
     @Query() query: SearchMediaDto,
   ): Promise<AniListSearchMediaPageNullableResponse> {
-    return await this.anilistClient.searchMedia(query);
+    return this.anilistService.searchMedia(query);
   }
 }

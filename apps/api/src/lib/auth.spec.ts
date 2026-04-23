@@ -1,15 +1,5 @@
+import { AuthEnv } from 'src/config/env.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-
-type AuthEnv = {
-  NODE_ENV: 'development' | 'test' | 'production';
-  BETTER_AUTH_URL: string;
-  BETTER_AUTH_SECRET: string;
-  TRUSTED_ORIGINS: string[];
-  ANILIST_OAUTH_ENABLED: boolean;
-  ANILIST_CLIENT_ID?: string;
-  ANILIST_CLIENT_SECRET?: string;
-  ANILIST_IDENTITY_SALT?: string;
-};
 
 type BetterAuthConfig = {
   account?: unknown;
@@ -112,7 +102,8 @@ describe('auth configuration', () => {
 
     expect(AnilistClientMock).toHaveBeenCalledTimes(1);
     expect(createAnilistOAuthProviderConfigMock).toHaveBeenCalledWith({
-      callbackUrl: 'https://api.manverse.local/api/auth/oauth2/callback/anilist',
+      callbackUrl:
+        'https://api.manverse.local/api/auth/oauth2/callback/anilist',
       clientId: 'anilist-client-id',
       clientSecret: 'anilist-client-secret',
       identitySalt: 'better-auth-secret',

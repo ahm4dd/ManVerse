@@ -24,11 +24,25 @@ import {
   createAnilistOAuthProviderConfig,
 } from './anilist-oauth.js';
 
-// const prisma = new PrismaClient({
-//   adapter: new PrismaPg({
-//     connectionString: env.DATABASE_URL,
-//   }),
-// });
+type BetterAuthErrorLike = {
+  body?: {
+    code?: string;
+  };
+};
+
+export function getBetterAuthErrorCode(error: unknown): string | undefined {
+  if (!error || typeof error !== 'object' || !('body' in error)) {
+    return undefined;
+  }
+
+  const errorBody = (error as BetterAuthErrorLike).body;
+
+  if (!errorBody || typeof errorBody !== 'object') {
+    return undefined;
+  }
+
+  return typeof errorBody.code === 'string' ? errorBody.code : undefined;
+}
 
 const anilistCallbackUrl = new URL(
   '/api/auth/oauth2/callback/anilist',

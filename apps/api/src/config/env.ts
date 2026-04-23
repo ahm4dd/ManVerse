@@ -78,4 +78,15 @@ if (!result.success) {
 export const env = result.data;
 
 export type EnvironmentVariables = z.infer<typeof envSchema>;
+export type AuthEnv = Pick<
+  EnvironmentVariables,
+  | 'NODE_ENV'
+  | 'BETTER_AUTH_URL'
+  | 'BETTER_AUTH_SECRET'
+  | 'TRUSTED_ORIGINS'
+  | 'ANILIST_OAUTH_ENABLED'
+  | 'ANILIST_CLIENT_ID'
+  | 'ANILIST_CLIENT_SECRET'
+  | 'ANILIST_IDENTITY_SALT'
+>;
 export const ENV_TOKEN = Symbol('ENV');

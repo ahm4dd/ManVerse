@@ -9,7 +9,8 @@ import {
   BETTER_AUTH_SESSION_COOKIE_NAME,
   BETTER_AUTH_SESSION_SECURITY_SCHEME,
 } from '../common/decorators/api-session-auth.decorator.js';
-import { ANILIST_CLIENT_TOKEN } from '../modules/anilist/anilist.constants.js';
+import { PrismaClient } from '../generated/prisma/client.js';
+import { AnilistClient } from '@manverse/anilist-client';
 
 describe('OpenAPI documentation', () => {
   let app: NestExpressApplication;
@@ -29,13 +30,25 @@ describe('OpenAPI documentation', () => {
     getViewerMangaLists: vi.fn(),
     searchMedia: vi.fn(),
   };
+  const mockPrismaClient = {
+    $connect: vi.fn().mockResolvedValue(undefined),
+    $disconnect: vi.fn().mockResolvedValue(undefined),
+    $queryRaw: vi.fn().mockResolvedValue([
+      {
+        hasUserTable: true,
+        hasUserIdColumn: true,
+      },
+    ]),
+  };
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
-      .overrideProvider(ANILIST_CLIENT_TOKEN)
+      .overrideProvider(AnilistClient)
       .useValue(mockAnilistClient)
+      .overrideProvider(PrismaClient)
+      .useValue(mockPrismaClient)
       .compile();
 
     app = moduleFixture.createNestApplication<NestExpressApplication>();

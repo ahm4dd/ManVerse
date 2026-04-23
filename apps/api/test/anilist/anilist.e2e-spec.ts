@@ -25,7 +25,6 @@ import {
   ANILIST_RELINK_REQUIRED_MESSAGE,
 } from '../../src/lib/anilist-oauth.js';
 import auth from '../../src/lib/auth.js';
-import { ANILIST_CLIENT_TOKEN } from '../../src/modules/anilist/anilist.constants.js';
 import { authTest } from '../helpers/auth-test.js';
 import { apiPath } from '../helpers/api-path.js';
 
@@ -65,7 +64,7 @@ describe('AnilistController (e2e)', () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
-      .overrideProvider(ANILIST_CLIENT_TOKEN)
+      .overrideProvider(AnilistClient)
       .useValue(mockAnilistClient)
       .compile();
 

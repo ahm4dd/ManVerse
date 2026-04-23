@@ -1,1 +1,0 @@
-export const ANILIST_CLIENT_TOKEN = Symbol('ANILIST_CLIENT');
