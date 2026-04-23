@@ -5,8 +5,10 @@
   "scripts": {
     "dev": "turbo run dev",
     "dev:api": "turbo run dev --filter=api",
-    "docker:dev": "node ./scripts/docker-compose.mjs dev",
-    "docker:test": "node ./scripts/docker-compose.mjs test",
+    "docker:dev": "docker compose --env-file ./docker/.env.development -f ./docker/compose.dev.yaml up -d",
+    "docker:dev:down": "docker compose --env-file ./docker/.env.development -f ./docker/compose.dev.yaml down -v",
+    "docker:test": "docker compose --env-file ./docker/.env.test -f ./docker/compose.test.yaml up -d",
+    "docker:test:down": "docker compose --env-file ./docker/.env.test -f ./docker/compose.test.yaml down -v",
     "build": "turbo run build",
     "test": "turbo run test",
     "test:watch": "turbo run test:watch",
@@ -17,7 +19,7 @@
     "clean": "turbo run clean",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "check-types": "turbo run check-types",
-    "setup:api": "node ./scripts/setup-api.mjs"
+    "setup:api": "turbo run setup --filter=api"
   },
   "devDependencies": {
     "prettier": "^3.7.4",

@@ -2,11 +2,11 @@
 
 ## Project Structure & Module Organization
 
-This repo is a `pnpm` workspace powered by Turbo. The NestJS API lives in `apps/api`, with source in `apps/api/src`, e2e coverage in `apps/api/test`, and Prisma schema, migrations, and seed files in `apps/api/prisma`. Shared code lives in `packages/`: `anilist-client` for AniList GraphQL logic, `ui` for shared React components, and config packages such as `eslint-config`, `typescript-config`, and `types`. Root automation lives in `scripts/`; local infrastructure lives in `docker/`.
+This repo is a `pnpm` workspace powered by Turbo. The NestJS API lives in `apps/api`, with source in `apps/api/src`, e2e coverage in `apps/api/test`, and Prisma schema, migrations, and seed files in `apps/api/prisma`. Shared code lives in `packages/`: `anilist-client` for AniList GraphQL logic, `ui` for shared React components, and config packages such as `eslint-config`, `typescript-config`, and `types`. Workspace automation lives in the root `package.json` and `turbo.json`; local infrastructure lives in `docker/`.
 
 ## Build, Test, and Development Commands
 
-Use `pnpm install` to install the workspace and `pnpm setup:api` to prepare API env files, Prisma codegen, and Better Auth artifacts. Common root commands:
+Use `pnpm install` to install the workspace. For the API, copy `apps/api/.env.example` to `apps/api/.env`, copy `docker/.env.development.example` to `docker/.env.development`, start Docker with `pnpm docker:dev`, and run `pnpm setup:api` to prepare Prisma codegen and Better Auth artifacts. Common root commands:
 
 - `pnpm dev:api` runs the API in watch mode
 - `pnpm docker:dev` starts local development services
@@ -64,4 +64,4 @@ Recent history follows Conventional Commits with scopes, for example `feat(api, 
 
 ## Configuration & Safety
 
-Keep secrets in `.env*` files and out of Git. Prefer the checked-in helper scripts and Compose files over ad hoc setup. When changing Prisma schema or Better Auth configuration, rerun the relevant setup and generation commands before opening a PR.
+Keep secrets in `.env*` files and out of Git. Prefer the checked-in package scripts, Turbo tasks, and Compose files over ad hoc setup. When changing Prisma schema or Better Auth configuration, rerun the relevant setup and generation commands before opening a PR.
