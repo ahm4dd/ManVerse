@@ -1,9 +1,24 @@
 export {
+  DELETE_MEDIA_LIST_ENTRY_MUTATION,
+  SAVE_MEDIA_LIST_ENTRY_MUTATION,
   VIEWER_MANGA_LISTS_QUERY,
   VIEWER_MANGA_LISTS_VIEWER_QUERY,
 } from './queries.js';
-export { getViewerMangaLists } from './operations.js';
 export {
+  deleteMediaListEntry,
+  getViewerMangaLists,
+  saveMediaListEntry,
+} from './operations.js';
+export {
+  deleteMediaListEntryDataSchema,
+  deleteMediaListEntryInputSchema,
+  deleteMediaListEntryMutationSchema,
+  deleteMediaListEntryResultSchema,
+  saveMediaListEntryDataSchema,
+  saveMediaListEntryInputSchema,
+  saveMediaListEntryMediaSchema,
+  saveMediaListEntrySchema,
+  saveMediaListEntryStatusSchema,
   viewerMangaListCollectionSchema,
   viewerMangaListCoverImageSchema,
   viewerMangaListEntrySchema,
@@ -17,6 +32,15 @@ export {
   viewerMangaListTitleSchema,
 } from './schemas.js';
 export type {
+  DeleteMediaListEntryData,
+  DeleteMediaListEntryInput,
+  DeleteMediaListEntryMutation,
+  DeleteMediaListEntryResult,
+  SaveMediaListEntry,
+  SaveMediaListEntryData,
+  SaveMediaListEntryInput,
+  SaveMediaListEntryMedia,
+  SaveMediaListEntryStatus,
   ViewerMangaListCollection,
   ViewerMangaListCoverImage,
   ViewerMangaListEntry,

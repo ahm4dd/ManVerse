@@ -9,16 +9,83 @@ const createPrismaClientMock = () => ({
   $disconnect: vi.fn().mockResolvedValue(undefined),
   $queryRaw: vi.fn().mockResolvedValue([
     {
-      hasUserTable: true,
-      hasUserIdColumn: true,
+      tableName: 'user',
+      columnName: 'id',
+    },
+    {
+      tableName: 'user',
+      columnName: 'email',
+    },
+    {
+      tableName: 'user',
+      columnName: 'email_verified',
+    },
+    {
+      tableName: 'session',
+      columnName: 'id',
+    },
+    {
+      tableName: 'session',
+      columnName: 'token',
+    },
+    {
+      tableName: 'session',
+      columnName: 'user_id',
+    },
+    {
+      tableName: 'session',
+      columnName: 'expires_at',
+    },
+    {
+      tableName: 'account',
+      columnName: 'id',
+    },
+    {
+      tableName: 'account',
+      columnName: 'account_id',
+    },
+    {
+      tableName: 'account',
+      columnName: 'provider_id',
+    },
+    {
+      tableName: 'account',
+      columnName: 'user_id',
+    },
+    {
+      tableName: 'account',
+      columnName: 'access_token',
+    },
+    {
+      tableName: 'verification',
+      columnName: 'id',
+    },
+    {
+      tableName: 'verification',
+      columnName: 'identifier',
+    },
+    {
+      tableName: 'verification',
+      columnName: 'value',
+    },
+    {
+      tableName: 'verification',
+      columnName: 'expires_at',
     },
   ]),
 });
 
 describe('PrismaModule', () => {
+  let logSpy: ReturnType<typeof vi.spyOn>;
+  let errorSpy: ReturnType<typeof vi.spyOn>;
+
   beforeEach(() => {
-    vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
-    vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    logSpy = vi
+      .spyOn(Logger.prototype, 'log')
+      .mockImplementation(() => undefined);
+    errorSpy = vi
+      .spyOn(Logger.prototype, 'error')
+      .mockImplementation(() => undefined);
   });
 
   afterEach(() => {
@@ -33,7 +100,7 @@ describe('PrismaModule', () => {
 
     expect(prisma.$connect).toHaveBeenCalledOnce();
     expect(prisma.$queryRaw).toHaveBeenCalledOnce();
-    expect(Logger.prototype.log).toHaveBeenCalledWith('Database ready');
+    expect(logSpy).toHaveBeenCalledWith('Database ready');
   });
 
   it('uses the provided PrismaClient during the Nest module lifecycle', async () => {
@@ -62,7 +129,7 @@ describe('PrismaModule', () => {
     await expect(moduleRef.onModuleInit()).rejects.toThrow(error);
 
     expect(prisma.$queryRaw).not.toHaveBeenCalled();
-    expect(Logger.prototype.error).toHaveBeenCalledWith(
+    expect(errorSpy).toHaveBeenCalledWith(
       'Database readiness check failed',
       error.stack,
     );
@@ -77,28 +144,28 @@ describe('PrismaModule', () => {
     await expect(moduleRef.onModuleInit()).rejects.toThrow(error);
 
     expect(prisma.$connect).toHaveBeenCalledOnce();
-    expect(Logger.prototype.error).toHaveBeenCalledWith(
+    expect(errorSpy).toHaveBeenCalledWith(
       'Database readiness check failed',
       error.stack,
     );
   });
 
-  it('rejects module init when the required user table is missing', async () => {
+  it('rejects module init when auth-critical schema requirements are missing', async () => {
     const prisma = createPrismaClientMock();
     prisma.$queryRaw.mockResolvedValueOnce([
       {
-        hasUserTable: false,
-        hasUserIdColumn: false,
+        tableName: 'user',
+        columnName: 'id',
       },
     ]);
     const moduleRef = new PrismaModule(prisma as unknown as PrismaClient);
 
     await expect(moduleRef.onModuleInit()).rejects.toThrow(
-      'Database schema is not ready: required table "public.user" is missing or incomplete. Run "pnpm --filter api prisma:migrate" before starting the API.',
+      'Database schema is not ready: missing auth tables/columns: public.user.email, public.user.email_verified, public.session, public.account, public.verification. Run "pnpm --filter api prisma:migrate" before starting the API.',
     );
 
     expect(prisma.$connect).toHaveBeenCalledOnce();
-    expect(Logger.prototype.error).toHaveBeenCalledWith(
+    expect(errorSpy).toHaveBeenCalledWith(
       'Database readiness check failed',
       expect.stringContaining('Database schema is not ready'),
     );
@@ -111,7 +178,7 @@ describe('PrismaModule', () => {
     await expect(moduleRef.onModuleDestroy()).resolves.toBeUndefined();
 
     expect(prisma.$disconnect).toHaveBeenCalledOnce();
-    expect(Logger.prototype.log).toHaveBeenCalledWith('Disconnected from DB');
+    expect(logSpy).toHaveBeenCalledWith('Disconnected from DB');
   });
 
   it('rejects module destroy when Prisma cannot disconnect', async () => {
@@ -122,7 +189,7 @@ describe('PrismaModule', () => {
 
     await expect(moduleRef.onModuleDestroy()).rejects.toThrow(error);
 
-    expect(Logger.prototype.error).toHaveBeenCalledWith(
+    expect(errorSpy).toHaveBeenCalledWith(
       'Could not disconnect from DB',
       error.stack,
     );

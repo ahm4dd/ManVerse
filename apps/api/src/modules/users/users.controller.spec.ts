@@ -6,6 +6,7 @@ import type { Request } from 'express';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ANILIST_PROVIDER_ID } from '../../common/constants/provider.constants.js';
 import { UsersController } from './users.controller.js';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 
 describe('UsersController', () => {
   let usersController: UsersController;
@@ -18,8 +19,19 @@ describe('UsersController', () => {
 
   beforeAll(async () => {
     const app: TestingModule = await Test.createTestingModule({
+      imports: [
+        ThrottlerModule.forRoot([
+          {
+            ttl: 60_000,
+            limit: 60,
+          },
+        ]),
+      ],
       controllers: [UsersController],
-      providers: [{ provide: AuthService, useValue: mockAuthService }],
+      providers: [
+        { provide: AuthService, useValue: mockAuthService },
+        ThrottlerGuard,
+      ],
     }).compile();
 
     usersController = app.get<UsersController>(UsersController);

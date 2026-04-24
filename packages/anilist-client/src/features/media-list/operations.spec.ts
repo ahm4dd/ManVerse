@@ -6,12 +6,21 @@ import {
   createMockGraphQLExecutor,
   type MockGraphQLExecutor,
 } from '../../test-utils/graphql-executor.mock.js';
-import { getViewerMangaLists } from './operations.js';
 import {
+  deleteMediaListEntry,
+  getViewerMangaLists,
+  saveMediaListEntry,
+} from './operations.js';
+import {
+  DELETE_MEDIA_LIST_ENTRY_MUTATION,
+  SAVE_MEDIA_LIST_ENTRY_MUTATION,
   VIEWER_MANGA_LISTS_QUERY,
   VIEWER_MANGA_LISTS_VIEWER_QUERY,
 } from './queries.js';
-import type { ViewerMangaListCollection } from './schemas.js';
+import type {
+  SaveMediaListEntry as SaveMediaListEntryResult,
+  ViewerMangaListCollection,
+} from './schemas.js';
 
 function createViewerMangaListCollection(): ViewerMangaListCollection {
   return {
@@ -75,6 +84,25 @@ function createViewerMangaListCollection(): ViewerMangaListCollection {
         entries: [],
       },
     ],
+  };
+}
+
+function createSaveMediaListEntryResult(): SaveMediaListEntryResult {
+  return {
+    id: 71,
+    mediaId: 151807,
+    status: 'CURRENT',
+    score: 8.5,
+    progress: 120,
+    media: {
+      id: 151807,
+      title: {
+        romaji: 'Solo Leveling',
+        english: 'Solo Leveling',
+        native: 'Na Honjaman Level Up',
+        userPreferred: 'Solo Leveling',
+      },
+    },
   };
 }
 
@@ -223,6 +251,210 @@ describe('media-list operations', () => {
 
     await expect(
       getViewerMangaLists(executor, 'viewer-token'),
+    ).rejects.toBeInstanceOf(ZodError);
+  });
+
+  it('should save and return the media list entry', async () => {
+    const entry = createSaveMediaListEntryResult();
+
+    executor.req.mockResolvedValueOnce({
+      SaveMediaListEntry: entry,
+    });
+
+    const result = await saveMediaListEntry(executor, 'viewer-token', {
+      mediaId: 151807,
+      status: 'CURRENT',
+      progress: 120,
+      score: 8.5,
+    });
+
+    expect(executor.req).toHaveBeenCalledWith({
+      query: SAVE_MEDIA_LIST_ENTRY_MUTATION,
+      operationName: 'SaveMediaListEntry',
+      accessToken: 'viewer-token',
+      variables: {
+        mediaId: 151807,
+        status: 'CURRENT',
+        progress: 120,
+        score: 8.5,
+      },
+    });
+    expect(result).toEqual(entry);
+  });
+
+  it('should allow an omitted score when saving a media list entry', async () => {
+    executor.req.mockResolvedValueOnce({
+      SaveMediaListEntry: createSaveMediaListEntryResult(),
+    });
+
+    await saveMediaListEntry(executor, 'viewer-token', {
+      mediaId: 151807,
+      status: 'CURRENT',
+      progress: 120,
+    });
+
+    expect(executor.req).toHaveBeenCalledWith({
+      query: SAVE_MEDIA_LIST_ENTRY_MUTATION,
+      operationName: 'SaveMediaListEntry',
+      accessToken: 'viewer-token',
+      variables: {
+        mediaId: 151807,
+        status: 'CURRENT',
+        progress: 120,
+        score: undefined,
+      },
+    });
+  });
+
+  it('should allow omitted progress when saving a media list entry', async () => {
+    executor.req.mockResolvedValueOnce({
+      SaveMediaListEntry: {
+        ...createSaveMediaListEntryResult(),
+        progress: null,
+      },
+    });
+
+    await saveMediaListEntry(executor, 'viewer-token', {
+      mediaId: 151807,
+      status: 'CURRENT',
+      score: 8.5,
+    });
+
+    expect(executor.req).toHaveBeenCalledWith({
+      query: SAVE_MEDIA_LIST_ENTRY_MUTATION,
+      operationName: 'SaveMediaListEntry',
+      accessToken: 'viewer-token',
+      variables: {
+        mediaId: 151807,
+        status: 'CURRENT',
+        progress: undefined,
+        score: 8.5,
+      },
+    });
+  });
+
+  it('should return null when AniList returns no saved entry', async () => {
+    executor.req.mockResolvedValueOnce({
+      SaveMediaListEntry: null,
+    });
+
+    const result = await saveMediaListEntry(executor, 'viewer-token', {
+      mediaId: 151807,
+      status: 'CURRENT',
+      progress: 120,
+    });
+
+    expect(result).toBeNull();
+  });
+
+  it('should reject a missing access token before saving a media list entry', async () => {
+    await expect(
+      saveMediaListEntry(executor, '', {
+        mediaId: 151807,
+        status: 'CURRENT',
+        progress: 120,
+      }),
+    ).rejects.toBeInstanceOf(AnilistClientAuthError);
+
+    expect(executor.req).not.toHaveBeenCalled();
+  });
+
+  it('should reject invalid save-media-list-entry input before calling the executor', async () => {
+    await expect(
+      saveMediaListEntry(executor, 'viewer-token', {
+        mediaId: 0,
+        status: 'CURRENT',
+        progress: -1,
+      }),
+    ).rejects.toBeInstanceOf(ZodError);
+
+    expect(executor.req).not.toHaveBeenCalled();
+  });
+
+  it('should reject scores outside the AniList POINT_10_DECIMAL range', async () => {
+    await expect(
+      saveMediaListEntry(executor, 'viewer-token', {
+        mediaId: 151807,
+        status: 'CURRENT',
+        score: 10.1,
+      }),
+    ).rejects.toBeInstanceOf(ZodError);
+
+    expect(executor.req).not.toHaveBeenCalled();
+  });
+
+  it('should reject an invalid saved entry payload', async () => {
+    executor.req.mockResolvedValueOnce({
+      SaveMediaListEntry: {
+        id: 'not-a-number',
+      },
+    });
+
+    await expect(
+      saveMediaListEntry(executor, 'viewer-token', {
+        mediaId: 151807,
+        status: 'CURRENT',
+        progress: 120,
+      }),
+    ).rejects.toBeInstanceOf(ZodError);
+  });
+
+  it('should delete and return the entry deletion result', async () => {
+    executor.req.mockResolvedValueOnce({
+      DeleteMediaListEntry: {
+        deleted: true,
+      },
+    });
+
+    const result = await deleteMediaListEntry(executor, 'viewer-token', {
+      entryId: 71,
+    });
+
+    expect(executor.req).toHaveBeenCalledWith({
+      query: DELETE_MEDIA_LIST_ENTRY_MUTATION,
+      operationName: 'DeleteMediaListEntry',
+      accessToken: 'viewer-token',
+      variables: {
+        id: 71,
+      },
+    });
+    expect(result).toEqual({
+      entryId: 71,
+      deleted: true,
+    });
+  });
+
+  it('should reject a missing access token before deleting a media list entry', async () => {
+    await expect(
+      deleteMediaListEntry(executor, '', {
+        entryId: 71,
+      }),
+    ).rejects.toBeInstanceOf(AnilistClientAuthError);
+
+    expect(executor.req).not.toHaveBeenCalled();
+  });
+
+  it('should reject invalid delete-media-list-entry input before calling the executor', async () => {
+    await expect(
+      deleteMediaListEntry(executor, 'viewer-token', {
+        entryId: 0,
+      }),
+    ).rejects.toBeInstanceOf(ZodError);
+
+    expect(executor.req).not.toHaveBeenCalled();
+  });
+
+  it('should reject an invalid deletion payload', async () => {
+    executor.req.mockResolvedValueOnce({
+      DeleteMediaListEntry: {
+        deleted: 'yes',
+      },
+    });
+
+    await expect(
+      deleteMediaListEntry(executor, 'viewer-token', {
+        entryId: 71,
+      }),
     ).rejects.toBeInstanceOf(ZodError);
   });
 });

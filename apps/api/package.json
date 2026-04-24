@@ -31,8 +31,8 @@
     "test:cov": "vitest run --coverage",
     "pretest:e2e": "pnpm run prisma:test:push",
     "pretest:e2e:force": "pnpm run prisma:test:push:force-reset",
-    "test:e2e": "dotenv -e .env.test -- env ANILIST_OAUTH_ENABLED=true vitest run --config ./vitest.config.e2e.ts",
-    "test:e2e:watch": "dotenv -e .env.test -- env ANILIST_OAUTH_ENABLED=true vitest --config ./vitest.config.e2e.ts",
+    "test:e2e": "dotenv -e .env.test -- env ANILIST_OAUTH_ENABLED=true ANILIST_IDENTITY_SALT=anilist-test-identity-salt-1234567890 vitest run --config ./vitest.config.e2e.ts",
+    "test:e2e:watch": "dotenv -e .env.test -- env ANILIST_OAUTH_ENABLED=true ANILIST_IDENTITY_SALT=anilist-test-identity-salt-1234567890 vitest --config ./vitest.config.e2e.ts",
     "// --- 4. PRODUCTION / future CI/CD PIPELINE ---": "",
     "start:prod": "node dist/src/main.js",
     "prod:migrate": "prisma migrate deploy"

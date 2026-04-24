@@ -7,6 +7,8 @@ import {
 } from '@manverse/anilist-client';
 import { ANILIST_PROVIDER_ID } from '../common/constants/provider.constants.js';
 import {
+  ANILIST_IDENTITY_SALT_MIN_LENGTH,
+  ANILIST_IDENTITY_SALT_REQUIRED_MESSAGE,
   ANILIST_SYNTHETIC_EMAIL_DOMAIN,
   anilistAccountOptions,
   buildAnilistSyntheticEmail,
@@ -14,13 +16,17 @@ import {
 } from './anilist-oauth.js';
 
 describe('AniList OAuth helpers', () => {
+  const longIdentitySalt = Buffer.from(
+    'anilist-identity-salt-that-is-definitely-long-enough',
+  ).toString('base64');
+
   beforeEach(() => {
     faker.seed(42);
     vi.clearAllMocks();
   });
 
   it('builds a deterministic opaque synthetic email for the same AniList viewer id', () => {
-    const identitySalt = Buffer.from('anilist-secret').toString('base64');
+    const identitySalt = longIdentitySalt;
     const viewerId = 7_407_199;
 
     const firstEmail = buildAnilistSyntheticEmail({
@@ -38,7 +44,7 @@ describe('AniList OAuth helpers', () => {
   });
 
   it('keeps the synthetic email stable when the identity salt is fixed and Better Auth secrets rotate', () => {
-    const identitySalt = Buffer.from('stable-identity-salt').toString('base64');
+    const identitySalt = longIdentitySalt;
     const viewerId = 7_407_199;
     const oldBetterAuthSecret = Buffer.from('old-better-auth-secret').toString(
       'base64',
@@ -60,6 +66,26 @@ describe('AniList OAuth helpers', () => {
     expect(emailBeforeSecretRotation).toBe(emailAfterSecretRotation);
   });
 
+  it('rejects a blank AniList identity salt', () => {
+    expect(() =>
+      buildAnilistSyntheticEmail({
+        identitySalt: '   ',
+        viewerId: 7_407_199,
+      }),
+    ).toThrow(ANILIST_IDENTITY_SALT_REQUIRED_MESSAGE);
+  });
+
+  it('rejects an AniList identity salt shorter than the enforced minimum', () => {
+    expect(() =>
+      buildAnilistSyntheticEmail({
+        identitySalt: 'too-short',
+        viewerId: 7_407_199,
+      }),
+    ).toThrow(
+      `ANILIST_IDENTITY_SALT must be at least ${ANILIST_IDENTITY_SALT_MIN_LENGTH} characters long.`,
+    );
+  });
+
   it('enables OAuth token encryption and disables AniList account linking', () => {
     expect(anilistAccountOptions.encryptOAuthTokens).toBe(true);
     expect(anilistAccountOptions.accountLinking.enabled).toBe(false);
@@ -71,7 +97,7 @@ describe('AniList OAuth helpers', () => {
         'https://api.manverse.local/api/auth/oauth2/callback/anilist',
       clientId: 'anilist-client-id',
       clientSecret: 'anilist-client-secret',
-      identitySalt: Buffer.from('another-secret').toString('base64'),
+      identitySalt: longIdentitySalt,
       resolveViewer: vi.fn(),
     });
 
@@ -86,7 +112,7 @@ describe('AniList OAuth helpers', () => {
         'https://api.manverse.local/api/auth/oauth2/callback/anilist',
       clientId: 'anilist-client-id',
       clientSecret: 'anilist-client-secret',
-      identitySalt: Buffer.from('response-secret').toString('base64'),
+      identitySalt: longIdentitySalt,
       resolveViewer: vi
         .fn()
         .mockRejectedValue(
@@ -109,7 +135,7 @@ describe('AniList OAuth helpers', () => {
         'https://api.manverse.local/api/auth/oauth2/callback/anilist',
       clientId: 'anilist-client-id',
       clientSecret: 'anilist-client-secret',
-      identitySalt: Buffer.from('json-secret').toString('base64'),
+      identitySalt: longIdentitySalt,
       resolveViewer: vi
         .fn()
         .mockRejectedValue(new HTTPClientInvalidJSONError()),
@@ -126,7 +152,7 @@ describe('AniList OAuth helpers', () => {
         'https://api.manverse.local/api/auth/oauth2/callback/anilist',
       clientId: 'anilist-client-id',
       clientSecret: 'anilist-client-secret',
-      identitySalt: Buffer.from('graphql-secret').toString('base64'),
+      identitySalt: longIdentitySalt,
       resolveViewer: vi
         .fn()
         .mockRejectedValue(
@@ -145,7 +171,7 @@ describe('AniList OAuth helpers', () => {
         'https://api.manverse.local/api/auth/oauth2/callback/anilist',
       clientId: 'anilist-client-id',
       clientSecret: 'anilist-client-secret',
-      identitySalt: Buffer.from('viewer-secret').toString('base64'),
+      identitySalt: longIdentitySalt,
       resolveViewer: vi.fn().mockResolvedValue(null),
     });
 
@@ -155,7 +181,7 @@ describe('AniList OAuth helpers', () => {
   });
 
   it('getUserInfo() maps the AniList viewer to an opaque OAuth user', async () => {
-    const identitySalt = Buffer.from('opaque-secret').toString('base64');
+    const identitySalt = longIdentitySalt;
     const providerConfig = createAnilistOAuthProviderConfig({
       callbackUrl:
         'https://api.manverse.local/api/auth/oauth2/callback/anilist',

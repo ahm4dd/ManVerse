@@ -58,7 +58,7 @@ const oauthPlugins = env.ANILIST_OAUTH_ENABLED
             callbackUrl: anilistCallbackUrl,
             clientId: env.ANILIST_CLIENT_ID!,
             clientSecret: env.ANILIST_CLIENT_SECRET!,
-            identitySalt: env.ANILIST_IDENTITY_SALT ?? env.BETTER_AUTH_SECRET,
+            identitySalt: env.ANILIST_IDENTITY_SALT!,
             resolveViewer: (accessToken: string) =>
               anilistClient.getViewerProfile(accessToken),
           }),
@@ -74,22 +74,23 @@ export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: 'postgresql' }),
   baseURL: env.BETTER_AUTH_URL,
   secret: env.BETTER_AUTH_SECRET,
+  advanced: {
+    useSecureCookies: env.NODE_ENV === 'production',
+    // Better Auth already handles CSRF/origin protections; keep those checks on.
+    disableCSRFCheck: false,
+    disableOriginCheck: false,
+  },
   account: anilistAccountOptions,
   trustedOrigins: env.TRUSTED_ORIGINS,
   rateLimit: {
-    enabled: env.NODE_ENV === 'production' ? true : false,
+    enabled: env.NODE_ENV === 'production',
     // TODO: Tune these settings
   },
   session: {
     cookieCache: {
-      /**
-       * When it is critical that all revoked session get deactivated on all devices
-       * as soon as they are revoked, you should use disableCookieCache: true
-       * or disable the following code.
-       */
-      enabled: true,
-      maxAge: 5 * 60, // Cache duration in seconds (5 minutes)
-      strategy: 'compact', // You can use 'jwt' or 'jwe' for signing and security
+      // Revalidate against the session store on every request so revoked
+      // sessions are not accepted until the cookie cache expires.
+      enabled: false,
     },
   },
   emailAndPassword: {

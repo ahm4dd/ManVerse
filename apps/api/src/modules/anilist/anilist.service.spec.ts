@@ -1,12 +1,16 @@
 import 'reflect-metadata';
 import type {
+  DeleteMediaListEntryResult,
   SearchMediaPage,
+  SaveMediaListEntry,
+  ToggleFavouriteResult,
   ViewerMangaListCollection,
 } from '@manverse/anilist-client';
 import { faker } from '@faker-js/faker';
 import { NotFoundException } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ZodError } from 'zod';
 import {
   ANILIST_ACCOUNT_NOT_LINKED_MESSAGE,
   ANILIST_RELINK_REQUIRED_MESSAGE,
@@ -18,9 +22,11 @@ import {
 import { AnilistRepository } from './anilist.repository.js';
 import { AnilistClient } from '@manverse/anilist-client';
 import { AnilistService } from './anilist.service.js';
+import type { SaveMediaListEntryDto } from './dto/save-media-list-entry.dto.js';
 import type { GetViewerMangaListsQueryDto } from './dto/get-viewer-manga-lists.dto.js';
 import type { GetUserQueryDto } from './dto/get-user.dto.js';
 import type { SearchMediaDto } from './dto/search-media.dto.js';
+import type { ToggleFavouriteDto } from './dto/toggle-favourite.dto.js';
 
 describe('AnilistService', () => {
   let service: AnilistService;
@@ -29,6 +35,9 @@ describe('AnilistService', () => {
     getUserProfile: vi.fn(),
     getViewerProfile: vi.fn(),
     getViewerMangaLists: vi.fn(),
+    saveMediaListEntry: vi.fn(),
+    deleteMediaListEntry: vi.fn(),
+    toggleFavourite: vi.fn(),
     searchMedia: vi.fn(),
   };
   const mockAnilistRepository = {
@@ -169,6 +178,147 @@ describe('AnilistService', () => {
     );
   });
 
+  it('getViewerMangaLists() should preserve null when AniList has no manga list collection', async () => {
+    const userId = faker.string.nanoid();
+    const accessToken = faker.string.alphanumeric(32);
+
+    mockAnilistRepository.getCurrentUserAccessToken.mockResolvedValueOnce(
+      accessToken,
+    );
+    mockAnilistClient.getViewerMangaLists.mockResolvedValueOnce(null);
+
+    await expect(service.getViewerMangaLists(userId, {})).resolves.toBeNull();
+  });
+
+  it('getViewerMangaLists() should reject malformed manga list payloads from the client', async () => {
+    const userId = faker.string.nanoid();
+    const accessToken = faker.string.alphanumeric(32);
+
+    mockAnilistRepository.getCurrentUserAccessToken.mockResolvedValueOnce(
+      accessToken,
+    );
+    mockAnilistClient.getViewerMangaLists.mockResolvedValueOnce({
+      hasNextChunk: true,
+      lists: [
+        {
+          name: 'Current',
+          isCustomList: false,
+          isSplitCompletedList: false,
+          status: 'CURRENT',
+          entries: [
+            {
+              id: 'not-a-number',
+            },
+          ],
+        },
+      ],
+    });
+
+    await expect(
+      service.getViewerMangaLists(userId, {}),
+    ).rejects.toBeInstanceOf(ZodError);
+  });
+
+  it('saveMediaListEntry() should resolve the current user access token before calling the client', async () => {
+    const userId = faker.string.nanoid();
+    const accessToken = faker.string.alphanumeric(32);
+    const input: SaveMediaListEntryDto = {
+      mediaId: 151807,
+      status: 'CURRENT',
+      progress: 120,
+      score: 8.5,
+    };
+    const result: SaveMediaListEntry = {
+      id: 71,
+      mediaId: 151807,
+      status: 'CURRENT',
+      score: 8.5,
+      progress: 120,
+      media: null,
+    };
+
+    mockAnilistRepository.getCurrentUserAccessToken.mockResolvedValueOnce(
+      accessToken,
+    );
+    mockAnilistClient.saveMediaListEntry.mockResolvedValueOnce(result);
+
+    await expect(service.saveMediaListEntry(userId, input)).resolves.toEqual(
+      result,
+    );
+
+    expect(
+      mockAnilistRepository.getCurrentUserAccessToken,
+    ).toHaveBeenCalledWith(userId);
+    expect(mockAnilistClient.saveMediaListEntry).toHaveBeenCalledWith(
+      accessToken,
+      input,
+    );
+  });
+
+  it('deleteMediaListEntry() should resolve the current user access token before calling the client', async () => {
+    const userId = faker.string.nanoid();
+    const accessToken = faker.string.alphanumeric(32);
+    const result: DeleteMediaListEntryResult = {
+      entryId: 71,
+      deleted: true,
+    };
+
+    mockAnilistRepository.getCurrentUserAccessToken.mockResolvedValueOnce(
+      accessToken,
+    );
+    mockAnilistClient.deleteMediaListEntry.mockResolvedValueOnce(result);
+
+    await expect(service.deleteMediaListEntry(userId, 71)).resolves.toEqual(
+      result,
+    );
+
+    expect(
+      mockAnilistRepository.getCurrentUserAccessToken,
+    ).toHaveBeenCalledWith(userId);
+    expect(mockAnilistClient.deleteMediaListEntry).toHaveBeenCalledWith(
+      accessToken,
+      { entryId: 71 },
+    );
+  });
+
+  it('toggleFavourite() should resolve the current user access token before calling the client', async () => {
+    const userId = faker.string.nanoid();
+    const accessToken = faker.string.alphanumeric(32);
+    const input: ToggleFavouriteDto = {
+      mediaId: 151807,
+    };
+    const result: ToggleFavouriteResult = {
+      mediaId: 151807,
+      isFavourite: true,
+      media: {
+        id: 151807,
+        title: {
+          romaji: 'Solo Leveling',
+          english: 'Solo Leveling',
+          native: 'Na Honjaman Level Up',
+          userPreferred: 'Solo Leveling',
+        },
+      },
+    };
+
+    mockAnilistRepository.getCurrentUserAccessToken.mockResolvedValueOnce(
+      accessToken,
+    );
+    mockAnilistClient.toggleFavourite.mockResolvedValueOnce(result);
+
+    await expect(service.toggleFavourite(userId, input)).resolves.toEqual(
+      result,
+    );
+
+    expect(
+      mockAnilistRepository.getCurrentUserAccessToken,
+    ).toHaveBeenCalledWith(userId);
+    expect(mockAnilistClient.toggleFavourite).toHaveBeenCalledWith(
+      accessToken,
+      input,
+    );
+  });
+
   it('getViewer() should translate a missing AniList account into a 404', async () => {
     mockAnilistRepository.getCurrentUserAccessToken.mockRejectedValueOnce(
       new AnilistAccountNotLinkedError(),
@@ -191,5 +341,47 @@ describe('AnilistService', () => {
     ).rejects.toThrow(new NotFoundException(ANILIST_RELINK_REQUIRED_MESSAGE));
 
     expect(mockAnilistClient.getViewerMangaLists).not.toHaveBeenCalled();
+  });
+
+  it('saveMediaListEntry() should translate a relink-required repository error into a 404', async () => {
+    mockAnilistRepository.getCurrentUserAccessToken.mockRejectedValueOnce(
+      new AnilistAccessTokenRelinkRequiredError(),
+    );
+
+    await expect(
+      service.saveMediaListEntry(faker.string.nanoid(), {
+        mediaId: 151807,
+        status: 'CURRENT',
+        progress: 120,
+      }),
+    ).rejects.toThrow(new NotFoundException(ANILIST_RELINK_REQUIRED_MESSAGE));
+
+    expect(mockAnilistClient.saveMediaListEntry).not.toHaveBeenCalled();
+  });
+
+  it('deleteMediaListEntry() should translate a missing AniList account into a 404', async () => {
+    mockAnilistRepository.getCurrentUserAccessToken.mockRejectedValueOnce(
+      new AnilistAccountNotLinkedError(),
+    );
+
+    await expect(
+      service.deleteMediaListEntry(faker.string.nanoid(), 71),
+    ).rejects.toThrow(
+      new NotFoundException(ANILIST_ACCOUNT_NOT_LINKED_MESSAGE),
+    );
+
+    expect(mockAnilistClient.deleteMediaListEntry).not.toHaveBeenCalled();
+  });
+
+  it('toggleFavourite() should translate a relink-required repository error into a 404', async () => {
+    mockAnilistRepository.getCurrentUserAccessToken.mockRejectedValueOnce(
+      new AnilistAccessTokenRelinkRequiredError(),
+    );
+
+    await expect(
+      service.toggleFavourite(faker.string.nanoid(), { mediaId: 151807 }),
+    ).rejects.toThrow(new NotFoundException(ANILIST_RELINK_REQUIRED_MESSAGE));
+
+    expect(mockAnilistClient.toggleFavourite).not.toHaveBeenCalled();
   });
 });

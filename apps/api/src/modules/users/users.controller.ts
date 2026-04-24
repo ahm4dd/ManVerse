@@ -1,4 +1,9 @@
-import { Controller, Get, Request } from '@nestjs/common';
+import { Controller, Get, Request, UseGuards } from '@nestjs/common';
+import {
+  Throttle,
+  ThrottlerGuard,
+  type ThrottlerGetTrackerFunction,
+} from '@nestjs/throttler';
 import {
   AuthService,
   Session,
@@ -8,10 +13,34 @@ import { fromNodeHeaders } from 'better-auth/node';
 import type { Request as ExpressRequest } from 'express';
 import { ZodResponse } from 'nestjs-zod';
 import auth from 'src/lib/auth.js';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiOperation,
+  ApiTags,
+  ApiTooManyRequestsResponse,
+  getSchemaPath,
+} from '@nestjs/swagger';
 import { ApiSessionAuth } from '../../common/decorators/api-session-auth.decorator.js';
+import { HttpErrorResponseDto } from '../../common/dto/http-error-response.dto.js';
 import { LinkedAccountsResponseDto } from './dto/linked-accounts-response.dto.js';
 import { MeResponseDto } from './dto/me-response.dto.js';
+
+const AUTHENTICATED_USERS_THROTTLE_TTL_MS = 60_000;
+const AUTHENTICATED_USERS_THROTTLE_LIMIT = 30;
+type AuthenticatedThrottleRequest = {
+  ip: string;
+  user?: {
+    id?: string | undefined;
+  } | null;
+  session?: {
+    user?: {
+      id?: string | undefined;
+    } | null;
+  } | null;
+};
+const getAuthenticatedThrottleTracker: ThrottlerGetTrackerFunction = (req) =>
+  (req as AuthenticatedThrottleRequest).user?.id ??
+  (req as AuthenticatedThrottleRequest).session?.user?.id ??
+  (req as AuthenticatedThrottleRequest).ip;
 
 // TODO: authService.api.generateOpenAPISchema(), probably no longer needed.
 @ApiTags('Users')
@@ -21,10 +50,25 @@ export class UsersController {
 
   @Get('accounts')
   @ApiSessionAuth()
+  @UseGuards(ThrottlerGuard)
+  @Throttle({
+    default: {
+      limit: AUTHENTICATED_USERS_THROTTLE_LIMIT,
+      ttl: AUTHENTICATED_USERS_THROTTLE_TTL_MS,
+      getTracker: getAuthenticatedThrottleTracker,
+    },
+  })
   @ApiOperation({
     summary: 'Get the current user linked accounts',
     description:
       'Protected endpoint. Requires the Better Auth session cookie. See /api/auth/reference for the auth flow and session endpoints.',
+  })
+  @ApiTooManyRequestsResponse({
+    description:
+      'Returned when the authenticated account lookup rate limit is exceeded for the current session user.',
+    schema: {
+      $ref: getSchemaPath(HttpErrorResponseDto),
+    },
   })
   @ZodResponse({
     type: LinkedAccountsResponseDto,
@@ -53,10 +97,25 @@ export class UsersController {
 
   @Get('me')
   @ApiSessionAuth()
+  @UseGuards(ThrottlerGuard)
+  @Throttle({
+    default: {
+      limit: AUTHENTICATED_USERS_THROTTLE_LIMIT,
+      ttl: AUTHENTICATED_USERS_THROTTLE_TTL_MS,
+      getTracker: getAuthenticatedThrottleTracker,
+    },
+  })
   @ApiOperation({
     summary: 'Get the current authenticated user profile',
     description:
       'Protected endpoint. Requires the Better Auth session cookie. See /api/auth/reference for the auth flow and session endpoints.',
+  })
+  @ApiTooManyRequestsResponse({
+    description:
+      'Returned when the authenticated profile lookup rate limit is exceeded for the current session user.',
+    schema: {
+      $ref: getSchemaPath(HttpErrorResponseDto),
+    },
   })
   @ZodResponse({
     type: MeResponseDto,

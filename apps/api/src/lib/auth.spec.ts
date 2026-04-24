@@ -2,8 +2,18 @@ import { AuthEnv } from 'src/config/env.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 type BetterAuthConfig = {
+  advanced?: {
+    disableCSRFCheck?: boolean;
+    disableOriginCheck?: boolean;
+    useSecureCookies?: boolean;
+  };
   account?: unknown;
   plugins?: unknown[];
+  session?: {
+    cookieCache?: {
+      enabled?: boolean;
+    };
+  };
 };
 
 async function loadAuthModule(envOverrides: Partial<AuthEnv> = {}) {
@@ -17,7 +27,7 @@ async function loadAuthModule(envOverrides: Partial<AuthEnv> = {}) {
     ANILIST_OAUTH_ENABLED: true,
     ANILIST_CLIENT_ID: 'anilist-client-id',
     ANILIST_CLIENT_SECRET: 'anilist-client-secret',
-    ANILIST_IDENTITY_SALT: undefined,
+    ANILIST_IDENTITY_SALT: 'stable-anilist-identity-salt',
     ...envOverrides,
   };
 
@@ -106,8 +116,10 @@ describe('auth configuration', () => {
         'https://api.manverse.local/api/auth/oauth2/callback/anilist',
       clientId: 'anilist-client-id',
       clientSecret: 'anilist-client-secret',
-      identitySalt: 'better-auth-secret',
-      resolveViewer: expect.any(Function),
+      identitySalt: 'stable-anilist-identity-salt',
+      resolveViewer: expect.any(Function) as unknown as (
+        accessToken: string,
+      ) => Promise<unknown>,
     });
     expect(genericOAuthMock).toHaveBeenCalledWith({
       config: [providerConfig],
@@ -117,11 +129,17 @@ describe('auth configuration', () => {
 
     const authConfig = betterAuthMock.mock.calls[0]?.[0];
     expect(authConfig.account).toBe(accountOptions);
+    expect(authConfig.advanced).toEqual({
+      useSecureCookies: false,
+      disableCSRFCheck: false,
+      disableOriginCheck: false,
+    });
     expect(authConfig.plugins).toEqual([
       openApiPlugin,
       genericOAuthPlugin,
       testUtilsPlugin,
     ]);
+    expect(authConfig.session?.cookieCache).toEqual({ enabled: false });
 
     const providerOptions = (
       createAnilistOAuthProviderConfigMock.mock.calls as unknown as Array<
@@ -160,5 +178,19 @@ describe('auth configuration', () => {
 
     const authConfig = betterAuthMock.mock.calls[0]?.[0];
     expect(authConfig.plugins).toEqual([openApiPlugin, testUtilsPlugin]);
+  });
+
+  it('uses secure cookies in production', async () => {
+    const { betterAuthMock } = await loadAuthModule({
+      NODE_ENV: 'production',
+    });
+
+    const authConfig = betterAuthMock.mock.calls[0]?.[0];
+
+    expect(authConfig.advanced).toEqual({
+      useSecureCookies: true,
+      disableCSRFCheck: false,
+      disableOriginCheck: false,
+    });
   });
 });

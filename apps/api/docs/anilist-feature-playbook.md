@@ -100,13 +100,13 @@ src/features/<feature-name>/
 ```
 
 > [!IMPORTANT]
-> Every feature follows this exact 5-file structure. No file is optional. The shared `src/features/shared/` directory is for cross-feature utilities (e.g., `getViewerId`).
+> Every feature follows this exact 5-file structure. No file is optional. A feature groups related AniList capability, not necessarily exactly one operation. For example, `media-list/` contains the authenticated manga-list read plus the save/delete library-entry mutations. The shared `src/features/shared/` directory is for cross-feature utilities (e.g., `getViewerId`).
 
 ---
 
-### 2.2 Step-by-Step: Add a New Feature
+### 2.2 Step-by-Step: Add a New Operation to a Feature
 
-Below is the exact recipe, using a hypothetical **"save media list entry"** mutation as an example.
+Below is the exact recipe, using **`saveMediaListEntry` inside `media-list/`** as the example.
 
 ---
 
@@ -321,14 +321,14 @@ export {
   saveMediaListEntryInputSchema,
   saveMediaListEntrySchema,
   saveMediaListEntryMediaSchema,
-} from './src/features/save-media-list-entry/index.js';
+} from './src/features/media-list/index.js';
 
 // Add type exports:
 export type {
   SaveMediaListEntry,
   SaveMediaListEntryData,
   SaveMediaListEntryInput,
-} from './src/features/save-media-list-entry/index.js';
+} from './src/features/media-list/index.js';
 ```
 
 ---
@@ -343,7 +343,7 @@ import {
   saveMediaListEntry,
   type SaveMediaListEntryInput,
   type SaveMediaListEntry as SaveMediaListEntryResult,
-} from '../features/save-media-list-entry/index.js';
+} from '../features/media-list/index.js';
 
 // Add method to class
 async saveMediaListEntry(
@@ -360,7 +360,7 @@ async saveMediaListEntry(
 
 ### 2.3 Mutation-Specific Guidance
 
-The existing codebase has only **queries** so far. Here's what changes for **mutations**:
+The current codebase already includes authenticated mutations in `media-list/` and `toggle-favourite/`. Here is the pattern difference between **queries** and **mutations**:
 
 | Aspect                    | Query                                                        | Mutation                                                                    |
 | ------------------------- | ------------------------------------------------------------ | --------------------------------------------------------------------------- |
@@ -702,15 +702,15 @@ describe('saveMediaListEntryDtoSchema', () => {
 
 5. **Test categories for each endpoint**:
 
-   | Test               | HTTP                             | Status | Description                       |
-   | ------------------ | -------------------------------- | ------ | --------------------------------- |
-   | Happy path         | GET/POST                         | 200    | Verify body matches expected data |
-   | Missing auth       | GET/POST (no cookie)             | 401    | Protected endpoints               |
-   | No linked account  | GET/POST (cookie, no account)    | 404    | `NotFoundException`               |
-   | No access token    | GET/POST (cookie, null token)    | 404    | `NotFoundException`               |
-   | Validation failure | GET/POST (bad params)            | 400    | Zod validation error shape        |
-   | Malformed response | GET/POST (mock returns bad data) | 500    | `ZodSerializerDto` catches it     |
-   | Rate limit         | 60/30 rapid requests             | 429    | Throttler kicks in                |
+   | Test               | HTTP                             | Status | Description                        |
+   | ------------------ | -------------------------------- | ------ | ---------------------------------- |
+   | Happy path         | GET/POST                         | 200    | Verify body matches expected data  |
+   | Missing auth       | GET/POST (no cookie)             | 401    | Protected endpoints                |
+   | No linked account  | GET/POST (cookie, no account)    | 404    | `NotFoundException`                |
+   | No access token    | GET/POST (cookie, null token)    | 404    | `NotFoundException`                |
+   | Validation failure | GET/POST (bad params)            | 400    | Zod validation error shape         |
+   | Malformed response | GET/POST (mock returns bad data) | 500    | Response Zod validation catches it |
+   | Rate limit         | 60/30 rapid requests             | 429    | Throttler kicks in                 |
 
    For **mutations**, add:
    - POST with valid JSON body → 200/201
@@ -735,17 +735,17 @@ pnpm run test:e2e            # run e2e tests (uses .env.test)
 
 ### File Naming
 
-| Item              | Convention                    | Example                                 |
-| ----------------- | ----------------------------- | --------------------------------------- |
-| Feature directory | `kebab-case`                  | `media-list/`, `save-media-list-entry/` |
-| Schema file       | `schemas.ts` (always)         | —                                       |
-| Query file        | `queries.ts` (always)         | —                                       |
-| Operations file   | `operations.ts` (always)      | —                                       |
-| Tests file        | `operations.spec.ts` (always) | —                                       |
-| Feature index     | `index.ts` (always)           | —                                       |
-| API DTO file      | `<action>.dto.ts`             | `search-media.dto.ts`                   |
-| API DTO spec      | `<action>.dto.spec.ts`        | `search-media.dto.spec.ts`              |
-| API response DTO  | `<action>-response.dto.ts`    | `search-media-response.dto.ts`          |
+| Item              | Convention                    | Example                            |
+| ----------------- | ----------------------------- | ---------------------------------- |
+| Feature directory | `kebab-case`                  | `media-list/`, `toggle-favourite/` |
+| Schema file       | `schemas.ts` (always)         | —                                  |
+| Query file        | `queries.ts` (always)         | —                                  |
+| Operations file   | `operations.ts` (always)      | —                                  |
+| Tests file        | `operations.spec.ts` (always) | —                                  |
+| Feature index     | `index.ts` (always)           | —                                  |
+| API DTO file      | `<action>.dto.ts`             | `search-media.dto.ts`              |
+| API DTO spec      | `<action>.dto.spec.ts`        | `search-media.dto.spec.ts`         |
+| API response DTO  | `<action>-response.dto.ts`    | `search-media-response.dto.ts`     |
 
 ### Variable/Type Naming
 
@@ -790,12 +790,12 @@ pnpm run test:e2e            # run e2e tests (uses .env.test)
 
 ### In NestJS Controller
 
-| Scenario                             | NestJS Exception             | HTTP Status |
-| ------------------------------------ | ---------------------------- | ----------- |
-| No linked AniList account            | `NotFoundException`          | 404         |
-| No access token in account           | `NotFoundException`          | 404         |
-| Zod validation (input DTO)           | Handled by `nestjs-zod` pipe | 400         |
-| Zod validation (response serializer) | `Internal Server Error`      | 500         |
+| Scenario                         | NestJS Exception             | HTTP Status |
+| -------------------------------- | ---------------------------- | ----------- |
+| No linked AniList account        | `NotFoundException`          | 404         |
+| No access token in account       | `NotFoundException`          | 404         |
+| Zod validation (input DTO)       | Handled by `nestjs-zod` pipe | 400         |
+| Zod validation (response output) | `Internal Server Error`      | 500         |
 
 ---
 
@@ -865,15 +865,15 @@ Use this checklist when adding any new AniList feature:
 
 ---
 
-### Feature: `media-list` (Query — authenticated, uses shared viewer)
+### Feature: `media-list` (Authenticated query + mutations, uses shared viewer)
 
-| File                                                                                                                   | Key Exports                                                                                       |
-| ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| [schemas.ts](file:///home/dankcode/projects/manverse/packages/anilist-client/src/features/media-list/schemas.ts)       | `viewerMangaListsInputSchema`, `viewerMangaListCollectionSchema`, re-exports from `shared/viewer` |
-| [queries.ts](file:///home/dankcode/projects/manverse/packages/anilist-client/src/features/media-list/queries.ts)       | `VIEWER_MANGA_LISTS_QUERY`, re-exports `VIEWER_MANGA_LISTS_VIEWER_QUERY`                          |
-| [operations.ts](file:///home/dankcode/projects/manverse/packages/anilist-client/src/features/media-list/operations.ts) | `getViewerMangaLists(executor, accessToken, input?)` — calls `getViewerId()` first                |
+| File                                                                                                                   | Key Exports                                                                                                                                                           |
+| ---------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [schemas.ts](file:///home/dankcode/projects/manverse/packages/anilist-client/src/features/media-list/schemas.ts)       | `viewerMangaListsInputSchema`, `viewerMangaListCollectionSchema`, `saveMediaListEntryInputSchema`, `deleteMediaListEntryInputSchema`, re-exports from `shared/viewer` |
+| [queries.ts](file:///home/dankcode/projects/manverse/packages/anilist-client/src/features/media-list/queries.ts)       | `VIEWER_MANGA_LISTS_QUERY`, `SAVE_MEDIA_LIST_ENTRY_MUTATION`, `DELETE_MEDIA_LIST_ENTRY_MUTATION`, re-exports `VIEWER_MANGA_LISTS_VIEWER_QUERY`                        |
+| [operations.ts](file:///home/dankcode/projects/manverse/packages/anilist-client/src/features/media-list/operations.ts) | `getViewerMangaLists(executor, accessToken, input?)`, `saveMediaListEntry(executor, accessToken, input)`, `deleteMediaListEntry(executor, accessToken, input)`        |
 
-**Pattern**: Best example of an authenticated query that composes with a shared sub-operation (`getViewerId`). The operation makes **2 sequential GraphQL calls** — tests mock both with `.mockResolvedValueOnce()`.
+**Pattern**: Best example of an authenticated feature that mixes one read plus related write operations. `getViewerMangaLists()` composes with the shared `getViewerId()` sub-operation and makes **2 sequential GraphQL calls**; the save/delete mutations are single-call authenticated writes that live in the same feature because they operate on the same AniList media-list domain.
 
 ---
 
@@ -890,4 +890,4 @@ Use this checklist when adding any new AniList feature:
 ---
 
 > [!TIP]
-> **Best reference feature to copy**: Use the **search** feature as the template for public queries, and **media-list** for authenticated queries. Both demonstrate the complete pattern including complex nested schemas and thorough test coverage.
+> **Best reference feature to copy**: Use the **search** feature as the template for public queries, and **media-list** for authenticated features tied to a single AniList domain area. Both demonstrate the complete pattern including complex nested schemas and thorough test coverage.

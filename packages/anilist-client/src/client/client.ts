@@ -6,7 +6,13 @@ import {
   type UserProfileInput,
 } from '../features/profile/index.js';
 import {
+  deleteMediaListEntry,
   getViewerMangaLists,
+  saveMediaListEntry,
+  type DeleteMediaListEntryInput,
+  type DeleteMediaListEntryResult,
+  type SaveMediaListEntry,
+  type SaveMediaListEntryInput,
   type ViewerMangaListCollection,
   type ViewerMangaListsInput,
 } from '../features/media-list/index.js';
@@ -15,6 +21,11 @@ import {
   type SearchMediaInput,
   type SearchMediaPage,
 } from '../features/search/index.js';
+import {
+  toggleFavourite,
+  type ToggleFavouriteInput,
+  type ToggleFavouriteResult,
+} from '../features/toggle-favourite/index.js';
 import { HTTPClient } from './httpclient.js';
 import { resolveAnilistClientConfig } from './bootstrap.js';
 
@@ -47,5 +58,26 @@ export class AnilistClient {
     input?: ViewerMangaListsInput,
   ): Promise<ViewerMangaListCollection | null> {
     return getViewerMangaLists(this.httpClient, accessToken, input);
+  }
+
+  async saveMediaListEntry(
+    accessToken: string,
+    input: SaveMediaListEntryInput,
+  ): Promise<SaveMediaListEntry | null> {
+    return saveMediaListEntry(this.httpClient, accessToken, input);
+  }
+
+  async deleteMediaListEntry(
+    accessToken: string,
+    input: DeleteMediaListEntryInput,
+  ): Promise<DeleteMediaListEntryResult> {
+    return deleteMediaListEntry(this.httpClient, accessToken, input);
+  }
+
+  async toggleFavourite(
+    accessToken: string,
+    input: ToggleFavouriteInput,
+  ): Promise<ToggleFavouriteResult> {
+    return toggleFavourite(this.httpClient, accessToken, input);
   }
 }

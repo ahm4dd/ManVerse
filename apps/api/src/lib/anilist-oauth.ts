@@ -9,6 +9,9 @@ export const ANILIST_ACCOUNT_NOT_LINKED_MESSAGE =
   'AniList account is not linked for the current user';
 export const ANILIST_RELINK_REQUIRED_MESSAGE =
   'AniList access token could not be retrieved for the current user. Please relink your AniList account.';
+export const ANILIST_IDENTITY_SALT_REQUIRED_MESSAGE =
+  'ANILIST_IDENTITY_SALT must be configured as a stable, non-empty secret.';
+export const ANILIST_IDENTITY_SALT_MIN_LENGTH = 32;
 
 type AnilistOAuthViewer = Pick<ProfileUser, 'id' | 'name' | 'avatar'>;
 
@@ -31,6 +34,22 @@ export const anilistAccountOptions = {
   },
 } as const;
 
+export function requireAnilistIdentitySalt(identitySalt: string): string {
+  const normalizedIdentitySalt = identitySalt.trim();
+
+  if (!normalizedIdentitySalt) {
+    throw new Error(ANILIST_IDENTITY_SALT_REQUIRED_MESSAGE);
+  }
+
+  if (normalizedIdentitySalt.length < ANILIST_IDENTITY_SALT_MIN_LENGTH) {
+    throw new Error(
+      `ANILIST_IDENTITY_SALT must be at least ${ANILIST_IDENTITY_SALT_MIN_LENGTH} characters long.`,
+    );
+  }
+
+  return normalizedIdentitySalt;
+}
+
 export function buildAnilistSyntheticEmail(input: {
   identitySalt: string;
   viewerId: number | string;
@@ -45,7 +64,10 @@ export function buildAnilistSyntheticEmail(input: {
     );
   }
 
-  const digest = createHmac('sha256', input.identitySalt)
+  const digest = createHmac(
+    'sha256',
+    requireAnilistIdentitySalt(input.identitySalt),
+  )
     .update(`${providerId}:${viewerId}`)
     .digest('hex');
 
@@ -75,6 +97,8 @@ export function mapAnilistViewerToOAuthUserInfo(input: {
 export function createAnilistOAuthProviderConfig(
   options: CreateAnilistOAuthProviderConfigOptions,
 ): GenericOAuthConfig {
+  const identitySalt = requireAnilistIdentitySalt(options.identitySalt);
+
   return {
     responseType: 'code',
     redirectURI: options.callbackUrl,
@@ -104,7 +128,7 @@ export function createAnilistOAuthProviderConfig(
 
       return mapAnilistViewerToOAuthUserInfo({
         viewer,
-        identitySalt: options.identitySalt,
+        identitySalt,
       });
     },
   };

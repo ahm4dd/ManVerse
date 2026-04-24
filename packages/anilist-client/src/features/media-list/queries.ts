@@ -65,3 +65,42 @@ export const VIEWER_MANGA_LISTS_QUERY = gql`
     }
   }
 `;
+
+export const SAVE_MEDIA_LIST_ENTRY_MUTATION = gql`
+  mutation SaveMediaListEntry(
+    $mediaId: Int!
+    $status: MediaListStatus
+    $score: Float
+    $progress: Int
+  ) {
+    SaveMediaListEntry(
+      mediaId: $mediaId
+      status: $status
+      score: $score
+      progress: $progress
+    ) {
+      id
+      mediaId
+      status
+      score(format: POINT_10_DECIMAL)
+      progress
+      media {
+        id
+        title {
+          romaji
+          english
+          native
+          userPreferred
+        }
+      }
+    }
+  }
+`;
+
+export const DELETE_MEDIA_LIST_ENTRY_MUTATION = gql`
+  mutation DeleteMediaListEntry($id: Int) {
+    DeleteMediaListEntry(id: $id) {
+      deleted
+    }
+  }
+`;

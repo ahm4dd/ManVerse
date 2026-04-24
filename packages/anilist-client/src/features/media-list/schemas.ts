@@ -13,6 +13,15 @@ export const viewerMangaListsInputSchema = z.object({
   perChunk: z.number().int().positive().max(500).optional(),
 });
 
+export const saveMediaListEntryStatusSchema = z.enum([
+  'CURRENT',
+  'PLANNING',
+  'COMPLETED',
+  'DROPPED',
+  'PAUSED',
+  'REPEATING',
+]);
+
 export const viewerMangaListFuzzyDateSchema = z.object({
   year: z.number().nullable(),
   month: z.number().nullable(),
@@ -81,7 +90,52 @@ export const viewerMangaListsDataSchema = z.object({
   MediaListCollection: viewerMangaListCollectionSchema.nullable(),
 });
 
+export const saveMediaListEntryMediaSchema = z.object({
+  id: z.number(),
+  title: viewerMangaListTitleSchema,
+});
+
+export const saveMediaListEntrySchema = z.object({
+  id: z.number(),
+  mediaId: z.number(),
+  status: saveMediaListEntryStatusSchema,
+  score: z.number().nullable(),
+  progress: z.number().nullable(),
+  media: saveMediaListEntryMediaSchema.nullable(),
+});
+
+export const saveMediaListEntryDataSchema = z.object({
+  SaveMediaListEntry: saveMediaListEntrySchema.nullable(),
+});
+
+export const saveMediaListEntryInputSchema = z.object({
+  mediaId: z.number().int().positive(),
+  status: saveMediaListEntryStatusSchema,
+  progress: z.number().int().min(0).optional(),
+  score: z.number().min(0).max(10).optional(),
+});
+
+export const deleteMediaListEntryMutationSchema = z.object({
+  deleted: z.boolean(),
+});
+
+export const deleteMediaListEntryDataSchema = z.object({
+  DeleteMediaListEntry: deleteMediaListEntryMutationSchema,
+});
+
+export const deleteMediaListEntryInputSchema = z.object({
+  entryId: z.number().int().positive(),
+});
+
+export const deleteMediaListEntryResultSchema = z.object({
+  entryId: z.number().int().positive(),
+  deleted: z.boolean(),
+});
+
 export type ViewerMangaListsInput = z.input<typeof viewerMangaListsInputSchema>;
+export type SaveMediaListEntryStatus = z.infer<
+  typeof saveMediaListEntryStatusSchema
+>;
 export type ViewerMangaListFuzzyDate = z.infer<
   typeof viewerMangaListFuzzyDateSchema
 >;
@@ -96,3 +150,25 @@ export type ViewerMangaListCollection = z.infer<
   typeof viewerMangaListCollectionSchema
 >;
 export type ViewerMangaListsData = z.infer<typeof viewerMangaListsDataSchema>;
+export type SaveMediaListEntryMedia = z.infer<
+  typeof saveMediaListEntryMediaSchema
+>;
+export type SaveMediaListEntry = z.infer<typeof saveMediaListEntrySchema>;
+export type SaveMediaListEntryData = z.infer<
+  typeof saveMediaListEntryDataSchema
+>;
+export type SaveMediaListEntryInput = z.input<
+  typeof saveMediaListEntryInputSchema
+>;
+export type DeleteMediaListEntryMutation = z.infer<
+  typeof deleteMediaListEntryMutationSchema
+>;
+export type DeleteMediaListEntryData = z.infer<
+  typeof deleteMediaListEntryDataSchema
+>;
+export type DeleteMediaListEntryInput = z.input<
+  typeof deleteMediaListEntryInputSchema
+>;
+export type DeleteMediaListEntryResult = z.infer<
+  typeof deleteMediaListEntryResultSchema
+>;

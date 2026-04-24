@@ -1,6 +1,16 @@
 import { createZodDto } from 'nestjs-zod';
 import z from 'zod';
 
+const optionalTrimmedStringSchema = z.preprocess((value) => {
+  if (typeof value !== 'string') {
+    return value;
+  }
+
+  const trimmedValue = value.trim();
+
+  return trimmedValue.length > 0 ? trimmedValue : undefined;
+}, z.string().min(1).optional());
+
 export const getUserQueryDtoSchema = z
   .object({
     id: z.coerce
@@ -9,11 +19,9 @@ export const getUserQueryDtoSchema = z
       .positive()
       .optional()
       .describe('AniList numeric user ID to resolve'),
-    name: z
-      .string()
-      .min(1)
-      .optional()
-      .describe('AniList user name or handle to resolve'),
+    name: optionalTrimmedStringSchema.describe(
+      'AniList user name or handle to resolve',
+    ),
   })
   .superRefine((data, ctx) => {
     if (data.id === undefined && data.name === undefined) {

@@ -5,6 +5,7 @@ export const searchMediaQueryDtoSchema = z
   .object({
     search: z
       .string()
+      .trim()
       .min(1)
       .describe(
         'AniList media search phrase, usually a title or partial title',

@@ -4,7 +4,7 @@ import { env } from '../config/env.js';
 export function configureApp(app: NestExpressApplication) {
   app.setGlobalPrefix('/api');
 
-  if (env.NODE_ENV === 'production') {
+  if (env.TRUSTED_ORIGINS.length > 0) {
     app.enableCors({
       origin: env.TRUSTED_ORIGINS,
       methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',

@@ -42,6 +42,11 @@ const errorMessageBodySchema = z.object({
   message: z.string(),
 });
 
+const internalServerErrorBodySchema = z.object({
+  statusCode: z.number(),
+  message: z.string(),
+});
+
 const oauthSignInResponseBodySchema = z.object({
   url: z.url(),
 });
@@ -57,6 +62,9 @@ describe('AnilistController (e2e)', () => {
     getUserProfile: vi.fn(),
     getViewerProfile: vi.fn(),
     getViewerMangaLists: vi.fn(),
+    saveMediaListEntry: vi.fn(),
+    deleteMediaListEntry: vi.fn(),
+    toggleFavourite: vi.fn(),
     searchMedia: vi.fn(),
   };
 
@@ -97,9 +105,7 @@ describe('AnilistController (e2e)', () => {
     );
   });
 
-  const createAuthenticatedAniListUser = async (options?: {
-    accessToken?: string | null;
-  }) => {
+  const createAuthenticatedUser = async () => {
     const user = await authTest.saveUser(authTest.createUser());
     createdUserIds.push(user.id);
 
@@ -109,6 +115,17 @@ describe('AnilistController (e2e)', () => {
     if (!cookie) {
       throw new Error('Expected Better Auth test login to produce a cookie');
     }
+
+    return {
+      user,
+      cookie,
+    };
+  };
+
+  const createAuthenticatedAniListUser = async (options?: {
+    accessToken?: string | null;
+  }) => {
+    const { user, cookie } = await createAuthenticatedUser();
 
     const accessToken =
       options && 'accessToken' in options
@@ -171,6 +188,19 @@ describe('AnilistController (e2e)', () => {
     }
   };
 
+  const expectSuccessfulAuthenticatedGet = async (
+    path: string,
+    cookie: string,
+    count: number,
+  ) => {
+    for (let attempt = 0; attempt < count; attempt += 1) {
+      await request(httpServer)
+        .get(apiPath(path))
+        .set('cookie', cookie)
+        .expect(200);
+    }
+  };
+
   it('GET /api/v1/anilist/users returns the requested AniList user', async () => {
     const username = 'ahm4dd';
     const profile = {
@@ -204,6 +234,32 @@ describe('AnilistController (e2e)', () => {
       });
   });
 
+  it('GET /api/v1/anilist/users trims the provided AniList username before lookup', async () => {
+    const profile = {
+      id: 7_407_199,
+      name: 'ahm4dd',
+      about: null,
+      bannerImage: null,
+      siteUrl: 'https://anilist.co/user/ahm4dd',
+      createdAt: 1_711_630_400,
+      avatar: null,
+      favourites: null,
+    };
+
+    mockAnilistClient.getUserProfile.mockResolvedValueOnce(profile);
+
+    await request(httpServer)
+      .get(apiPath('/anilist/users'))
+      .query({ name: '  ahm4dd  ' })
+      .expect(200)
+      .expect(() => {
+        expect(mockAnilistClient.getUserProfile).toHaveBeenCalledWith({
+          id: undefined,
+          name: 'ahm4dd',
+        });
+      });
+  });
+
   it('GET /api/v1/anilist/users returns 400 when neither id nor name is provided', async () => {
     await request(httpServer)
       .get(apiPath('/anilist/users'))
@@ -215,6 +271,22 @@ describe('AnilistController (e2e)', () => {
         expect(parsedBody.message).toContain('Validation failed');
         expect(parsedBody.errors[0].code).toBe('custom');
         expect(parsedBody.errors[0].message).toBe(
+          'AniList requires at least one query argument: id or name.',
+        );
+      });
+  });
+
+  it('GET /api/v1/anilist/users returns 400 when the provided username is only whitespace', async () => {
+    await request(httpServer)
+      .get(apiPath('/anilist/users'))
+      .query({ name: '   ' })
+      .expect(400)
+      .expect(({ body }) => {
+        expect(mockAnilistClient.getUserProfile).not.toHaveBeenCalled();
+        const parsedBody = validationErrorBodySchema.parse(body);
+
+        expect(parsedBody.message).toContain('Validation failed');
+        expect(parsedBody.errors[0]?.message).toBe(
           'AniList requires at least one query argument: id or name.',
         );
       });
@@ -490,7 +562,7 @@ describe('AnilistController (e2e)', () => {
       });
   });
 
-  it('GET /api/v1/anilist/viewer/manga-lists returns an empty response body when AniList has no manga list collection', async () => {
+  it('GET /api/v1/anilist/viewer/manga-lists returns null when AniList has no manga list collection', async () => {
     const { cookie, accessToken } = await createAuthenticatedAniListUser();
 
     mockAnilistClient.getViewerMangaLists.mockResolvedValueOnce(null);
@@ -504,7 +576,7 @@ describe('AnilistController (e2e)', () => {
           accessToken,
           {},
         );
-        expect(body).toEqual({});
+        expect(body).toBeNull();
       });
   });
 
@@ -538,10 +610,10 @@ describe('AnilistController (e2e)', () => {
           accessToken,
           {},
         );
-        expect(body).toEqual({
-          message: 'Internal Server Error',
-          statusCode: 500,
-        });
+        const parsedBody = internalServerErrorBodySchema.parse(body);
+
+        expect(parsedBody.statusCode).toBe(500);
+        expect(parsedBody.message).toMatch(/internal server error/i);
       });
   });
 
@@ -568,6 +640,479 @@ describe('AnilistController (e2e)', () => {
         const parsedBody = errorMessageBodySchema.parse(body);
 
         expect(parsedBody.message).toBe(ANILIST_RELINK_REQUIRED_MESSAGE);
+      });
+  });
+
+  it('POST /api/v1/anilist/library/entries saves the linked AniList library entry for the authenticated user', async () => {
+    const body = {
+      mediaId: 151807,
+      status: 'CURRENT',
+      progress: 120,
+      score: 8.5,
+    };
+    const { cookie, accessToken } = await createAuthenticatedAniListUser();
+    const result = {
+      id: 71,
+      mediaId: 151807,
+      status: 'CURRENT',
+      score: 8.5,
+      progress: 120,
+      media: {
+        id: 151807,
+        title: {
+          romaji: 'Solo Leveling',
+          english: 'Solo Leveling',
+          native: 'Na Honjaman Level Up',
+          userPreferred: 'Solo Leveling',
+        },
+      },
+    };
+
+    mockAnilistClient.saveMediaListEntry.mockResolvedValueOnce(result);
+
+    await request(httpServer)
+      .post(apiPath('/anilist/library/entries'))
+      .set('cookie', cookie)
+      .send(body)
+      .expect(200)
+      .expect(({ body: responseBody }) => {
+        expect(mockAnilistClient.saveMediaListEntry).toHaveBeenCalledWith(
+          accessToken,
+          body,
+        );
+        expect(responseBody).toEqual(result);
+      });
+  });
+
+  it('POST /api/v1/anilist/library/entries allows omitting progress', async () => {
+    const body = {
+      mediaId: 151807,
+      status: 'CURRENT',
+      score: 8.5,
+    };
+    const { cookie, accessToken } = await createAuthenticatedAniListUser();
+    const result = {
+      id: 71,
+      mediaId: 151807,
+      status: 'CURRENT',
+      score: 8.5,
+      progress: null,
+      media: null,
+    };
+
+    mockAnilistClient.saveMediaListEntry.mockResolvedValueOnce(result);
+
+    await request(httpServer)
+      .post(apiPath('/anilist/library/entries'))
+      .set('cookie', cookie)
+      .send(body)
+      .expect(200)
+      .expect(({ body: responseBody }) => {
+        expect(mockAnilistClient.saveMediaListEntry).toHaveBeenCalledWith(
+          accessToken,
+          body,
+        );
+        expect(responseBody).toEqual(result);
+      });
+  });
+
+  it('POST /api/v1/anilist/library/entries returns 401 without a session cookie', async () => {
+    await request(httpServer)
+      .post(apiPath('/anilist/library/entries'))
+      .send({
+        mediaId: 151807,
+        status: 'CURRENT',
+        progress: 120,
+      })
+      .expect(401)
+      .expect(() => {
+        expect(mockAnilistClient.saveMediaListEntry).not.toHaveBeenCalled();
+      });
+  });
+
+  it('POST /api/v1/anilist/library/entries returns 404 when the authenticated user has no linked AniList account', async () => {
+    const user = await authTest.saveUser(authTest.createUser());
+    createdUserIds.push(user.id);
+
+    const session = await authTest.login({ userId: user.id });
+    const cookie = session.headers.get('cookie');
+
+    if (!cookie) {
+      throw new Error('Expected Better Auth test login to produce a cookie');
+    }
+
+    await request(httpServer)
+      .post(apiPath('/anilist/library/entries'))
+      .set('cookie', cookie)
+      .send({
+        mediaId: 151807,
+        status: 'CURRENT',
+        progress: 120,
+      })
+      .expect(404)
+      .expect(({ body }) => {
+        expect(mockAnilistClient.saveMediaListEntry).not.toHaveBeenCalled();
+        const parsedBody = errorMessageBodySchema.parse(body);
+
+        expect(parsedBody.message).toBe(ANILIST_ACCOUNT_NOT_LINKED_MESSAGE);
+      });
+  });
+
+  it('POST /api/v1/anilist/library/entries returns 404 when the AniList account must be relinked', async () => {
+    const { cookie } = await createAuthenticatedAniListUser({
+      accessToken: null,
+    });
+
+    await request(httpServer)
+      .post(apiPath('/anilist/library/entries'))
+      .set('cookie', cookie)
+      .send({
+        mediaId: 151807,
+        status: 'CURRENT',
+        progress: 120,
+      })
+      .expect(404)
+      .expect(({ body }) => {
+        expect(mockAnilistClient.saveMediaListEntry).not.toHaveBeenCalled();
+        const parsedBody = errorMessageBodySchema.parse(body);
+
+        expect(parsedBody.message).toBe(ANILIST_RELINK_REQUIRED_MESSAGE);
+      });
+  });
+
+  it('POST /api/v1/anilist/library/entries returns 400 when the body is invalid', async () => {
+    const { cookie } = await createAuthenticatedAniListUser();
+
+    await request(httpServer)
+      .post(apiPath('/anilist/library/entries'))
+      .set('cookie', cookie)
+      .send({
+        mediaId: '151807',
+        status: 'CURRENT',
+        progress: -1,
+      })
+      .expect(400)
+      .expect(({ body }) => {
+        expect(mockAnilistClient.saveMediaListEntry).not.toHaveBeenCalled();
+        const parsedBody = validationErrorBodySchema.parse(body);
+
+        expect(parsedBody.message).toContain('Validation failed');
+        expect(parsedBody.errors.length).toBeGreaterThan(0);
+      });
+  });
+
+  it('POST /api/v1/anilist/library/entries returns 400 when score exceeds the AniList 10-point decimal range', async () => {
+    const { cookie } = await createAuthenticatedAniListUser();
+
+    await request(httpServer)
+      .post(apiPath('/anilist/library/entries'))
+      .set('cookie', cookie)
+      .send({
+        mediaId: 151807,
+        status: 'CURRENT',
+        score: 10.1,
+      })
+      .expect(400)
+      .expect(({ body }) => {
+        expect(mockAnilistClient.saveMediaListEntry).not.toHaveBeenCalled();
+        const parsedBody = validationErrorBodySchema.parse(body);
+
+        expect(parsedBody.message).toContain('Validation failed');
+        expect(parsedBody.errors.length).toBeGreaterThan(0);
+      });
+  });
+
+  it('POST /api/v1/anilist/library/entries fails closed when AniList returns malformed payload data', async () => {
+    const { cookie, accessToken } = await createAuthenticatedAniListUser();
+
+    mockAnilistClient.saveMediaListEntry.mockResolvedValueOnce({
+      id: 'not-a-number',
+      mediaId: 151807,
+      status: 'CURRENT',
+      score: 8.5,
+      progress: 120,
+      media: null,
+    });
+
+    await request(httpServer)
+      .post(apiPath('/anilist/library/entries'))
+      .set('cookie', cookie)
+      .send({
+        mediaId: 151807,
+        status: 'CURRENT',
+        progress: 120,
+      })
+      .expect(500)
+      .expect(({ body }) => {
+        expect(mockAnilistClient.saveMediaListEntry).toHaveBeenCalledWith(
+          accessToken,
+          {
+            mediaId: 151807,
+            status: 'CURRENT',
+            progress: 120,
+          },
+        );
+        expect(body).toEqual({
+          message: 'Internal Server Error',
+          statusCode: 500,
+        });
+      });
+  });
+
+  it('DELETE /api/v1/anilist/library/entries/:entryId deletes the linked AniList library entry for the authenticated user', async () => {
+    const { cookie, accessToken } = await createAuthenticatedAniListUser();
+    const result = {
+      entryId: 71,
+      deleted: true,
+    };
+
+    mockAnilistClient.deleteMediaListEntry.mockResolvedValueOnce(result);
+
+    await request(httpServer)
+      .delete(apiPath('/anilist/library/entries/71'))
+      .set('cookie', cookie)
+      .expect(200)
+      .expect(({ body }) => {
+        expect(mockAnilistClient.deleteMediaListEntry).toHaveBeenCalledWith(
+          accessToken,
+          {
+            entryId: 71,
+          },
+        );
+        expect(body).toEqual(result);
+      });
+  });
+
+  it('DELETE /api/v1/anilist/library/entries/:entryId returns 401 without a session cookie', async () => {
+    await request(httpServer)
+      .delete(apiPath('/anilist/library/entries/71'))
+      .expect(401)
+      .expect(() => {
+        expect(mockAnilistClient.deleteMediaListEntry).not.toHaveBeenCalled();
+      });
+  });
+
+  it('DELETE /api/v1/anilist/library/entries/:entryId returns 404 when the authenticated user has no linked AniList account', async () => {
+    const user = await authTest.saveUser(authTest.createUser());
+    createdUserIds.push(user.id);
+
+    const session = await authTest.login({ userId: user.id });
+    const cookie = session.headers.get('cookie');
+
+    if (!cookie) {
+      throw new Error('Expected Better Auth test login to produce a cookie');
+    }
+
+    await request(httpServer)
+      .delete(apiPath('/anilist/library/entries/71'))
+      .set('cookie', cookie)
+      .expect(404)
+      .expect(({ body }) => {
+        expect(mockAnilistClient.deleteMediaListEntry).not.toHaveBeenCalled();
+        const parsedBody = errorMessageBodySchema.parse(body);
+
+        expect(parsedBody.message).toBe(ANILIST_ACCOUNT_NOT_LINKED_MESSAGE);
+      });
+  });
+
+  it('DELETE /api/v1/anilist/library/entries/:entryId returns 404 when the AniList account must be relinked', async () => {
+    const { cookie } = await createAuthenticatedAniListUser({
+      accessToken: '$ba$corrupted-encrypted-token',
+    });
+
+    await request(httpServer)
+      .delete(apiPath('/anilist/library/entries/71'))
+      .set('cookie', cookie)
+      .expect(404)
+      .expect(({ body }) => {
+        expect(mockAnilistClient.deleteMediaListEntry).not.toHaveBeenCalled();
+        const parsedBody = errorMessageBodySchema.parse(body);
+
+        expect(parsedBody.message).toBe(ANILIST_RELINK_REQUIRED_MESSAGE);
+      });
+  });
+
+  it('DELETE /api/v1/anilist/library/entries/:entryId returns 400 when the entry id is invalid', async () => {
+    const { cookie } = await createAuthenticatedAniListUser();
+
+    await request(httpServer)
+      .delete(apiPath('/anilist/library/entries/0'))
+      .set('cookie', cookie)
+      .expect(400)
+      .expect(({ body }) => {
+        expect(mockAnilistClient.deleteMediaListEntry).not.toHaveBeenCalled();
+        const parsedBody = validationErrorBodySchema.parse(body);
+
+        expect(parsedBody.message).toContain('Validation failed');
+        expect(parsedBody.errors.length).toBeGreaterThan(0);
+      });
+  });
+
+  it('DELETE /api/v1/anilist/library/entries/:entryId fails closed when AniList returns malformed payload data', async () => {
+    const { cookie, accessToken } = await createAuthenticatedAniListUser();
+
+    mockAnilistClient.deleteMediaListEntry.mockResolvedValueOnce({
+      entryId: 'not-a-number',
+      deleted: true,
+    });
+
+    await request(httpServer)
+      .delete(apiPath('/anilist/library/entries/71'))
+      .set('cookie', cookie)
+      .expect(500)
+      .expect(({ body }) => {
+        expect(mockAnilistClient.deleteMediaListEntry).toHaveBeenCalledWith(
+          accessToken,
+          {
+            entryId: 71,
+          },
+        );
+        expect(body).toEqual({
+          message: 'Internal Server Error',
+          statusCode: 500,
+        });
+      });
+  });
+
+  it('POST /api/v1/anilist/favourites/media toggles the linked AniList manga favourite for the authenticated user', async () => {
+    const { cookie, accessToken } = await createAuthenticatedAniListUser();
+    const body = {
+      mediaId: 151807,
+    };
+    const result = {
+      mediaId: 151807,
+      isFavourite: true,
+      media: {
+        id: 151807,
+        title: {
+          romaji: 'Solo Leveling',
+          english: 'Solo Leveling',
+          native: 'Na Honjaman Level Up',
+          userPreferred: 'Solo Leveling',
+        },
+      },
+    };
+
+    mockAnilistClient.toggleFavourite.mockResolvedValueOnce(result);
+
+    await request(httpServer)
+      .post(apiPath('/anilist/favourites/media'))
+      .set('cookie', cookie)
+      .send(body)
+      .expect(200)
+      .expect(({ body: responseBody }) => {
+        expect(mockAnilistClient.toggleFavourite).toHaveBeenCalledWith(
+          accessToken,
+          body,
+        );
+        expect(responseBody).toEqual(result);
+      });
+  });
+
+  it('POST /api/v1/anilist/favourites/media returns 401 without a session cookie', async () => {
+    await request(httpServer)
+      .post(apiPath('/anilist/favourites/media'))
+      .send({
+        mediaId: 151807,
+      })
+      .expect(401)
+      .expect(() => {
+        expect(mockAnilistClient.toggleFavourite).not.toHaveBeenCalled();
+      });
+  });
+
+  it('POST /api/v1/anilist/favourites/media returns 404 when the authenticated user has no linked AniList account', async () => {
+    const user = await authTest.saveUser(authTest.createUser());
+    createdUserIds.push(user.id);
+
+    const session = await authTest.login({ userId: user.id });
+    const cookie = session.headers.get('cookie');
+
+    if (!cookie) {
+      throw new Error('Expected Better Auth test login to produce a cookie');
+    }
+
+    await request(httpServer)
+      .post(apiPath('/anilist/favourites/media'))
+      .set('cookie', cookie)
+      .send({
+        mediaId: 151807,
+      })
+      .expect(404)
+      .expect(({ body }) => {
+        expect(mockAnilistClient.toggleFavourite).not.toHaveBeenCalled();
+        const parsedBody = errorMessageBodySchema.parse(body);
+
+        expect(parsedBody.message).toBe(ANILIST_ACCOUNT_NOT_LINKED_MESSAGE);
+      });
+  });
+
+  it('POST /api/v1/anilist/favourites/media returns 404 when the AniList account must be relinked', async () => {
+    const { cookie } = await createAuthenticatedAniListUser({
+      accessToken: null,
+    });
+
+    await request(httpServer)
+      .post(apiPath('/anilist/favourites/media'))
+      .set('cookie', cookie)
+      .send({
+        mediaId: 151807,
+      })
+      .expect(404)
+      .expect(({ body }) => {
+        expect(mockAnilistClient.toggleFavourite).not.toHaveBeenCalled();
+        const parsedBody = errorMessageBodySchema.parse(body);
+
+        expect(parsedBody.message).toBe(ANILIST_RELINK_REQUIRED_MESSAGE);
+      });
+  });
+
+  it('POST /api/v1/anilist/favourites/media returns 400 when the body is invalid', async () => {
+    const { cookie } = await createAuthenticatedAniListUser();
+
+    await request(httpServer)
+      .post(apiPath('/anilist/favourites/media'))
+      .set('cookie', cookie)
+      .send({
+        mediaId: '151807',
+      })
+      .expect(400)
+      .expect(({ body }) => {
+        expect(mockAnilistClient.toggleFavourite).not.toHaveBeenCalled();
+        const parsedBody = validationErrorBodySchema.parse(body);
+
+        expect(parsedBody.message).toContain('Validation failed');
+        expect(parsedBody.errors.length).toBeGreaterThan(0);
+      });
+  });
+
+  it('POST /api/v1/anilist/favourites/media fails closed when AniList returns malformed payload data', async () => {
+    const { cookie, accessToken } = await createAuthenticatedAniListUser();
+
+    mockAnilistClient.toggleFavourite.mockResolvedValueOnce({
+      mediaId: 151807,
+      isFavourite: 'yes',
+      media: null,
+    });
+
+    await request(httpServer)
+      .post(apiPath('/anilist/favourites/media'))
+      .set('cookie', cookie)
+      .send({
+        mediaId: 151807,
+      })
+      .expect(500)
+      .expect(({ body }) => {
+        expect(mockAnilistClient.toggleFavourite).toHaveBeenCalledWith(
+          accessToken,
+          {
+            mediaId: 151807,
+          },
+        );
+        expect(body).toEqual({
+          message: 'Internal Server Error',
+          statusCode: 500,
+        });
       });
   });
 
@@ -685,10 +1230,50 @@ describe('AnilistController (e2e)', () => {
       });
   });
 
+  it('GET /api/v1/anilist/search-media trims the search query before calling AniList', async () => {
+    mockAnilistClient.searchMedia.mockResolvedValueOnce({
+      pageInfo: {
+        currentPage: 1,
+        hasNextPage: false,
+        lastPage: 1,
+        perPage: 10,
+        total: 0,
+      },
+      media: [],
+    });
+
+    await request(httpServer)
+      .get(apiPath('/anilist/search-media'))
+      .query({ search: '  solo leveling  ' })
+      .expect(200)
+      .expect(() => {
+        expect(mockAnilistClient.searchMedia).toHaveBeenCalledWith({
+          search: 'solo leveling',
+          page: 1,
+          perPage: 10,
+          isAdult: false,
+        });
+      });
+  });
+
   it('GET /api/v1/anilist/search-media returns 400 when the search query is missing', async () => {
     await request(httpServer)
       .get(apiPath('/anilist/search-media'))
       .query({ page: 1, perPage: 5 })
+      .expect(400)
+      .expect(({ body }) => {
+        expect(mockAnilistClient.searchMedia).not.toHaveBeenCalled();
+        const parsedBody = validationErrorBodySchema.parse(body);
+
+        expect(parsedBody.message).toContain('Validation failed');
+        expect(parsedBody.errors.length).toBeGreaterThan(0);
+      });
+  });
+
+  it('GET /api/v1/anilist/search-media returns 400 when the search query is only whitespace', async () => {
+    await request(httpServer)
+      .get(apiPath('/anilist/search-media'))
+      .query({ search: '   ' })
       .expect(400)
       .expect(({ body }) => {
         expect(mockAnilistClient.searchMedia).not.toHaveBeenCalled();
@@ -757,6 +1342,83 @@ describe('AnilistController (e2e)', () => {
 
   it('GET /api/v1/users/accounts returns 401 without a session cookie', async () => {
     await request(httpServer).get(apiPath('/users/accounts')).expect(401);
+  });
+
+  it('GET /api/v1/users/me returns 429 after 30 authenticated requests from the same user session', async () => {
+    const { cookie } = await createAuthenticatedUser();
+
+    await expectSuccessfulAuthenticatedGet('/users/me', cookie, 30);
+
+    await request(httpServer)
+      .get(apiPath('/users/me'))
+      .set('cookie', cookie)
+      .expect(429);
+  });
+
+  it('GET /api/v1/anilist/viewer returns 429 after 30 authenticated requests from the same user session', async () => {
+    const { cookie, accessToken } = await createAuthenticatedAniListUser();
+
+    mockAnilistClient.getViewerProfile.mockResolvedValue({
+      id: 7_407_199,
+      name: 'ahm4dd',
+      about: null,
+      bannerImage: null,
+      siteUrl: 'https://anilist.co/user/ahm4dd',
+      createdAt: 1_711_630_400,
+      avatar: null,
+      favourites: null,
+    });
+
+    await expectSuccessfulAuthenticatedGet('/anilist/viewer', cookie, 30);
+
+    await request(httpServer)
+      .get(apiPath('/anilist/viewer'))
+      .set('cookie', cookie)
+      .expect(429);
+
+    expect(mockAnilistClient.getViewerProfile).toHaveBeenCalledTimes(30);
+    expect(mockAnilistClient.getViewerProfile).toHaveBeenLastCalledWith(
+      accessToken,
+    );
+  });
+
+  it('POST /api/v1/anilist/library/entries returns 429 after 20 authenticated writes from the same user session', async () => {
+    const { cookie, accessToken } = await createAuthenticatedAniListUser();
+    const body = {
+      mediaId: 151807,
+      status: 'CURRENT',
+      progress: 120,
+      score: 8.5,
+    };
+
+    mockAnilistClient.saveMediaListEntry.mockResolvedValue({
+      id: 71,
+      mediaId: body.mediaId,
+      status: body.status,
+      score: body.score,
+      progress: body.progress,
+      media: null,
+    });
+
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      await request(httpServer)
+        .post(apiPath('/anilist/library/entries'))
+        .set('cookie', cookie)
+        .send(body)
+        .expect(200);
+    }
+
+    await request(httpServer)
+      .post(apiPath('/anilist/library/entries'))
+      .set('cookie', cookie)
+      .send(body)
+      .expect(429);
+
+    expect(mockAnilistClient.saveMediaListEntry).toHaveBeenCalledTimes(20);
+    expect(mockAnilistClient.saveMediaListEntry).toHaveBeenLastCalledWith(
+      accessToken,
+      body,
+    );
   });
 
   it('GET /api/v1/anilist/users returns 429 after 60 anonymous requests from the same IP', async () => {

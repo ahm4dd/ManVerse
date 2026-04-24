@@ -6,9 +6,16 @@ const getErrorStack = (error: unknown): string =>
   error instanceof Error ? (error.stack ?? error.message) : String(error);
 
 type DatabaseSchemaReadiness = {
-  hasUserTable: boolean;
-  hasUserIdColumn: boolean;
+  tableName: string;
+  columnName: string;
 };
+
+const AUTH_CRITICAL_TABLE_COLUMNS = {
+  user: ['id', 'email', 'email_verified'],
+  session: ['id', 'token', 'user_id', 'expires_at'],
+  account: ['id', 'account_id', 'provider_id', 'user_id', 'access_token'],
+  verification: ['id', 'identifier', 'value', 'expires_at'],
+} as const;
 
 @Module({
   providers: [
@@ -32,32 +39,54 @@ export class PrismaModule implements OnModuleInit, OnModuleDestroy {
 
       this.logger.log('Database ready');
     } catch (error) {
-      this.logger.error('Database readiness check failed', getErrorStack(error));
+      this.logger.error(
+        'Database readiness check failed',
+        getErrorStack(error),
+      );
       throw error;
     }
   }
 
   private async assertSchemaReady(): Promise<void> {
-    const [schema] = await this.prisma.$queryRaw<DatabaseSchemaReadiness[]>`
+    const schema = await this.prisma.$queryRaw<DatabaseSchemaReadiness[]>`
       SELECT
-        EXISTS (
-          SELECT 1
-          FROM information_schema.tables
-          WHERE table_schema = 'public'
-            AND table_name = 'user'
-        ) AS "hasUserTable",
-        EXISTS (
-          SELECT 1
-          FROM information_schema.columns
-          WHERE table_schema = 'public'
-            AND table_name = 'user'
-            AND column_name = 'id'
-        ) AS "hasUserIdColumn"
+        table_name AS "tableName",
+        column_name AS "columnName"
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name IN ('user', 'session', 'account', 'verification')
     `;
 
-    if (!schema?.hasUserTable || !schema.hasUserIdColumn) {
+    const columnsByTable = new Map<string, Set<string>>();
+
+    for (const entry of schema) {
+      const tableColumns = columnsByTable.get(entry.tableName) ?? new Set();
+      tableColumns.add(entry.columnName);
+      columnsByTable.set(entry.tableName, tableColumns);
+    }
+
+    const missingRequirements: string[] = [];
+
+    for (const [tableName, requiredColumns] of Object.entries(
+      AUTH_CRITICAL_TABLE_COLUMNS,
+    )) {
+      const availableColumns = columnsByTable.get(tableName);
+
+      if (!availableColumns) {
+        missingRequirements.push(`public.${tableName}`);
+        continue;
+      }
+
+      for (const columnName of requiredColumns) {
+        if (!availableColumns.has(columnName)) {
+          missingRequirements.push(`public.${tableName}.${columnName}`);
+        }
+      }
+    }
+
+    if (missingRequirements.length > 0) {
       throw new Error(
-        'Database schema is not ready: required table "public.user" is missing or incomplete. Run "pnpm --filter api prisma:migrate" before starting the API.',
+        `Database schema is not ready: missing auth tables/columns: ${missingRequirements.join(', ')}. Run "pnpm --filter api prisma:migrate" before starting the API.`,
       );
     }
   }

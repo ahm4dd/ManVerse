@@ -31,4 +31,25 @@ describe('searchMediaQueryDtoSchema', () => {
       isAdult: false,
     });
   });
+
+  it('should trim surrounding whitespace from the search query', () => {
+    const result = searchMediaQueryDtoSchema.parse({
+      search: '  solo leveling  ',
+    });
+
+    expect(result).toEqual({
+      search: 'solo leveling',
+      page: 1,
+      perPage: 10,
+      isAdult: false,
+    });
+  });
+
+  it('should reject a whitespace-only search query', () => {
+    expect(() =>
+      searchMediaQueryDtoSchema.parse({
+        search: '   ',
+      }),
+    ).toThrow();
+  });
 });
