@@ -5,8 +5,9 @@ import { AuthService, type UserSession } from '@thallesp/nestjs-better-auth';
 import type { Request } from 'express';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ANILIST_PROVIDER_ID } from '../../common/constants/provider.constants.js';
+import { getThrottlePolicyMetadata } from '../throttling/throttle-policies.js';
+import { UsersService } from './users.service.js';
 import { UsersController } from './users.controller.js';
-import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 
 describe('UsersController', () => {
   let usersController: UsersController;
@@ -16,21 +17,16 @@ describe('UsersController', () => {
       listUserAccounts: vi.fn(),
     },
   };
+  const mockUsersService = {
+    getCurrentUserAnilistAccessToken: vi.fn(),
+  };
 
   beforeAll(async () => {
     const app: TestingModule = await Test.createTestingModule({
-      imports: [
-        ThrottlerModule.forRoot([
-          {
-            ttl: 60_000,
-            limit: 60,
-          },
-        ]),
-      ],
       controllers: [UsersController],
       providers: [
         { provide: AuthService, useValue: mockAuthService },
-        ThrottlerGuard,
+        { provide: UsersService, useValue: mockUsersService },
       ],
     }).compile();
 
@@ -41,6 +37,21 @@ describe('UsersController', () => {
     faker.seed(42);
     vi.clearAllMocks();
   });
+
+  const getControllerHandler = (
+    name: 'getProfile' | 'getAccounts' | 'getAnilistAccessToken',
+  ) => {
+    const descriptor = Reflect.getOwnPropertyDescriptor(
+      UsersController.prototype,
+      name,
+    );
+
+    if (!descriptor?.value) {
+      throw new Error(`Expected UsersController.${name} handler`);
+    }
+
+    return descriptor.value as (...args: never[]) => unknown;
+  };
 
   it('getProfile() should return session information', () => {
     const sessionId = faker.string.nanoid();
@@ -126,5 +137,50 @@ describe('UsersController', () => {
         },
       ],
     });
+  });
+
+  it('getAnilistAccessToken() should delegate to UsersService with the current user id', async () => {
+    const userId = faker.string.nanoid();
+    const session = {
+      user: {
+        id: userId,
+      },
+    } as UserSession;
+
+    mockUsersService.getCurrentUserAnilistAccessToken.mockResolvedValueOnce({
+      providerId: ANILIST_PROVIDER_ID,
+      accessToken: 'anilist-access-token',
+    });
+
+    await expect(
+      usersController.getAnilistAccessToken(session),
+    ).resolves.toEqual({
+      providerId: ANILIST_PROVIDER_ID,
+      accessToken: 'anilist-access-token',
+    });
+    expect(
+      mockUsersService.getCurrentUserAnilistAccessToken,
+    ).toHaveBeenCalledWith(userId);
+  });
+
+  it('applies named throttle policies to the protected routes', () => {
+    expect(
+      getThrottlePolicyMetadata(
+        getControllerHandler('getProfile'),
+        UsersController,
+      ),
+    ).toBe('authenticatedRead');
+    expect(
+      getThrottlePolicyMetadata(
+        getControllerHandler('getAccounts'),
+        UsersController,
+      ),
+    ).toBe('authenticatedRead');
+    expect(
+      getThrottlePolicyMetadata(
+        getControllerHandler('getAnilistAccessToken'),
+        UsersController,
+      ),
+    ).toBe('secret');
   });
 });

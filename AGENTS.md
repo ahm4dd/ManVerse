@@ -49,7 +49,9 @@ Do not mark a feature complete until the relevant tests exist and pass.
 
 ## AniList Feature Rules
 
-Keep `@manverse/anilist-client` framework-agnostic. Validate AniList inputs and responses with Zod, keep `AnilistClient` methods as thin delegations, and export new runtime values and types through `packages/anilist-client/index.ts`. In `apps/api`, expose AniList client behavior through DTOs in `apps/api/src/modules/anilist/dto/`, controller methods in `anilist.controller.ts`, and Swagger metadata for request and response models.
+Keep `@manverse/anilist-client` framework-agnostic. Validate AniList inputs and responses with Zod, keep `AnilistClient` methods as thin delegations, and export new runtime values and types through `packages/anilist-client/index.ts`.
+
+AniList provider traffic should run client-side by default so upstream rate limits are distributed by end-user IPs instead of the API server egress IP. In `apps/api`, keep only AniList account-linking and token-custody concerns unless a server-side AniList endpoint is explicitly requested.
 
 When adding or updating AniList features, aim for safe upgrades:
 

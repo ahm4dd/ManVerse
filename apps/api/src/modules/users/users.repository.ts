@@ -1,17 +1,17 @@
 import { Injectable } from '@nestjs/common';
 import { AuthService } from '@thallesp/nestjs-better-auth';
-import auth, { getBetterAuthErrorCode } from '../../lib/auth.js';
 import { ANILIST_PROVIDER_ID } from '../../common/constants/provider.constants.js';
 import {
-  AnilistAccountNotLinkedError,
   AnilistAccessTokenRelinkRequiredError,
-} from './anilist.errors.js';
+  AnilistAccountNotLinkedError,
+} from '../../common/errors/anilist.errors.js';
+import auth, { getBetterAuthErrorCode } from '../../lib/auth.js';
 
 @Injectable()
-export class AnilistRepository {
+export class UsersRepository {
   constructor(private readonly authService: AuthService<typeof auth>) {}
 
-  async getCurrentUserAccessToken(userId: string): Promise<string> {
+  async getCurrentUserAnilistAccessToken(userId: string): Promise<string> {
     try {
       const tokens = await this.authService.api.getAccessToken({
         body: {

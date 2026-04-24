@@ -1,18 +1,11 @@
 import { Module } from '@nestjs/common';
-import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { UsersController } from './users.controller.js';
+import { UsersRepository } from './users.repository.js';
+import { UsersService } from './users.service.js';
 
 @Module({
-  imports: [
-    ThrottlerModule.forRoot([
-      {
-        ttl: 60_000,
-        limit: 60,
-      },
-    ]),
-  ],
   controllers: [UsersController],
-  providers: [ThrottlerGuard],
+  providers: [UsersRepository, UsersService],
   exports: [],
 })
 export class UserModule {}

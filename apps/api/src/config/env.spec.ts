@@ -28,6 +28,31 @@ describe('parseEnvironmentVariables', () => {
     ]);
   });
 
+  it('parses trust proxy and throttle policy overrides', () => {
+    const env = parseEnvironmentVariables({
+      ...baseEnv,
+      TRUST_PROXY: '2',
+      THROTTLE_STORAGE: 'redis',
+      REDIS_URL: 'redis://user:password@localhost:6379/0',
+      REDIS_THROTTLE_KEY_PREFIX: '  manverse:throttle:  ',
+      THROTTLE_GLOBAL_LIMIT: '120',
+      THROTTLE_BURST_TTL_MS: '1500',
+      THROTTLE_AUTHENTICATED_READ_LIMIT: '40',
+      THROTTLE_SECRET_LIMIT: '12',
+      THROTTLE_AUTH_SENSITIVE_TTL_MS: '300000',
+    });
+
+    expect(env.TRUST_PROXY).toBe(2);
+    expect(env.THROTTLE_STORAGE).toBe('redis');
+    expect(env.REDIS_URL).toBe('redis://user:password@localhost:6379/0');
+    expect(env.REDIS_THROTTLE_KEY_PREFIX).toBe('manverse:throttle:');
+    expect(env.THROTTLE_GLOBAL_LIMIT).toBe(120);
+    expect(env.THROTTLE_BURST_TTL_MS).toBe(1500);
+    expect(env.THROTTLE_AUTHENTICATED_READ_LIMIT).toBe(40);
+    expect(env.THROTTLE_SECRET_LIMIT).toBe(12);
+    expect(env.THROTTLE_AUTH_SENSITIVE_TTL_MS).toBe(300000);
+  });
+
   it('rejects trusted origins that include paths', () => {
     expect(() =>
       parseEnvironmentVariables({
@@ -35,6 +60,15 @@ describe('parseEnvironmentVariables', () => {
         TRUSTED_ORIGINS: 'https://app.manverse.local/callback',
       }),
     ).toThrowError(/TRUSTED_ORIGINS entries must be origins only/i);
+  });
+
+  it('rejects invalid trust proxy configuration', () => {
+    expect(() =>
+      parseEnvironmentVariables({
+        ...baseEnv,
+        TRUST_PROXY: 'loopback',
+      }),
+    ).toThrowError(/TRUST_PROXY must be set to true, false, or a positive/i);
   });
 
   it('requires an https Better Auth URL in production', () => {
@@ -56,6 +90,32 @@ describe('parseEnvironmentVariables', () => {
         expect.objectContaining({
           path: ['BETTER_AUTH_URL'],
           message: 'BETTER_AUTH_URL must use https in production.',
+        }),
+      ]),
+    );
+  });
+
+  it('requires REDIS_URL when production throttling uses redis storage', () => {
+    const result = envSchema.safeParse({
+      ...baseEnv,
+      NODE_ENV: 'production',
+      BETTER_AUTH_URL: 'https://api.manverse.com',
+      TRUSTED_ORIGINS: 'https://api.manverse.com',
+      THROTTLE_STORAGE: 'redis',
+    });
+
+    expect(result.success).toBe(false);
+
+    if (result.success) {
+      return;
+    }
+
+    expect(result.error.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: ['REDIS_URL'],
+          message:
+            'REDIS_URL is required when THROTTLE_STORAGE is set to redis in production.',
         }),
       ]),
     );

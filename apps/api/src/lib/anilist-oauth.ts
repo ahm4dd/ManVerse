@@ -5,10 +5,6 @@ import type { GenericOAuthConfig } from 'better-auth/plugins/generic-oauth';
 import { ANILIST_PROVIDER_ID } from '../common/constants/provider.constants.js';
 
 export const ANILIST_SYNTHETIC_EMAIL_DOMAIN = 'anilist.manverse.local';
-export const ANILIST_ACCOUNT_NOT_LINKED_MESSAGE =
-  'AniList account is not linked for the current user';
-export const ANILIST_RELINK_REQUIRED_MESSAGE =
-  'AniList access token could not be retrieved for the current user. Please relink your AniList account.';
 export const ANILIST_IDENTITY_SALT_REQUIRED_MESSAGE =
   'ANILIST_IDENTITY_SALT must be configured as a stable, non-empty secret.';
 export const ANILIST_IDENTITY_SALT_MIN_LENGTH = 32;

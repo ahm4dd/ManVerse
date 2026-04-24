@@ -10,7 +10,6 @@ import {
   BETTER_AUTH_SESSION_SECURITY_SCHEME,
 } from '../common/decorators/api-session-auth.decorator.js';
 import { PrismaClient } from '../generated/prisma/client.js';
-import { AnilistClient } from '@manverse/anilist-client';
 
 describe('OpenAPI documentation', () => {
   let app: NestExpressApplication;
@@ -24,15 +23,6 @@ describe('OpenAPI documentation', () => {
     };
   };
 
-  const mockAnilistClient = {
-    getUserProfile: vi.fn(),
-    getViewerProfile: vi.fn(),
-    getViewerMangaLists: vi.fn(),
-    saveMediaListEntry: vi.fn(),
-    deleteMediaListEntry: vi.fn(),
-    toggleFavourite: vi.fn(),
-    searchMedia: vi.fn(),
-  };
   const mockPrismaClient = {
     $connect: vi.fn().mockResolvedValue(undefined),
     $disconnect: vi.fn().mockResolvedValue(undefined),
@@ -108,8 +98,6 @@ describe('OpenAPI documentation', () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
-      .overrideProvider(AnilistClient)
-      .useValue(mockAnilistClient)
       .overrideProvider(PrismaClient)
       .useValue(mockPrismaClient)
       .compile();
@@ -162,42 +150,38 @@ describe('OpenAPI documentation', () => {
     expect(openApiDoc.info.description).toContain('/api/auth/reference');
   });
 
-  it('marks protected routes with the session cookie requirement', () => {
+  it('marks protected users routes with the session cookie requirement', () => {
     expect(openApiDoc.paths?.['/api/v1/users/me']?.get?.security).toEqual([
       { [BETTER_AUTH_SESSION_SECURITY_SCHEME]: [] },
     ]);
     expect(openApiDoc.paths?.['/api/v1/users/accounts']?.get?.security).toEqual(
       [{ [BETTER_AUTH_SESSION_SECURITY_SCHEME]: [] }],
     );
-    expect(openApiDoc.paths?.['/api/v1/anilist/viewer']?.get?.security).toEqual(
-      [{ [BETTER_AUTH_SESSION_SECURITY_SCHEME]: [] }],
-    );
     expect(
-      openApiDoc.paths?.['/api/v1/anilist/viewer/manga-lists']?.get?.security,
-    ).toEqual([{ [BETTER_AUTH_SESSION_SECURITY_SCHEME]: [] }]);
-    expect(
-      openApiDoc.paths?.['/api/v1/anilist/library/entries']?.post?.security,
-    ).toEqual([{ [BETTER_AUTH_SESSION_SECURITY_SCHEME]: [] }]);
-    expect(
-      openApiDoc.paths?.['/api/v1/anilist/library/entries/{entryId}']?.delete
+      openApiDoc.paths?.['/api/v1/users/accounts/anilist/access-token']?.post
         ?.security,
     ).toEqual([{ [BETTER_AUTH_SESSION_SECURITY_SCHEME]: [] }]);
-    expect(
-      openApiDoc.paths?.['/api/v1/anilist/favourites/media']?.post?.security,
-    ).toEqual([{ [BETTER_AUTH_SESSION_SECURITY_SCHEME]: [] }]);
   });
 
-  it('leaves public routes without auth requirements', () => {
-    expect(openApiDoc.paths?.['/api/v1']?.get?.security).toBeUndefined();
-    expect(openApiDoc.paths?.['/api/v1/anilist/users']?.get?.security).toBe(
-      undefined,
-    );
+  it('does not publish server-side AniList endpoints', () => {
+    expect(openApiDoc.paths?.['/api/v1/anilist/viewer']).toBeUndefined();
     expect(
-      openApiDoc.paths?.['/api/v1/anilist/search-media']?.get?.security,
+      openApiDoc.paths?.['/api/v1/anilist/viewer/manga-lists'],
     ).toBeUndefined();
+    expect(
+      openApiDoc.paths?.['/api/v1/anilist/library/entries'],
+    ).toBeUndefined();
+    expect(
+      openApiDoc.paths?.['/api/v1/anilist/library/entries/{entryId}'],
+    ).toBeUndefined();
+    expect(
+      openApiDoc.paths?.['/api/v1/anilist/favourites/media'],
+    ).toBeUndefined();
+    expect(openApiDoc.paths?.['/api/v1/anilist/users']).toBeUndefined();
+    expect(openApiDoc.paths?.['/api/v1/anilist/search-media']).toBeUndefined();
   });
 
-  it('documents expected response codes for core routes', () => {
+  it('documents expected response codes for the remaining protected users routes', () => {
     expect(
       Object.keys(openApiDoc.paths?.['/api/v1/users/me']?.get?.responses ?? {}),
     ).toEqual(expect.arrayContaining(['200', '401', '429']));
@@ -208,336 +192,108 @@ describe('OpenAPI documentation', () => {
     ).toEqual(expect.arrayContaining(['200', '401', '429']));
     expect(
       Object.keys(
-        openApiDoc.paths?.['/api/v1/anilist/viewer']?.get?.responses ?? {},
+        openApiDoc.paths?.['/api/v1/users/accounts/anilist/access-token']?.post
+          ?.responses ?? {},
       ),
     ).toEqual(expect.arrayContaining(['200', '401', '404', '429']));
-    expect(
-      Object.keys(
-        openApiDoc.paths?.['/api/v1/anilist/viewer/manga-lists']?.get
-          ?.responses ?? {},
-      ),
-    ).toEqual(expect.arrayContaining(['200', '400', '401', '404', '429']));
-    expect(
-      Object.keys(
-        openApiDoc.paths?.['/api/v1/anilist/users']?.get?.responses ?? {},
-      ),
-    ).toEqual(expect.arrayContaining(['200', '400', '429']));
-    expect(
-      Object.keys(
-        openApiDoc.paths?.['/api/v1/anilist/search-media']?.get?.responses ??
-          {},
-      ),
-    ).toEqual(expect.arrayContaining(['200', '400', '429']));
-    expect(
-      Object.keys(
-        openApiDoc.paths?.['/api/v1/anilist/library/entries']?.post
-          ?.responses ?? {},
-      ),
-    ).toEqual(expect.arrayContaining(['200', '400', '401', '404', '429']));
-    expect(
-      Object.keys(
-        openApiDoc.paths?.['/api/v1/anilist/library/entries/{entryId}']?.delete
-          ?.responses ?? {},
-      ),
-    ).toEqual(expect.arrayContaining(['200', '400', '401', '404', '429']));
-    expect(
-      Object.keys(
-        openApiDoc.paths?.['/api/v1/anilist/favourites/media']?.post
-          ?.responses ?? {},
-      ),
-    ).toEqual(expect.arrayContaining(['200', '400', '401', '404', '429']));
   });
 
-  it('documents concrete AniList response body schemas', () => {
+  it('documents concrete users response body schemas', () => {
     const getDocumentedResponse = (
       path: string,
       statusCode: string,
+      method: 'get' | 'post' = 'get',
     ): DocumentedJsonResponse =>
-      openApiDoc.paths?.[path]?.get?.responses?.[
+      openApiDoc.paths?.[path]?.[method]?.responses?.[
         statusCode
       ] as DocumentedJsonResponse;
 
-    const viewerResponse = getDocumentedResponse(
-      '/api/v1/anilist/viewer',
-      '200',
-    );
-    const viewerUnauthorizedResponse = getDocumentedResponse(
-      '/api/v1/anilist/viewer',
+    const meResponse = getDocumentedResponse('/api/v1/users/me', '200');
+    const meUnauthorizedResponse = getDocumentedResponse(
+      '/api/v1/users/me',
       '401',
     );
-    const viewerNotFoundResponse = getDocumentedResponse(
-      '/api/v1/anilist/viewer',
-      '404',
-    );
-    const viewerTooManyRequestsResponse = getDocumentedResponse(
-      '/api/v1/anilist/viewer',
+    const meTooManyRequestsResponse = getDocumentedResponse(
+      '/api/v1/users/me',
       '429',
     );
-    const viewerMangaListsResponse = getDocumentedResponse(
-      '/api/v1/anilist/viewer/manga-lists',
+    const accountsResponse = getDocumentedResponse(
+      '/api/v1/users/accounts',
       '200',
     );
-    const viewerMangaListsBadRequestResponse = getDocumentedResponse(
-      '/api/v1/anilist/viewer/manga-lists',
-      '400',
-    );
-    const viewerMangaListsUnauthorizedResponse = getDocumentedResponse(
-      '/api/v1/anilist/viewer/manga-lists',
+    const accountsUnauthorizedResponse = getDocumentedResponse(
+      '/api/v1/users/accounts',
       '401',
     );
-    const viewerMangaListsNotFoundResponse = getDocumentedResponse(
-      '/api/v1/anilist/viewer/manga-lists',
-      '404',
-    );
-    const viewerMangaListsTooManyRequestsResponse = getDocumentedResponse(
-      '/api/v1/anilist/viewer/manga-lists',
+    const accountsTooManyRequestsResponse = getDocumentedResponse(
+      '/api/v1/users/accounts',
       '429',
     );
-    const usersResponse = getDocumentedResponse('/api/v1/anilist/users', '200');
-    const usersBadRequestResponse = getDocumentedResponse(
-      '/api/v1/anilist/users',
-      '400',
-    );
-    const usersTooManyRequestsResponse = getDocumentedResponse(
-      '/api/v1/anilist/users',
-      '429',
-    );
-    const searchMediaResponse = getDocumentedResponse(
-      '/api/v1/anilist/search-media',
+    const anilistAccessTokenResponse = getDocumentedResponse(
+      '/api/v1/users/accounts/anilist/access-token',
       '200',
+      'post',
     );
-    const searchMediaBadRequestResponse = getDocumentedResponse(
-      '/api/v1/anilist/search-media',
-      '400',
+    const anilistAccessTokenUnauthorizedResponse = getDocumentedResponse(
+      '/api/v1/users/accounts/anilist/access-token',
+      '401',
+      'post',
     );
-    const searchMediaTooManyRequestsResponse = getDocumentedResponse(
-      '/api/v1/anilist/search-media',
+    const anilistAccessTokenNotFoundResponse = getDocumentedResponse(
+      '/api/v1/users/accounts/anilist/access-token',
+      '404',
+      'post',
+    );
+    const anilistAccessTokenTooManyRequestsResponse = getDocumentedResponse(
+      '/api/v1/users/accounts/anilist/access-token',
       '429',
+      'post',
     );
-    const saveMediaListEntryResponse = openApiDoc.paths?.[
-      '/api/v1/anilist/library/entries'
-    ]?.post?.responses?.['200'] as DocumentedJsonResponse;
-    const saveMediaListEntryBadRequestResponse = openApiDoc.paths?.[
-      '/api/v1/anilist/library/entries'
-    ]?.post?.responses?.['400'] as DocumentedJsonResponse;
-    const saveMediaListEntryUnauthorizedResponse = openApiDoc.paths?.[
-      '/api/v1/anilist/library/entries'
-    ]?.post?.responses?.['401'] as DocumentedJsonResponse;
-    const saveMediaListEntryNotFoundResponse = openApiDoc.paths?.[
-      '/api/v1/anilist/library/entries'
-    ]?.post?.responses?.['404'] as DocumentedJsonResponse;
-    const saveMediaListEntryTooManyRequestsResponse = openApiDoc.paths?.[
-      '/api/v1/anilist/library/entries'
-    ]?.post?.responses?.['429'] as DocumentedJsonResponse;
-    const deleteMediaListEntryResponse = openApiDoc.paths?.[
-      '/api/v1/anilist/library/entries/{entryId}'
-    ]?.delete?.responses?.['200'] as DocumentedJsonResponse;
-    const deleteMediaListEntryBadRequestResponse = openApiDoc.paths?.[
-      '/api/v1/anilist/library/entries/{entryId}'
-    ]?.delete?.responses?.['400'] as DocumentedJsonResponse;
-    const deleteMediaListEntryUnauthorizedResponse = openApiDoc.paths?.[
-      '/api/v1/anilist/library/entries/{entryId}'
-    ]?.delete?.responses?.['401'] as DocumentedJsonResponse;
-    const deleteMediaListEntryNotFoundResponse = openApiDoc.paths?.[
-      '/api/v1/anilist/library/entries/{entryId}'
-    ]?.delete?.responses?.['404'] as DocumentedJsonResponse;
-    const deleteMediaListEntryTooManyRequestsResponse = openApiDoc.paths?.[
-      '/api/v1/anilist/library/entries/{entryId}'
-    ]?.delete?.responses?.['429'] as DocumentedJsonResponse;
-    const toggleFavouriteResponse = openApiDoc.paths?.[
-      '/api/v1/anilist/favourites/media'
-    ]?.post?.responses?.['200'] as DocumentedJsonResponse;
-    const toggleFavouriteBadRequestResponse = openApiDoc.paths?.[
-      '/api/v1/anilist/favourites/media'
-    ]?.post?.responses?.['400'] as DocumentedJsonResponse;
-    const toggleFavouriteUnauthorizedResponse = openApiDoc.paths?.[
-      '/api/v1/anilist/favourites/media'
-    ]?.post?.responses?.['401'] as DocumentedJsonResponse;
-    const toggleFavouriteNotFoundResponse = openApiDoc.paths?.[
-      '/api/v1/anilist/favourites/media'
-    ]?.post?.responses?.['404'] as DocumentedJsonResponse;
-    const toggleFavouriteTooManyRequestsResponse = openApiDoc.paths?.[
-      '/api/v1/anilist/favourites/media'
-    ]?.post?.responses?.['429'] as DocumentedJsonResponse;
 
-    expect(viewerResponse.content?.['application/json']?.schema).toEqual({
-      anyOf: [
-        {
-          $ref: '#/components/schemas/AniListProfileResponse',
-        },
-        {
-          type: 'null',
-        },
-      ],
+    expect(meResponse.content?.['application/json']?.schema).toEqual({
+      $ref: '#/components/schemas/MeResponse',
     });
     expect(
-      viewerUnauthorizedResponse.content?.['application/json']?.schema,
+      meUnauthorizedResponse.content?.['application/json']?.schema,
     ).toEqual({
       $ref: '#/components/schemas/HttpErrorResponse',
     });
     expect(
-      viewerNotFoundResponse.content?.['application/json']?.schema,
+      meTooManyRequestsResponse.content?.['application/json']?.schema,
+    ).toEqual({
+      $ref: '#/components/schemas/HttpErrorResponse',
+    });
+    expect(accountsResponse.content?.['application/json']?.schema).toEqual({
+      $ref: '#/components/schemas/LinkedAccountsResponse',
+    });
+    expect(
+      accountsUnauthorizedResponse.content?.['application/json']?.schema,
     ).toEqual({
       $ref: '#/components/schemas/HttpErrorResponse',
     });
     expect(
-      viewerTooManyRequestsResponse.content?.['application/json']?.schema,
+      accountsTooManyRequestsResponse.content?.['application/json']?.schema,
     ).toEqual({
       $ref: '#/components/schemas/HttpErrorResponse',
     });
     expect(
-      viewerMangaListsResponse.content?.['application/json']?.schema,
+      anilistAccessTokenResponse.content?.['application/json']?.schema,
     ).toEqual({
-      anyOf: [
-        {
-          $ref: '#/components/schemas/AniListViewerMangaListsResponse',
-        },
-        {
-          type: 'null',
-        },
-      ],
+      $ref: '#/components/schemas/AnilistAccessTokenResponse_Output',
     });
     expect(
-      viewerMangaListsBadRequestResponse.content?.['application/json']?.schema,
-    ).toEqual({
-      $ref: '#/components/schemas/ValidationErrorResponse',
-    });
-    expect(
-      viewerMangaListsUnauthorizedResponse.content?.['application/json']
+      anilistAccessTokenUnauthorizedResponse.content?.['application/json']
         ?.schema,
     ).toEqual({
       $ref: '#/components/schemas/HttpErrorResponse',
     });
     expect(
-      viewerMangaListsNotFoundResponse.content?.['application/json']?.schema,
+      anilistAccessTokenNotFoundResponse.content?.['application/json']?.schema,
     ).toEqual({
       $ref: '#/components/schemas/HttpErrorResponse',
     });
     expect(
-      viewerMangaListsTooManyRequestsResponse.content?.['application/json']
-        ?.schema,
-    ).toEqual({
-      $ref: '#/components/schemas/HttpErrorResponse',
-    });
-    expect(usersResponse.content?.['application/json']?.schema).toEqual({
-      anyOf: [
-        {
-          $ref: '#/components/schemas/AniListProfileResponse',
-        },
-        {
-          type: 'null',
-        },
-      ],
-    });
-    expect(
-      usersBadRequestResponse.content?.['application/json']?.schema,
-    ).toEqual({
-      $ref: '#/components/schemas/ValidationErrorResponse',
-    });
-    expect(
-      usersTooManyRequestsResponse.content?.['application/json']?.schema,
-    ).toEqual({
-      $ref: '#/components/schemas/HttpErrorResponse',
-    });
-    expect(searchMediaResponse.content?.['application/json']?.schema).toEqual({
-      anyOf: [
-        {
-          $ref: '#/components/schemas/AniListSearchMediaPageResponse',
-        },
-        {
-          type: 'null',
-        },
-      ],
-    });
-    expect(
-      searchMediaBadRequestResponse.content?.['application/json']?.schema,
-    ).toEqual({
-      $ref: '#/components/schemas/ValidationErrorResponse',
-    });
-    expect(
-      searchMediaTooManyRequestsResponse.content?.['application/json']?.schema,
-    ).toEqual({
-      $ref: '#/components/schemas/HttpErrorResponse',
-    });
-    expect(
-      saveMediaListEntryResponse.content?.['application/json']?.schema,
-    ).toEqual({
-      $ref: '#/components/schemas/AniListSaveMediaListEntryResponse',
-    });
-    expect(
-      saveMediaListEntryBadRequestResponse.content?.['application/json']
-        ?.schema,
-    ).toEqual({
-      $ref: '#/components/schemas/ValidationErrorResponse',
-    });
-    expect(
-      saveMediaListEntryUnauthorizedResponse.content?.['application/json']
-        ?.schema,
-    ).toEqual({
-      $ref: '#/components/schemas/HttpErrorResponse',
-    });
-    expect(
-      saveMediaListEntryNotFoundResponse.content?.['application/json']?.schema,
-    ).toEqual({
-      $ref: '#/components/schemas/HttpErrorResponse',
-    });
-    expect(
-      saveMediaListEntryTooManyRequestsResponse.content?.['application/json']
-        ?.schema,
-    ).toEqual({
-      $ref: '#/components/schemas/HttpErrorResponse',
-    });
-    expect(
-      deleteMediaListEntryResponse.content?.['application/json']?.schema,
-    ).toEqual({
-      $ref: '#/components/schemas/AniListDeleteMediaListEntryResponse',
-    });
-    expect(
-      deleteMediaListEntryBadRequestResponse.content?.['application/json']
-        ?.schema,
-    ).toEqual({
-      $ref: '#/components/schemas/ValidationErrorResponse',
-    });
-    expect(
-      deleteMediaListEntryUnauthorizedResponse.content?.['application/json']
-        ?.schema,
-    ).toEqual({
-      $ref: '#/components/schemas/HttpErrorResponse',
-    });
-    expect(
-      deleteMediaListEntryNotFoundResponse.content?.['application/json']
-        ?.schema,
-    ).toEqual({
-      $ref: '#/components/schemas/HttpErrorResponse',
-    });
-    expect(
-      deleteMediaListEntryTooManyRequestsResponse.content?.['application/json']
-        ?.schema,
-    ).toEqual({
-      $ref: '#/components/schemas/HttpErrorResponse',
-    });
-    expect(
-      toggleFavouriteResponse.content?.['application/json']?.schema,
-    ).toEqual({
-      $ref: '#/components/schemas/AniListToggleFavouriteResponse',
-    });
-    expect(
-      toggleFavouriteBadRequestResponse.content?.['application/json']?.schema,
-    ).toEqual({
-      $ref: '#/components/schemas/ValidationErrorResponse',
-    });
-    expect(
-      toggleFavouriteUnauthorizedResponse.content?.['application/json']?.schema,
-    ).toEqual({
-      $ref: '#/components/schemas/HttpErrorResponse',
-    });
-    expect(
-      toggleFavouriteNotFoundResponse.content?.['application/json']?.schema,
-    ).toEqual({
-      $ref: '#/components/schemas/HttpErrorResponse',
-    });
-    expect(
-      toggleFavouriteTooManyRequestsResponse.content?.['application/json']
+      anilistAccessTokenTooManyRequestsResponse.content?.['application/json']
         ?.schema,
     ).toEqual({
       $ref: '#/components/schemas/HttpErrorResponse',

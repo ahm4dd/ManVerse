@@ -5,7 +5,7 @@ import {
   ApiUnauthorizedResponse,
   getSchemaPath,
 } from '@nestjs/swagger';
-import { HttpErrorResponseDto } from '../dto/http-error-response.dto.js';
+import { HttpErrorResponseDto } from '../dtos/http-error-response.dto.js';
 
 export const BETTER_AUTH_SESSION_SECURITY_SCHEME = 'betterAuthSession';
 export const BETTER_AUTH_SESSION_COOKIE_NAME = 'better-auth.session_token';

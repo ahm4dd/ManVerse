@@ -11,12 +11,24 @@ import * as dotenv from 'dotenv';
 dotenv.config(); // You can suppress the logging by passing { quiet: true }
 
 const ANILIST_IDENTITY_SALT_MIN_LENGTH = 32;
+const TRUST_PROXY_HOP_COUNT_PATTERN = /^[1-9]\d*$/;
 const PRODUCTION_LOCAL_HOSTNAMES = new Set([
   'localhost',
   '127.0.0.1',
   '::1',
   '[::1]',
 ]);
+
+const DEFAULT_THROTTLE_GLOBAL_LIMIT = 100;
+const DEFAULT_THROTTLE_GLOBAL_TTL_MS = 60_000;
+const DEFAULT_THROTTLE_BURST_LIMIT = 10;
+const DEFAULT_THROTTLE_BURST_TTL_MS = 1_000;
+const DEFAULT_THROTTLE_AUTHENTICATED_READ_LIMIT = 30;
+const DEFAULT_THROTTLE_AUTHENTICATED_READ_TTL_MS = 60_000;
+const DEFAULT_THROTTLE_SECRET_LIMIT = 10;
+const DEFAULT_THROTTLE_SECRET_TTL_MS = 60_000;
+const DEFAULT_THROTTLE_AUTH_SENSITIVE_LIMIT = 5;
+const DEFAULT_THROTTLE_AUTH_SENSITIVE_TTL_MS = 60_000;
 
 function normalizeBetterAuthUrl(value: string): string {
   const url = new URL(value);
@@ -70,6 +82,103 @@ function normalizeEnvUrl(
   }
 }
 
+function normalizeOptionalString(
+  value: string | undefined,
+): string | undefined {
+  const normalizedValue = value?.trim();
+
+  return normalizedValue ? normalizedValue : undefined;
+}
+
+function parsePositiveIntegerEnv(
+  value: unknown,
+  fieldName: string,
+): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value !== 'string' && typeof value !== 'number') {
+    throw new Error(`${fieldName} must be a positive integer.`);
+  }
+
+  const normalizedValue =
+    typeof value === 'string' ? value.trim() : value.toString().trim();
+
+  if (!normalizedValue) {
+    return undefined;
+  }
+
+  const parsedValue = Number(normalizedValue);
+
+  if (!Number.isInteger(parsedValue) || parsedValue <= 0) {
+    throw new Error(`${fieldName} must be a positive integer.`);
+  }
+
+  return parsedValue;
+}
+
+function createPositiveIntegerSchema(defaultValue: number, fieldName: string) {
+  return z
+    .union([z.string(), z.number()])
+    .optional()
+    .transform((value, ctx) => {
+      try {
+        return parsePositiveIntegerEnv(value, fieldName) ?? defaultValue;
+      } catch (error) {
+        ctx.addIssue({
+          code: 'custom',
+          message:
+            error instanceof Error
+              ? error.message
+              : `${fieldName} must be a positive integer.`,
+        });
+
+        return z.NEVER;
+      }
+    });
+}
+
+function normalizeRedisUrl(value: string): string {
+  const url = new URL(value);
+
+  if (url.search || url.hash) {
+    throw new Error('REDIS_URL must not include a query string or hash.');
+  }
+
+  if (url.protocol !== 'redis:' && url.protocol !== 'rediss:') {
+    throw new Error('REDIS_URL must use the redis:// or rediss:// protocol.');
+  }
+
+  return url.toString();
+}
+
+function parseTrustProxySetting(
+  value: string | undefined,
+): boolean | number | undefined {
+  const normalizedValue = normalizeOptionalString(value);
+
+  if (!normalizedValue) {
+    return undefined;
+  }
+
+  if (normalizedValue === 'false') {
+    return false;
+  }
+
+  if (normalizedValue === 'true') {
+    return true;
+  }
+
+  if (TRUST_PROXY_HOP_COUNT_PATTERN.test(normalizedValue)) {
+    return Number(normalizedValue);
+  }
+
+  throw new Error(
+    'TRUST_PROXY must be set to true, false, or a positive proxy hop count.',
+  );
+}
+
 export const envSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']),
@@ -83,14 +192,28 @@ export const envSchema = z
       .transform((value, ctx) =>
         normalizeEnvUrl(value, normalizeBetterAuthUrl, ctx),
       ),
+    TRUST_PROXY: z
+      .string()
+      .optional()
+      .transform((value, ctx) => {
+        try {
+          return parseTrustProxySetting(value);
+        } catch (error) {
+          ctx.addIssue({
+            code: 'custom',
+            message:
+              error instanceof Error
+                ? error.message
+                : 'Invalid TRUST_PROXY configuration.',
+          });
+
+          return z.NEVER;
+        }
+      }),
     ANILIST_IDENTITY_SALT: z
       .string()
       .optional()
-      .transform((value) => {
-        const normalizedValue = value?.trim();
-
-        return normalizedValue ? normalizedValue : undefined;
-      }),
+      .transform((value) => normalizeOptionalString(value)),
     TRUSTED_ORIGINS: z
       .string()
       .optional()
@@ -116,6 +239,62 @@ export const envSchema = z
       .optional()
       .default('false')
       .transform((value) => value === 'true'),
+    THROTTLE_STORAGE: z.enum(['memory', 'redis']).optional().default('memory'),
+    REDIS_URL: z
+      .string()
+      .optional()
+      .transform((value) => normalizeOptionalString(value))
+      .transform((value, ctx) => {
+        if (!value) {
+          return undefined;
+        }
+
+        return normalizeEnvUrl(value, normalizeRedisUrl, ctx);
+      }),
+    REDIS_THROTTLE_KEY_PREFIX: z
+      .string()
+      .optional()
+      .transform((value) => normalizeOptionalString(value)),
+    THROTTLE_GLOBAL_LIMIT: createPositiveIntegerSchema(
+      DEFAULT_THROTTLE_GLOBAL_LIMIT,
+      'THROTTLE_GLOBAL_LIMIT',
+    ),
+    THROTTLE_GLOBAL_TTL_MS: createPositiveIntegerSchema(
+      DEFAULT_THROTTLE_GLOBAL_TTL_MS,
+      'THROTTLE_GLOBAL_TTL_MS',
+    ),
+    THROTTLE_BURST_LIMIT: createPositiveIntegerSchema(
+      DEFAULT_THROTTLE_BURST_LIMIT,
+      'THROTTLE_BURST_LIMIT',
+    ),
+    THROTTLE_BURST_TTL_MS: createPositiveIntegerSchema(
+      DEFAULT_THROTTLE_BURST_TTL_MS,
+      'THROTTLE_BURST_TTL_MS',
+    ),
+    THROTTLE_AUTHENTICATED_READ_LIMIT: createPositiveIntegerSchema(
+      DEFAULT_THROTTLE_AUTHENTICATED_READ_LIMIT,
+      'THROTTLE_AUTHENTICATED_READ_LIMIT',
+    ),
+    THROTTLE_AUTHENTICATED_READ_TTL_MS: createPositiveIntegerSchema(
+      DEFAULT_THROTTLE_AUTHENTICATED_READ_TTL_MS,
+      'THROTTLE_AUTHENTICATED_READ_TTL_MS',
+    ),
+    THROTTLE_SECRET_LIMIT: createPositiveIntegerSchema(
+      DEFAULT_THROTTLE_SECRET_LIMIT,
+      'THROTTLE_SECRET_LIMIT',
+    ),
+    THROTTLE_SECRET_TTL_MS: createPositiveIntegerSchema(
+      DEFAULT_THROTTLE_SECRET_TTL_MS,
+      'THROTTLE_SECRET_TTL_MS',
+    ),
+    THROTTLE_AUTH_SENSITIVE_LIMIT: createPositiveIntegerSchema(
+      DEFAULT_THROTTLE_AUTH_SENSITIVE_LIMIT,
+      'THROTTLE_AUTH_SENSITIVE_LIMIT',
+    ),
+    THROTTLE_AUTH_SENSITIVE_TTL_MS: createPositiveIntegerSchema(
+      DEFAULT_THROTTLE_AUTH_SENSITIVE_TTL_MS,
+      'THROTTLE_AUTH_SENSITIVE_TTL_MS',
+    ),
     ANILIST_CLIENT_ID: z.string().min(1).optional(),
     ANILIST_CLIENT_SECRET: z.string().min(1).optional(),
   })
@@ -166,6 +345,15 @@ export const envSchema = z
 
     if (env.NODE_ENV !== 'production') {
       return;
+    }
+
+    if (env.THROTTLE_STORAGE === 'redis' && !env.REDIS_URL) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['REDIS_URL'],
+        message:
+          'REDIS_URL is required when THROTTLE_STORAGE is set to redis in production.',
+      });
     }
 
     const betterAuthUrl = new URL(env.BETTER_AUTH_URL);
