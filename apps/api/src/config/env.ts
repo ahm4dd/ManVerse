@@ -6,11 +6,11 @@
  * */
 import { z } from 'zod';
 import * as dotenv from 'dotenv';
+import { ANILIST_IDENTITY_SALT_MIN_LENGTH } from '../common/constants/anilist.constants.js';
 
 // Loading .env
 dotenv.config(); // You can suppress the logging by passing { quiet: true }
 
-const ANILIST_IDENTITY_SALT_MIN_LENGTH = 32;
 const TRUST_PROXY_HOP_COUNT_PATTERN = /^[1-9]\d*$/;
 const PRODUCTION_LOCAL_HOSTNAMES = new Set([
   'localhost',

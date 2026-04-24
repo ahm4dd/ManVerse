@@ -2,12 +2,13 @@ import { createHmac } from 'node:crypto';
 import type { ProfileUser } from '@manverse/anilist-client';
 import type { OAuth2UserInfo } from 'better-auth';
 import type { GenericOAuthConfig } from 'better-auth/plugins/generic-oauth';
+import {
+  ANILIST_IDENTITY_SALT_MIN_LENGTH,
+  ANILIST_IDENTITY_SALT_REQUIRED_MESSAGE,
+} from '../common/constants/anilist.constants.js';
 import { ANILIST_PROVIDER_ID } from '../common/constants/provider.constants.js';
 
 export const ANILIST_SYNTHETIC_EMAIL_DOMAIN = 'anilist.manverse.local';
-export const ANILIST_IDENTITY_SALT_REQUIRED_MESSAGE =
-  'ANILIST_IDENTITY_SALT must be configured as a stable, non-empty secret.';
-export const ANILIST_IDENTITY_SALT_MIN_LENGTH = 32;
 
 type AnilistOAuthViewer = Pick<ProfileUser, 'id' | 'name' | 'avatar'>;
 

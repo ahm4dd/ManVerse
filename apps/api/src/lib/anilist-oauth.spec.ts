@@ -7,13 +7,15 @@ import {
 } from '@manverse/anilist-client';
 import { ANILIST_PROVIDER_ID } from '../common/constants/provider.constants.js';
 import {
-  ANILIST_IDENTITY_SALT_MIN_LENGTH,
-  ANILIST_IDENTITY_SALT_REQUIRED_MESSAGE,
   ANILIST_SYNTHETIC_EMAIL_DOMAIN,
   anilistAccountOptions,
   buildAnilistSyntheticEmail,
   createAnilistOAuthProviderConfig,
 } from './anilist-oauth.js';
+import {
+  ANILIST_IDENTITY_SALT_MIN_LENGTH,
+  ANILIST_IDENTITY_SALT_REQUIRED_MESSAGE,
+} from '../common/constants/anilist.constants.js';
 
 describe('AniList OAuth helpers', () => {
   const longIdentitySalt = Buffer.from(
