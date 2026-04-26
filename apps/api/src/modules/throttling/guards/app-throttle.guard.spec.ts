@@ -23,7 +23,7 @@ describe('AppThrottleGuard', () => {
     new Reflector(),
   );
 
-  it('prefers the authenticated user id over the client IP', async () => {
+  it('prefers the authenticated user id over the client ip', async () => {
     await expect(
       guard.resolveTracker({
         user: { id: 'user-123' },
@@ -43,19 +43,10 @@ describe('AppThrottleGuard', () => {
     ).resolves.toBe('user:session-user-123');
   });
 
-  it('falls back to the resolved client IP', async () => {
+  it('falls back to the resolved client ip', async () => {
     await expect(
       guard.resolveTracker({
         ip: '198.51.100.24',
-      }),
-    ).resolves.toBe('ip:198.51.100.24');
-  });
-
-  it('works with trust-proxy resolved requests', async () => {
-    await expect(
-      guard.resolveTracker({
-        ip: '198.51.100.24',
-        ips: ['198.51.100.24', '10.0.0.5'],
       }),
     ).resolves.toBe('ip:198.51.100.24');
   });

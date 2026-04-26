@@ -17,7 +17,7 @@ import {
 } from '@nestjs/swagger';
 import { ApiSessionAuth } from '../../common/decorators/api-session-auth.decorator.js';
 import { HttpErrorResponseDto } from '../../common/dtos/http-error-response.dto.js';
-import { UseThrottlePolicy } from '../throttling/throttle-policies.js';
+import { UseThrottlePolicy } from '../throttling/decorators/throttle.decorator.js';
 import { AnilistAccessTokenResponseDto } from './dto/anilist-access-token-response.dto.js';
 import { LinkedAccountsResponseDto } from './dto/linked-accounts-response.dto.js';
 import { MeResponseDto } from './dto/me-response.dto.js';

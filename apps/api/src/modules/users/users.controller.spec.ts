@@ -5,7 +5,7 @@ import { AuthService, type UserSession } from '@thallesp/nestjs-better-auth';
 import type { Request } from 'express';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ANILIST_PROVIDER_ID } from '../../common/constants/provider.constants.js';
-import { getThrottlePolicyMetadata } from '../throttling/throttle-policies.js';
+import { getThrottlePolicyMetadata } from '../throttling/decorators/throttle.decorator.js';
 import { UsersService } from './users.service.js';
 import { UsersController } from './users.controller.js';
 
@@ -164,23 +164,14 @@ describe('UsersController', () => {
   });
 
   it('applies named throttle policies to the protected routes', () => {
+    expect(getThrottlePolicyMetadata(getControllerHandler('getProfile'))).toBe(
+      'authenticatedRead',
+    );
+    expect(getThrottlePolicyMetadata(getControllerHandler('getAccounts'))).toBe(
+      'authenticatedRead',
+    );
     expect(
-      getThrottlePolicyMetadata(
-        getControllerHandler('getProfile'),
-        UsersController,
-      ),
-    ).toBe('authenticatedRead');
-    expect(
-      getThrottlePolicyMetadata(
-        getControllerHandler('getAccounts'),
-        UsersController,
-      ),
-    ).toBe('authenticatedRead');
-    expect(
-      getThrottlePolicyMetadata(
-        getControllerHandler('getAnilistAccessToken'),
-        UsersController,
-      ),
+      getThrottlePolicyMetadata(getControllerHandler('getAnilistAccessToken')),
     ).toBe('secret');
   });
 });

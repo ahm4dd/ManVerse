@@ -186,9 +186,8 @@ export const envSchema = z
     DATABASE_URL: z.url(),
     BETTER_AUTH_SECRET: z.base64(),
     BETTER_AUTH_URL: z
-      .string()
-      .trim()
       .url()
+      .trim()
       .transform((value, ctx) =>
         normalizeEnvUrl(value, normalizeBetterAuthUrl, ctx),
       ),
@@ -224,7 +223,7 @@ export const envSchema = z
           .map((origin) => origin.trim())
           .filter(Boolean),
       )
-      .pipe(z.array(z.string().url()))
+      .pipe(z.array(z.url()))
       .transform((origins, ctx) => {
         const normalizedOrigins = origins.map((origin) =>
           normalizeEnvUrl(origin, normalizeTrustedOrigin, ctx),
