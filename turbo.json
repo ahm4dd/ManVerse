@@ -8,46 +8,66 @@
     },
     "dev": {
       "cache": false,
-      "persistent": true
+      "persistent": true,
+      "interruptible": true
+    },
+    "setup": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "outputs": ["src/generated/**"]
     },
     "lint": {
       "dependsOn": ["^lint"]
     },
     "test": {
       "dependsOn": ["^build"],
-      "outputs": ["coverage/**"],
-      "inputs": ["src/**/*.ts", "test/**/*.ts"]
+      "outputs": []
+    },
+    "test:cov": {
+      "dependsOn": ["^build"],
+      "outputs": ["coverage/**"]
+    },
+    "test:e2e": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "test:watch": {
+      "cache": false,
+      "persistent": true,
+      "interruptible": true
+    },
+    "test:e2e:watch": {
+      "cache": false,
+      "persistent": true,
+      "interruptible": true
     },
     "clean": {
       "cache": false
     },
-    "typecheck": {
+    "check-types": {
       "dependsOn": ["^build"],
       "outputs": []
+    },
+    "api#dev": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "persistent": true,
+      "interruptible": true,
+      "with": ["@manverse/anilist-client#dev"]
+    },
+    "api#test:watch": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "persistent": true,
+      "interruptible": true,
+      "with": ["@manverse/anilist-client#dev"]
+    },
+    "api#test:e2e:watch": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "persistent": true,
+      "interruptible": true,
+      "with": ["@manverse/anilist-client#dev"]
     }
   }
 }
-
-// Below is the default config for a turbo project
-
-// {
-//   "$schema": "https://turborepo.dev/schema.json",
-//   "ui": "tui",
-//   "tasks": {
-//     "build": {
-//       "dependsOn": ["^build"],
-//       "inputs": ["$TURBO_DEFAULT$", ".env*"],
-//       "outputs": [".next/**", "!.next/cache/**"]
-//     },
-//     "lint": {
-//       "dependsOn": ["^lint"]
-//     },
-//     "check-types": {
-//       "dependsOn": ["^check-types"]
-//     },
-//     "dev": {
-//       "cache": false,
-//       "persistent": true
-//     }
-//   }
-// }

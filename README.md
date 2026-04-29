@@ -1,159 +1,77 @@
-# Turborepo starter
+# Manverse
 
-This Turborepo starter is maintained by the Turborepo core team.
+Manverse is a `pnpm` workspace powered by Turbo. The current app surface is a NestJS API in `apps/api` plus shared packages under `packages/`, including `@manverse/anilist-client`.
 
-## Using this example
+## Prerequisites
 
-Run the following command:
+- Node.js `>=18`
+- `pnpm@9` via Corepack
+- Docker with the Compose plugin
 
-```sh
-npx create-turbo@latest
+If you do not already have `pnpm@9` active:
+
+```bash
+corepack enable
+corepack prepare pnpm@9.0.0 --activate
 ```
 
-## What's inside?
+## First-Time API Setup
 
-This Turborepo includes the following packages/apps:
+Run these commands from the repository root:
 
-### Apps and Packages
-
-- `docs`: a [Next.js](https://nextjs.org/) app
-- `web`: another [Next.js](https://nextjs.org/) app
-- `@repo/ui`: a stub React component library shared by both `web` and `docs` applications
-- `@repo/eslint-config`: `eslint` configurations (includes `eslint-config-next` and `eslint-config-prettier`)
-- `@repo/typescript-config`: `tsconfig.json`s used throughout the monorepo
-
-Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
-
-### Utilities
-
-This Turborepo has some additional tools already setup for you:
-
-- [TypeScript](https://www.typescriptlang.org/) for static type checking
-- [ESLint](https://eslint.org/) for code linting
-- [Prettier](https://prettier.io) for code formatting
-
-### Build
-
-To build all apps and packages, run the following command:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo build
+```bash
+pnpm install
+cp apps/api/.env.example apps/api/.env
+cp docker/.env.development.example docker/.env.development
+pnpm docker:dev
+pnpm setup:api
+pnpm --filter api prisma:migrate
+pnpm dev:api
 ```
 
-Without global `turbo`, use your package manager:
+On Windows, use your shell's equivalent copy command instead of `cp`.
 
-```sh
-cd my-turborepo
-npx turbo build
-yarn dlx turbo build
-pnpm exec turbo build
-```
+What each step does:
 
-You can build a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
+- `pnpm install` installs the entire workspace. Turbo does not install dependencies for you.
+- `apps/api/.env` configures the API, Prisma, and Better Auth.
+- `docker/.env.development` configures the local Postgres container used by `docker/compose.dev.yaml`.
+- `pnpm docker:dev` starts the development database with Docker Compose.
+- `pnpm setup:api` runs the API setup task through Turbo. Turbo builds `@manverse/anilist-client` first, then runs Prisma code generation and Better Auth generation for `apps/api`.
+- `pnpm --filter api prisma:migrate` creates or updates the local database schema.
+- `pnpm dev:api` starts the API and keeps `@manverse/anilist-client` compiling in watch mode alongside it.
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
+When the API is running:
 
-```sh
-turbo build --filter=docs
-```
+- API base URL: `http://localhost:3000/api/v1`
+- API reference: `http://localhost:3000/reference`
+- Better Auth reference: `http://localhost:3000/api/auth/reference`
 
-Without global `turbo`:
+## Environment Files
 
-```sh
-npx turbo build --filter=docs
-yarn exec turbo build --filter=docs
-pnpm exec turbo build --filter=docs
-```
+`apps/api/.env`
 
-### Develop
+- `DATABASE_URL` must point at the same Postgres instance started by Docker.
+- `BETTER_AUTH_SECRET` must be base64.
+- Leave `ANILIST_OAUTH_ENABLED='false'` unless you are actively wiring AniList OAuth credentials.
 
-To develop all apps and packages, run the following command:
+`docker/.env.development`
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
+- `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`, and `DB_DATABASE_NAME` must match the values used to build `DATABASE_URL` in `apps/api/.env`.
 
-```sh
-cd my-turborepo
-turbo dev
-```
+## Common Commands
 
-Without global `turbo`, use your package manager:
+- `pnpm setup:api` builds `@manverse/anilist-client`, then generates Prisma and Better Auth artifacts for the API.
+- `pnpm dev:api` starts the API in watch mode.
+- `pnpm docker:dev` starts the development Postgres container.
+- `pnpm docker:dev:down` stops the development Postgres container and removes its volume.
+- `pnpm lint` runs workspace linting.
+- `pnpm check-types` runs workspace TypeScript checks.
+- `pnpm build` builds all buildable packages.
+- `pnpm test` runs workspace tests.
 
-```sh
-cd my-turborepo
-npx turbo dev
-yarn exec turbo dev
-pnpm exec turbo dev
-```
+## Troubleshooting
 
-You can develop a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo dev --filter=web
-```
-
-Without global `turbo`:
-
-```sh
-npx turbo dev --filter=web
-yarn exec turbo dev --filter=web
-pnpm exec turbo dev --filter=web
-```
-
-### Remote Caching
-
-> [!TIP]
-> Vercel Remote Cache is free for all plans. Get started today at [vercel.com](https://vercel.com/signup?utm_source=remote-cache-sdk&utm_campaign=free_remote_cache).
-
-Turborepo can use a technique known as [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching) to share cache artifacts across machines, enabling you to share build caches with your team and CI/CD pipelines.
-
-By default, Turborepo will cache locally. To enable Remote Caching you will need an account with Vercel. If you don't have an account you can [create one](https://vercel.com/signup?utm_source=turborepo-examples), then enter the following commands:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo login
-```
-
-Without global `turbo`, use your package manager:
-
-```sh
-cd my-turborepo
-npx turbo login
-yarn exec turbo login
-pnpm exec turbo login
-```
-
-This will authenticate the Turborepo CLI with your [Vercel account](https://vercel.com/docs/concepts/personal-accounts/overview).
-
-Next, you can link your Turborepo to your Remote Cache by running the following command from the root of your Turborepo:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo link
-```
-
-Without global `turbo`:
-
-```sh
-npx turbo link
-yarn exec turbo link
-pnpm exec turbo link
-```
-
-## Useful Links
-
-Learn more about the power of Turborepo:
-
-- [Tasks](https://turborepo.dev/docs/crafting-your-repository/running-tasks)
-- [Caching](https://turborepo.dev/docs/crafting-your-repository/caching)
-- [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching)
-- [Filtering](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters)
-- [Configuration Options](https://turborepo.dev/docs/reference/configuration)
-- [CLI Usage](https://turborepo.dev/docs/reference/command-line-reference)
+- If `pnpm setup:api` fails, check that `apps/api/.env` exists and contains a valid `DATABASE_URL` and `BETTER_AUTH_SECRET`.
+- If the API says the schema is not ready, run `pnpm --filter api prisma:migrate`.
+- If Docker Compose complains about a missing env file, create `docker/.env.development` from `docker/.env.development.example` before running `pnpm docker:dev`.

@@ -4,6 +4,9 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AuthService, type UserSession } from '@thallesp/nestjs-better-auth';
 import type { Request } from 'express';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ANILIST_PROVIDER_ID } from '../../common/constants/provider.constants.js';
+import { getThrottlePolicyMetadata } from '../throttling/decorators/throttle.decorator.js';
+import { UsersService } from './users.service.js';
 import { UsersController } from './users.controller.js';
 
 describe('UsersController', () => {
@@ -14,11 +17,17 @@ describe('UsersController', () => {
       listUserAccounts: vi.fn(),
     },
   };
+  const mockUsersService = {
+    getCurrentUserAnilistAccessToken: vi.fn(),
+  };
 
   beforeAll(async () => {
     const app: TestingModule = await Test.createTestingModule({
       controllers: [UsersController],
-      providers: [{ provide: AuthService, useValue: mockAuthService }],
+      providers: [
+        { provide: AuthService, useValue: mockAuthService },
+        { provide: UsersService, useValue: mockUsersService },
+      ],
     }).compile();
 
     usersController = app.get<UsersController>(UsersController);
@@ -28,6 +37,21 @@ describe('UsersController', () => {
     faker.seed(42);
     vi.clearAllMocks();
   });
+
+  const getControllerHandler = (
+    name: 'getProfile' | 'getAccounts' | 'getAnilistAccessToken',
+  ) => {
+    const descriptor = Reflect.getOwnPropertyDescriptor(
+      UsersController.prototype,
+      name,
+    );
+
+    if (!descriptor?.value) {
+      throw new Error(`Expected UsersController.${name} handler`);
+    }
+
+    return descriptor.value as (...args: never[]) => unknown;
+  };
 
   it('getProfile() should return session information', () => {
     const sessionId = faker.string.nanoid();
@@ -91,7 +115,7 @@ describe('UsersController', () => {
     mockAuthService.api.listUserAccounts.mockResolvedValueOnce([
       {
         id: accountRecordId,
-        providerId: 'anilist',
+        providerId: ANILIST_PROVIDER_ID,
         accountId: providerAccountId,
         userId,
         createdAt,
@@ -104,7 +128,7 @@ describe('UsersController', () => {
       accounts: [
         {
           id: accountRecordId,
-          providerId: 'anilist',
+          providerId: ANILIST_PROVIDER_ID,
           accountId: providerAccountId,
           userId,
           createdAt,
@@ -113,5 +137,41 @@ describe('UsersController', () => {
         },
       ],
     });
+  });
+
+  it('getAnilistAccessToken() should delegate to UsersService with the current user id', async () => {
+    const userId = faker.string.nanoid();
+    const session = {
+      user: {
+        id: userId,
+      },
+    } as UserSession;
+
+    mockUsersService.getCurrentUserAnilistAccessToken.mockResolvedValueOnce({
+      providerId: ANILIST_PROVIDER_ID,
+      accessToken: 'anilist-access-token',
+    });
+
+    await expect(
+      usersController.getAnilistAccessToken(session),
+    ).resolves.toEqual({
+      providerId: ANILIST_PROVIDER_ID,
+      accessToken: 'anilist-access-token',
+    });
+    expect(
+      mockUsersService.getCurrentUserAnilistAccessToken,
+    ).toHaveBeenCalledWith(userId);
+  });
+
+  it('applies named throttle policies to the protected routes', () => {
+    expect(getThrottlePolicyMetadata(getControllerHandler('getProfile'))).toBe(
+      'authenticatedRead',
+    );
+    expect(getThrottlePolicyMetadata(getControllerHandler('getAccounts'))).toBe(
+      'authenticatedRead',
+    );
+    expect(
+      getThrottlePolicyMetadata(getControllerHandler('getAnilistAccessToken')),
+    ).toBe('secret');
   });
 });
