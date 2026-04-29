@@ -5,7 +5,9 @@ const baseEnv = {
   NODE_ENV: 'development',
   PORT: '3000',
   DATABASE_URL: 'postgresql://postgres:postgres@localhost:5432/manverse',
-  BETTER_AUTH_SECRET: Buffer.from('test-secret').toString('base64'),
+  BETTER_AUTH_SECRET: Buffer.from(
+    'test-secret-that-decodes-to-at-least-32-bytes',
+  ).toString('base64'),
   BETTER_AUTH_URL: 'http://localhost:3000',
   ANILIST_IDENTITY_SALT: 'anilist-identity-salt-with-32-plus-chars',
   TRUSTED_ORIGINS: 'http://localhost:3000,http://localhost:5173',
@@ -53,6 +55,17 @@ describe('parseEnvironmentVariables', () => {
     expect(env.THROTTLE_AUTH_SENSITIVE_TTL_MS).toBe(300000);
   });
 
+  it('requires explicit opt-in for Prisma query logging', () => {
+    expect(parseEnvironmentVariables(baseEnv).PRISMA_LOG_QUERIES).toBe(false);
+
+    expect(
+      parseEnvironmentVariables({
+        ...baseEnv,
+        PRISMA_LOG_QUERIES: 'true',
+      }).PRISMA_LOG_QUERIES,
+    ).toBe(true);
+  });
+
   it('rejects trusted origins that include paths', () => {
     expect(() =>
       parseEnvironmentVariables({
@@ -69,6 +82,24 @@ describe('parseEnvironmentVariables', () => {
         TRUST_PROXY: 'loopback',
       }),
     ).toThrowError(/TRUST_PROXY must be set to true, false, or a positive/i);
+  });
+
+  it('rejects Better Auth secrets shorter than 32 decoded bytes', () => {
+    expect(() =>
+      parseEnvironmentVariables({
+        ...baseEnv,
+        BETTER_AUTH_SECRET: Buffer.from('short-secret').toString('base64'),
+      }),
+    ).toThrowError(/BETTER_AUTH_SECRET must decode to at least 32 bytes/i);
+  });
+
+  it('rejects obvious Better Auth placeholder secrets', () => {
+    expect(() =>
+      parseEnvironmentVariables({
+        ...baseEnv,
+        BETTER_AUTH_SECRET: Buffer.from('password123').toString('base64'),
+      }),
+    ).toThrowError(/must not use an obvious placeholder or default value/i);
   });
 
   it('requires an https Better Auth URL in production', () => {
@@ -93,6 +124,54 @@ describe('parseEnvironmentVariables', () => {
         }),
       ]),
     );
+  });
+
+  it('rejects boolean true trust proxy configuration in production', () => {
+    const result = envSchema.safeParse({
+      ...baseEnv,
+      NODE_ENV: 'production',
+      BETTER_AUTH_URL: 'https://api.manverse.com',
+      TRUSTED_ORIGINS: 'https://api.manverse.com',
+      TRUST_PROXY: 'true',
+    });
+
+    expect(result.success).toBe(false);
+
+    if (result.success) {
+      return;
+    }
+
+    expect(result.error.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: ['TRUST_PROXY'],
+          message:
+            'TRUST_PROXY must be false or a positive proxy hop count in production.',
+        }),
+      ]),
+    );
+  });
+
+  it('allows false and positive hop count trust proxy configuration in production', () => {
+    expect(() =>
+      parseEnvironmentVariables({
+        ...baseEnv,
+        NODE_ENV: 'production',
+        BETTER_AUTH_URL: 'https://api.manverse.com',
+        TRUSTED_ORIGINS: 'https://api.manverse.com',
+        TRUST_PROXY: 'false',
+      }),
+    ).not.toThrow();
+
+    expect(() =>
+      parseEnvironmentVariables({
+        ...baseEnv,
+        NODE_ENV: 'production',
+        BETTER_AUTH_URL: 'https://api.manverse.com',
+        TRUSTED_ORIGINS: 'https://api.manverse.com',
+        TRUST_PROXY: '2',
+      }),
+    ).not.toThrow();
   });
 
   it('requires REDIS_URL when production throttling uses redis storage', () => {

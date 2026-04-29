@@ -1,6 +1,6 @@
 import { ThrottlerModuleOptions, ThrottlerOptions } from '@nestjs/throttler';
 import { type ThrottlePolicyName } from './throttle.constants.js';
-import { EnvironmentVariables } from 'src/config/env.js';
+import { EnvironmentVariables } from '../../config/env.js';
 import { shouldSkipPolicy } from './utility.js';
 import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
 import { Redis } from 'ioredis';

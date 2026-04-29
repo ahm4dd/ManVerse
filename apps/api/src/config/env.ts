@@ -12,6 +12,22 @@ import { ANILIST_IDENTITY_SALT_MIN_LENGTH } from '../common/constants/anilist.co
 dotenv.config(); // You can suppress the logging by passing { quiet: true }
 
 const TRUST_PROXY_HOP_COUNT_PATTERN = /^[1-9]\d*$/;
+const BETTER_AUTH_SECRET_MIN_BYTES = 32;
+const PLACEHOLDER_BETTER_AUTH_SECRETS = new Set([
+  'better-auth-secret',
+  'better_auth_secret',
+  'changeme',
+  'change-me',
+  'change_me',
+  'default',
+  'development',
+  'example',
+  'password',
+  'password123',
+  'secret',
+  'test',
+  'test-secret',
+]);
 const PRODUCTION_LOCAL_HOSTNAMES = new Set([
   'localhost',
   '127.0.0.1',
@@ -179,12 +195,48 @@ function parseTrustProxySetting(
   );
 }
 
+function getDecodedBase64ByteLength(value: string): number {
+  return Buffer.from(value, 'base64').byteLength;
+}
+
+function isObviousBetterAuthSecretPlaceholder(value: string): boolean {
+  const normalizedValue = value.trim().toLowerCase();
+  const decodedValue = Buffer.from(value, 'base64')
+    .toString('utf8')
+    .trim()
+    .toLowerCase();
+
+  return (
+    PLACEHOLDER_BETTER_AUTH_SECRETS.has(normalizedValue) ||
+    PLACEHOLDER_BETTER_AUTH_SECRETS.has(decodedValue)
+  );
+}
+
 export const envSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']),
     PORT: z.coerce.number().min(1).max(65535).optional().default(3000),
     DATABASE_URL: z.url(),
-    BETTER_AUTH_SECRET: z.base64(),
+    BETTER_AUTH_SECRET: z
+      .string()
+      .trim()
+      .pipe(z.base64())
+      .superRefine((value, ctx) => {
+        if (getDecodedBase64ByteLength(value) < BETTER_AUTH_SECRET_MIN_BYTES) {
+          ctx.addIssue({
+            code: 'custom',
+            message: `BETTER_AUTH_SECRET must decode to at least ${BETTER_AUTH_SECRET_MIN_BYTES} bytes.`,
+          });
+        }
+
+        if (isObviousBetterAuthSecretPlaceholder(value)) {
+          ctx.addIssue({
+            code: 'custom',
+            message:
+              'BETTER_AUTH_SECRET must not use an obvious placeholder or default value.',
+          });
+        }
+      }),
     BETTER_AUTH_URL: z
       .url()
       .trim()
@@ -294,6 +346,11 @@ export const envSchema = z
       DEFAULT_THROTTLE_AUTH_SENSITIVE_TTL_MS,
       'THROTTLE_AUTH_SENSITIVE_TTL_MS',
     ),
+    PRISMA_LOG_QUERIES: z
+      .enum(['true', 'false'])
+      .optional()
+      .default('false')
+      .transform((value) => value === 'true'),
     ANILIST_CLIENT_ID: z.string().min(1).optional(),
     ANILIST_CLIENT_SECRET: z.string().min(1).optional(),
   })
@@ -344,6 +401,15 @@ export const envSchema = z
 
     if (env.NODE_ENV !== 'production') {
       return;
+    }
+
+    if (env.TRUST_PROXY === true) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['TRUST_PROXY'],
+        message:
+          'TRUST_PROXY must be false or a positive proxy hop count in production.',
+      });
     }
 
     if (env.THROTTLE_STORAGE === 'redis' && !env.REDIS_URL) {

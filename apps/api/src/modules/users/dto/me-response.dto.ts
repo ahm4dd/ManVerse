@@ -1,6 +1,6 @@
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
-import { isoDateTimeCodec } from '../.../../../../common/schemas/date-time.schema.js';
+import { isoDateTimeCodec } from '../../../common/schemas/date-time.schema.js';
 
 const MeResponseDtoSchema = z
   .object({

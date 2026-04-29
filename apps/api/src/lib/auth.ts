@@ -49,6 +49,10 @@ const anilistCallbackUrl = new URL(
   env.BETTER_AUTH_URL,
 ).toString();
 const anilistClient = new AnilistClient();
+const authSensitiveRateLimitRule = {
+  window: Math.ceil(env.THROTTLE_AUTH_SENSITIVE_TTL_MS / 1000),
+  max: env.THROTTLE_AUTH_SENSITIVE_LIMIT,
+};
 
 const oauthPlugins = env.ANILIST_OAUTH_ENABLED
   ? [
@@ -84,7 +88,18 @@ export const auth = betterAuth({
   trustedOrigins: env.TRUSTED_ORIGINS,
   rateLimit: {
     enabled: env.NODE_ENV === 'production',
-    // TODO: Tune these settings
+    window: authSensitiveRateLimitRule.window,
+    max: authSensitiveRateLimitRule.max,
+    customRules: {
+      '/sign-in*': authSensitiveRateLimitRule,
+      '/sign-up*': authSensitiveRateLimitRule,
+      '/change-password*': authSensitiveRateLimitRule,
+      '/change-email*': authSensitiveRateLimitRule,
+      '/request-password-reset': authSensitiveRateLimitRule,
+      '/send-verification-email': authSensitiveRateLimitRule,
+      '/forget-password*': authSensitiveRateLimitRule,
+      '/email-otp/*': authSensitiveRateLimitRule,
+    },
   },
   session: {
     cookieCache: {

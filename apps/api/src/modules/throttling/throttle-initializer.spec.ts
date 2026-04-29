@@ -1,8 +1,8 @@
 import type { ExecutionContext } from '@nestjs/common';
 import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
 import { describe, expect, it } from 'vitest';
-import type { EnvironmentVariables } from 'src/config/env.js';
-import { parseEnvironmentVariables } from 'src/config/env.js';
+import type { EnvironmentVariables } from '../../config/env.js';
+import { parseEnvironmentVariables } from '../../config/env.js';
 import { UseThrottlePolicy } from './decorators/throttle.decorator.js';
 import {
   createPolicies,
@@ -122,7 +122,7 @@ describe('throttle initializer', () => {
     );
   });
 
-  it('builds skip handlers so only the selected policy runs', () => {
+  it('builds skip handlers that keep baselines and the selected route policy active', () => {
     const env = parseEnvironmentVariables(baseEnv);
     const config = createThrottleConfig(env);
 
@@ -136,8 +136,15 @@ describe('throttle initializer', () => {
     const globalThrottler = config.throttlers.find(
       ({ name }) => name === 'global',
     );
+    const burstThrottler = config.throttlers.find(
+      ({ name }) => name === 'burst',
+    );
 
-    if (!authSensitiveThrottler?.skipIf || !globalThrottler?.skipIf) {
+    if (
+      !authSensitiveThrottler?.skipIf ||
+      !globalThrottler?.skipIf ||
+      !burstThrottler?.skipIf
+    ) {
       throw new Error('Expected named throttlers to define skipIf handlers.');
     }
 
@@ -151,8 +158,10 @@ describe('throttle initializer', () => {
     );
 
     expect(authSensitiveThrottler.skipIf(authSensitiveContext)).toBe(false);
-    expect(globalThrottler.skipIf(authSensitiveContext)).toBe(true);
+    expect(globalThrottler.skipIf(authSensitiveContext)).toBe(false);
+    expect(burstThrottler.skipIf(authSensitiveContext)).toBe(false);
     expect(globalThrottler.skipIf(plainContext)).toBe(false);
+    expect(burstThrottler.skipIf(plainContext)).toBe(false);
     expect(authSensitiveThrottler.skipIf(plainContext)).toBe(true);
   });
 

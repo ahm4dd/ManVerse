@@ -1,5 +1,6 @@
 import { ExecutionContext } from '@nestjs/common';
 import {
+  BASELINE_THROTTLE_POLICY_NAMES,
   THROTTLE_POLICY_NAMES,
   type ThrottlePolicyName,
 } from './throttle.constants.js';
@@ -22,17 +23,13 @@ export function getSelectedPolicy(
   );
 }
 
-/**
- * Determines whether a specific throttle policy should be skipped for a given execution context.
- * It checks the metadata of both the route handler and the controller class to see if they specify a throttle policy.
- * If a specific policy is defined at either level, it will skip the policy if it does not match the one being evaluated.
- * @param policy - The throttle policy being evaluated (e.g., 'global', 'burst', etc.).
- * @param context - The execution context of the request, which provides access to the target class and handler for metadata retrieval.
- * @returns A boolean indicating whether the specified throttle policy should be skipped for the current execution context.
- */
 export function shouldSkipPolicy(
   policy: ThrottlePolicyName,
   context: ExecutionContext,
 ): boolean {
+  if (BASELINE_THROTTLE_POLICY_NAMES.includes(policy)) {
+    return false;
+  }
+
   return getSelectedPolicy(context) !== policy;
 }

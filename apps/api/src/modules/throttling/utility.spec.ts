@@ -74,15 +74,15 @@ describe('utility helpers', () => {
     expect(getSelectedPolicy(context)).toBe('global');
   });
 
-  it('skips every non-selected policy', () => {
+  it('keeps baseline policies active while skipping non-selected route policies', () => {
     const context = createHttpExecutionContext(
       AuthenticatedReadController,
       getMethod(AuthenticatedReadController.prototype, 'getSecret'),
     );
 
     expect(shouldSkipPolicy('secret', context)).toBe(false);
-    expect(shouldSkipPolicy('global', context)).toBe(true);
-    expect(shouldSkipPolicy('burst', context)).toBe(true);
+    expect(shouldSkipPolicy('global', context)).toBe(false);
+    expect(shouldSkipPolicy('burst', context)).toBe(false);
     expect(shouldSkipPolicy('authenticatedRead', context)).toBe(true);
     expect(shouldSkipPolicy('authSensitive', context)).toBe(true);
   });

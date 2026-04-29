@@ -14,6 +14,12 @@ type BetterAuthConfig = {
       enabled?: boolean;
     };
   };
+  rateLimit?: {
+    enabled?: boolean;
+    window?: number;
+    max?: number;
+    customRules?: Record<string, { window: number; max: number }>;
+  };
 };
 
 async function loadAuthModule(envOverrides: Partial<AuthEnv> = {}) {
@@ -140,6 +146,21 @@ describe('auth configuration', () => {
       testUtilsPlugin,
     ]);
     expect(authConfig.session?.cookieCache).toEqual({ enabled: false });
+    expect(authConfig.rateLimit).toEqual({
+      enabled: false,
+      window: 60,
+      max: 5,
+      customRules: {
+        '/sign-in*': { window: 60, max: 5 },
+        '/sign-up*': { window: 60, max: 5 },
+        '/change-password*': { window: 60, max: 5 },
+        '/change-email*': { window: 60, max: 5 },
+        '/request-password-reset': { window: 60, max: 5 },
+        '/send-verification-email': { window: 60, max: 5 },
+        '/forget-password*': { window: 60, max: 5 },
+        '/email-otp/*': { window: 60, max: 5 },
+      },
+    });
 
     const providerOptions = (
       createAnilistOAuthProviderConfigMock.mock.calls as unknown as Array<
@@ -183,6 +204,8 @@ describe('auth configuration', () => {
   it('uses secure cookies in production', async () => {
     const { betterAuthMock } = await loadAuthModule({
       NODE_ENV: 'production',
+      THROTTLE_AUTH_SENSITIVE_LIMIT: 4,
+      THROTTLE_AUTH_SENSITIVE_TTL_MS: 300_000,
     });
 
     const authConfig = betterAuthMock.mock.calls[0]?.[0];
@@ -191,6 +214,16 @@ describe('auth configuration', () => {
       useSecureCookies: true,
       disableCSRFCheck: false,
       disableOriginCheck: false,
+    });
+    expect(authConfig.rateLimit).toMatchObject({
+      enabled: true,
+      window: 300,
+      max: 4,
+      customRules: expect.objectContaining({
+        '/sign-in*': { window: 300, max: 4 },
+        '/sign-up*': { window: 300, max: 4 },
+        '/request-password-reset': { window: 300, max: 4 },
+      }) as Record<string, { window: number; max: number }>,
     });
   });
 });

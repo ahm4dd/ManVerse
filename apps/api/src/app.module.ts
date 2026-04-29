@@ -9,9 +9,10 @@ import { createZodSerializerInterceptor, ZodValidationPipe } from 'nestjs-zod';
 import auth from './lib/auth.js';
 import { UserModule } from './modules/users/user.module.js';
 import { ThrottlingModule } from './modules/throttling/throttling.module.js';
+import { AppThrottleGuard } from './modules/throttling/guards/app-throttle.guard.js';
 
 const CustomZodSerializerInterceptor = createZodSerializerInterceptor({
-  reportInput: true,
+  reportInput: false,
 });
 
 @Module({
@@ -20,6 +21,7 @@ const CustomZodSerializerInterceptor = createZodSerializerInterceptor({
     ConfigModule,
     AuthModule.forRoot({
       auth,
+      disableGlobalAuthGuard: true,
       bodyParser: {
         json: { enabled: true, limit: '2mb' },
         urlencoded: {
@@ -40,6 +42,7 @@ const CustomZodSerializerInterceptor = createZodSerializerInterceptor({
     { provide: APP_PIPE, useClass: ZodValidationPipe },
     { provide: APP_INTERCEPTOR, useClass: CustomZodSerializerInterceptor },
     { provide: APP_GUARD, useClass: AuthGuard },
+    { provide: APP_GUARD, useExisting: AppThrottleGuard },
   ],
 })
 export class AppModule {}
